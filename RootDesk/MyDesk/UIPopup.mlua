@@ -40,83 +40,104 @@ script UIPopup extends Logic
 		self.message.Text = message
 		self.onOk = onOk
 		self.onCancel = onCancel
-		
-		
-		self.okHandler = self.btnOk.Entity:ConnectEvent(ButtonClickEvent,self.OnClickOk)
-		self.cancelHandler = self.btnCancel.Entity:ConnectEvent(ButtonClickEvent,self.OnClickCancel)
+		self:ConnectButtons()
 		self:StartTween(true)
 	end
 
+	method void ConnectButtons()
+		self.okHandler = self.btnOk.Entity:ConnectEvent(ButtonClickEvent, self.OnClickOk)
+		self.cancelHandler = self.btnCancel.Entity:ConnectEvent(ButtonClickEvent, self.OnClickCancel)
+	end
+
 	method void OnClickOk()
-		if self.isTweenPlaying == true then
-			return
-		end
-		if self.onOk ~= nil then
-			self.onOk()
-			self.onOk = nil
-		end
-		self:Close()
+		self:Choose(self.onOk, true)
 	end
 
 	method void OnClickCancel()
+		self:Choose(self.onCancel, false)
+	end
+
+	method void Choose(any callback, boolean ok)
 		if self.isTweenPlaying == true then
 			return
 		end
-		if self.onCancel ~= nil then
-			self.onCancel()
+		if callback ~= nil then
+			callback()
+		end
+		if ok == true then
+			self.onOk = nil
+		else
 			self.onCancel = nil
 		end
 		self:Close()
 	end
 
 	method void Close()
-		self.btnOk.Entity:DisconnectEvent(ButtonClickEvent,self.okHandler)
-		self.btnCancel.Entity:DisconnectEvent(ButtonClickEvent,self.cancelHandler)
+		self:DisconnectButtons()
 		self:StartTween(false)
 	end
 
+	method void DisconnectButtons()
+		if self.okHandler ~= nil then
+			self.btnOk.Entity:DisconnectEvent(ButtonClickEvent, self.okHandler)
+			self.okHandler = nil
+		end
+		if self.cancelHandler ~= nil then
+			self.btnCancel.Entity:DisconnectEvent(ButtonClickEvent, self.cancelHandler)
+			self.cancelHandler = nil
+		end
+	end
+
 	method void StartTween(boolean open)
-		
 		local transform = self.popup.UITransformComponent
-		local canvasGroup = self.popupGroup.CanvasGroupComponent 
+		local canvasGroup = self.popupGroup.CanvasGroupComponent
+		if self.tweenEventId > 0 then
+			_TimerService:ClearTimer(self.tweenEventId)
+			self.tweenEventId = 0
+		end
+
 		if open == true then
 			canvasGroup.GroupAlpha = 0
-			transform.UIScale = Vector3(self.from,self.from,1)
+			transform.UIScale = Vector3(self.from, self.from, 1)
 		else
-			transform.UIScale = Vector3(self.to,self.to,1)
+			transform.UIScale = Vector3(self.to, self.to, 1)
 		end
+
 		self.isTweenPlaying = true
 		local time = 0
-		
-		
 		local preTime = _UtilLogic.ElapsedSeconds
-		
+
 		local tween = function()
-			local delta = _UtilLogic.ElapsedSeconds - preTime
+			local now = _UtilLogic.ElapsedSeconds
+			local delta = now - preTime
 			time = time + delta
-			local timeValue = time	
-			preTime = _UtilLogic.ElapsedSeconds
-		
-			if time >= self.duration then
-				timeValue = self.duration
-				if open == false then
-					self.popupGroup.Enable = false
-					self.isOpen = false
-				end
-				self.isTweenPlaying = false
-				_TimerService:ClearTimer(self.tweenEventId)
-		
-			end
+			preTime = now
+
+			local timeValue = math.min(time, self.duration)
 			if open == false then
 				timeValue = self.duration - timeValue
 			end
-			local tweenValue = _TweenLogic:Ease(self.from, self.to, 
-				self.duration, EaseType.SineEaseIn, timeValue)
-			transform.UIScale = Vector3(tweenValue,tweenValue,1)
+			local tweenValue = _TweenLogic:Ease(self.from, self.to, self.duration, EaseType.SineEaseIn, timeValue)
+			transform.UIScale = Vector3(tweenValue, tweenValue, 1)
 			canvasGroup.GroupAlpha = timeValue / self.duration
+
+			if time >= self.duration then
+				self:FinishTween(open)
+			end
 		end
-		self.tweenEventId = _TimerService:SetTimerRepeat(tween,1/60)
-		
+		self.tweenEventId = _TimerService:SetTimerRepeat(tween, 1 / 60)
+	end
+
+	method void FinishTween(boolean open)
+		if open == false then
+			self.popupGroup.Enable = false
+			self.isOpen = false
+		end
+		self.isTweenPlaying = false
+		if self.tweenEventId > 0 then
+			_TimerService:ClearTimer(self.tweenEventId)
+			self.tweenEventId = 0
+		end
 	end
 
 end

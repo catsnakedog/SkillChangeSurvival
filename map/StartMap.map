@@ -200,6 +200,7 @@
             {
               "@type": "script.BRLobbyMatchmaker",
               "Enable": true,
+              "TargetPlayerCount": 8.0,
               "LobbyMapName": "StartMap",
               "GatherMapName": "BattleMap"
             }

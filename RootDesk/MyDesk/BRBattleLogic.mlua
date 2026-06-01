@@ -1,0 +1,467 @@
+@Component
+script BRBattleLogic extends Component
+
+	property boolean EnableBattleLogic = true
+
+	property string AttackActionName = "Attack"
+
+	property number BattleMaxHp = 100
+
+	property number BasicAttackDamage = 20
+
+	property number AttackCooldownSeconds = 0.45
+
+	property number HitInvincibleSeconds = 0.25
+
+	property number AttackBoxWidth = 1.6
+
+	property number AttackBoxHeight = 1.0
+
+	property number AttackOffsetX = 0.9
+
+	property number AttackOffsetY = 0.35
+
+	property number AttackOffsetYFromFeet = 0.35
+
+	property number PlayerScanSeconds = 0.25
+
+	property number PlayerRespawnDuration = 5
+
+	property boolean ResetHpOnEnter = true
+
+	property boolean VerboseBattleLog = true
+
+	@Sync
+	property number AlivePlayerCount = 0
+
+	@Sync
+	property string BattlePhase = "Idle"
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		if self.EnableBattleLogic == false then
+			return
+		end
+		
+		self:StartServerRuntime()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnEndPlay()
+		self:StopServerRuntime()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartServerRuntime()
+		self._T.playerHandlers = {}
+		self._T.nextAttackAt = {}
+		self._T.invincibleUntil = {}
+		self._T.preparedPlayers = {}
+		self._T.serverTimerId = _TimerService:SetTimerRepeat(function() self:RefreshBattlePlayers() end, self:GetPlayerScanSeconds(), 0.1)
+		self:RefreshBattlePlayers()
+		self.BattlePhase = "Ready"
+		self:Log("started map=" .. self:GetBattleMapName())
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StopServerRuntime()
+		if self._T.serverTimerId ~= nil and self._T.serverTimerId > 0 then
+			_TimerService:ClearTimer(self._T.serverTimerId)
+		end
+		self._T.serverTimerId = 0
+		
+		if self._T.playerHandlers ~= nil then
+			for userId, entry in pairs(self._T.playerHandlers) do
+				self:DisconnectPlayerEntry(entry)
+			end
+		end
+		self._T.playerHandlers = {}
+		self._T.nextAttackAt = {}
+		self._T.invincibleUntil = {}
+		self._T.preparedPlayers = {}
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RefreshBattlePlayers()
+		self:EnsureServerRuntimeTables()
+		local mapName = self:GetBattleMapName()
+		local activeUsers = {}
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users ~= nil then
+			for index, playerEntity in ipairs(users) do
+				if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+					local userId = playerEntity.PlayerComponent.UserId
+					activeUsers[userId] = true
+					self:RegisterBattlePlayer(playerEntity)
+				end
+			end
+		end
+		
+		if self._T.playerHandlers ~= nil then
+			for userId, entry in pairs(self._T.playerHandlers) do
+				if activeUsers[userId] ~= true then
+					self:UnregisterBattlePlayer(userId)
+				end
+			end
+		end
+		
+		self:UpdateAlivePlayerCount()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RegisterBattlePlayer(Entity playerEntity)
+		self:EnsureServerRuntimeTables()
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		
+		local userId = playerEntity.PlayerComponent.UserId
+		if userId == nil or userId == "" then
+			return
+		end
+		
+		self:PreparePlayerForBattle(playerEntity)
+		if self._T.playerHandlers[userId] ~= nil then
+			self._T.playerHandlers[userId].Entity = playerEntity
+			return
+		end
+		
+		local actionHandler = playerEntity:ConnectEvent(PlayerActionEvent, self.HandlePlayerActionEvent)
+		self._T.playerHandlers[userId] = {
+			Entity = playerEntity,
+			ActionHandler = actionHandler
+		}
+		self:Log("registered user=" .. userId .. " map=" .. self:GetBattleMapName())
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UnregisterBattlePlayer(string userId)
+		if self._T.playerHandlers == nil then
+			return
+		end
+		
+		local entry = self._T.playerHandlers[userId]
+		if entry ~= nil then
+			self:DisconnectPlayerEntry(entry)
+			self._T.playerHandlers[userId] = nil
+		end
+		if self._T.nextAttackAt ~= nil then
+			self._T.nextAttackAt[userId] = nil
+		end
+		if self._T.invincibleUntil ~= nil then
+			self._T.invincibleUntil[userId] = nil
+		end
+		if self._T.preparedPlayers ~= nil then
+			self._T.preparedPlayers[userId] = nil
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void DisconnectPlayerEntry(any entry)
+		if entry == nil or entry.Entity == nil or entry.ActionHandler == nil then
+			return
+		end
+		
+		entry.Entity:DisconnectEvent(PlayerActionEvent, entry.ActionHandler)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PreparePlayerForBattle(Entity playerEntity)
+		self:EnsureServerRuntimeTables()
+		local playerComponent = playerEntity.PlayerComponent
+		if playerComponent == nil then
+			return
+		end
+		
+		local maxHp = self:GetBattleMaxHp()
+		playerComponent.PVPMode = true
+		playerComponent.MaxHp = maxHp
+		playerComponent.RespawnDuration = self:GetPlayerRespawnDuration()
+		if self._T.preparedPlayers == nil then
+			self._T.preparedPlayers = {}
+		end
+		
+		if self.ResetHpOnEnter == true and self._T.preparedPlayers[playerComponent.UserId] == nil then
+			playerComponent.Hp = maxHp
+		elseif playerComponent.Hp <= 0 then
+			playerComponent.Hp = maxHp
+		end
+		
+		self._T.preparedPlayers[playerComponent.UserId] = true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void HandlePlayerActionEvent(PlayerActionEvent event)
+		if self.EnableBattleLogic == false or event == nil then
+			return
+		end
+		if self:IsAttackAction(event.ActionName) == false then
+			return
+		end
+		
+		self:TryBasicAttack(event.PlayerEntity)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void TryBasicAttack(Entity attackerEntity)
+		self:EnsureServerRuntimeTables()
+		if attackerEntity == nil or attackerEntity.PlayerComponent == nil then
+			return
+		end
+		if attackerEntity.CurrentMapName ~= self:GetBattleMapName() then
+			return
+		end
+		if attackerEntity.PlayerComponent:IsDead() == true or attackerEntity.PlayerComponent.Hp <= 0 then
+			return
+		end
+		
+		local userId = attackerEntity.PlayerComponent.UserId
+		local now = self:Now()
+		local nextAttackAt = self:ReadNumber(self._T.nextAttackAt[userId], 0)
+		if now < nextAttackAt then
+			return
+		end
+		
+		self._T.nextAttackAt[userId] = now + self:GetAttackCooldownSeconds()
+		self:PlayBodyAction(attackerEntity, MapleAvatarBodyActionState.Attack, true, 1)
+		
+		local hitCount = 0
+		local users = _UserService:GetUsersByMapName(self:GetBattleMapName())
+		if users ~= nil then
+			for index, targetEntity in ipairs(users) do
+				if self:CanHitTarget(attackerEntity, targetEntity, now) == true then
+					self:DamageTarget(attackerEntity, targetEntity, now)
+					hitCount = hitCount + 1
+				end
+			end
+		end
+		
+		self:Log("attack user=" .. userId .. " hits=" .. tostring(hitCount))
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean CanHitTarget(Entity attackerEntity, Entity targetEntity, number now)
+		if targetEntity == nil or targetEntity.PlayerComponent == nil then
+			return false
+		end
+		if attackerEntity == nil or attackerEntity.Id == targetEntity.Id then
+			return false
+		end
+		if targetEntity.CurrentMapName ~= self:GetBattleMapName() then
+			return false
+		end
+		if targetEntity.PlayerComponent:IsDead() == true or targetEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+		
+		local targetUserId = targetEntity.PlayerComponent.UserId
+		if now < self:ReadNumber(self._T.invincibleUntil[targetUserId], 0) then
+			return false
+		end
+		
+		return self:IsTargetInsideAttackBox(attackerEntity, targetEntity)
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean IsTargetInsideAttackBox(Entity attackerEntity, Entity targetEntity)
+		local attackerPosition = self:GetEntityPosition2(attackerEntity)
+		local targetPosition = self:GetEntityPosition2(targetEntity)
+		local direction = self:GetLookDirection(attackerEntity)
+		local centerX = attackerPosition.x + direction * self:GetAttackOffsetX()
+		local centerY = attackerPosition.y + self:GetAttackOffsetY()
+		local halfWidth = self:GetAttackBoxWidth() * 0.5
+		local halfHeight = self:GetAttackBoxHeight() * 0.5
+		
+		return math.abs(targetPosition.x - centerX) <= halfWidth and math.abs((targetPosition.y + self:GetAttackOffsetYFromFeet()) - centerY) <= halfHeight
+	end
+
+	@ExecSpace("ServerOnly")
+	method void DamageTarget(Entity attackerEntity, Entity targetEntity, number now)
+		self:EnsureServerRuntimeTables()
+		local targetPlayer = targetEntity.PlayerComponent
+		if targetPlayer == nil then
+			return
+		end
+		
+		local damage = self:GetBasicAttackDamage()
+		targetPlayer.Hp = math.max(0, targetPlayer.Hp - damage)
+		self._T.invincibleUntil[targetPlayer.UserId] = now + self:GetHitInvincibleSeconds()
+		
+		if targetPlayer.Hp <= 0 then
+			self:KillTarget(attackerEntity, targetEntity)
+		else
+			self:PlayBodyAction(targetEntity, MapleAvatarBodyActionState.Hit, true, 1)
+		end
+		
+		self:UpdateAlivePlayerCount()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void KillTarget(Entity attackerEntity, Entity targetEntity)
+		if targetEntity == nil or targetEntity.PlayerComponent == nil then
+			return
+		end
+		
+		self:PlayBodyAction(targetEntity, MapleAvatarBodyActionState.Dead, true, 1)
+		targetEntity.PlayerComponent:ProcessDead(targetEntity.PlayerComponent.UserId)
+		local attackerId = ""
+		if attackerEntity ~= nil and attackerEntity.PlayerComponent ~= nil then
+			attackerId = attackerEntity.PlayerComponent.UserId
+		end
+		self:Log("dead user=" .. targetEntity.PlayerComponent.UserId .. " attacker=" .. attackerId)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UpdateAlivePlayerCount()
+		local count = 0
+		local users = _UserService:GetUsersByMapName(self:GetBattleMapName())
+		if users ~= nil then
+			for index, playerEntity in ipairs(users) do
+				if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+					if playerEntity.PlayerComponent:IsDead() == false and playerEntity.PlayerComponent.Hp > 0 then
+						count = count + 1
+					end
+				end
+			end
+		end
+		
+		self.AlivePlayerCount = count
+		if count > 0 then
+			self.BattlePhase = "Playing " .. tostring(count)
+		else
+			self.BattlePhase = "Waiting"
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PlayBodyAction(Entity playerEntity, MapleAvatarBodyActionState actionState, boolean reset, number playRate)
+		if playerEntity == nil then
+			return
+		end
+		
+		playerEntity:SendEvent(BodyActionStateChangeEvent(reset, actionState, 0, 2147483647, playRate))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void EnsureServerRuntimeTables()
+		if self._T.playerHandlers == nil then
+			self._T.playerHandlers = {}
+		end
+		if self._T.nextAttackAt == nil then
+			self._T.nextAttackAt = {}
+		end
+		if self._T.invincibleUntil == nil then
+			self._T.invincibleUntil = {}
+		end
+		if self._T.preparedPlayers == nil then
+			self._T.preparedPlayers = {}
+		end
+	end
+
+	method boolean IsAttackAction(string actionName)
+		local normalized = string.lower(self:ReadString(actionName, ""))
+		local configured = string.lower(self:ReadString(self.AttackActionName, "Attack"))
+		return normalized == configured or normalized == "attack" or normalized == "actionattack" or normalized == "basicattack"
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method number GetLookDirection(Entity entity)
+		if entity ~= nil and entity.PlayerControllerComponent ~= nil then
+			if entity.PlayerControllerComponent.LookDirectionX >= 0 then
+				return 1
+			end
+		end
+		return -1
+	end
+
+	method string GetBattleMapName()
+		if self.Entity ~= nil and self.Entity.CurrentMapName ~= nil and self.Entity.CurrentMapName ~= "" then
+			return self.Entity.CurrentMapName
+		end
+		return "BattleMap"
+	end
+
+	method number GetBattleMaxHp()
+		return math.max(1, math.floor(self:ReadNumber(self.BattleMaxHp, 100)))
+	end
+
+	method number GetBasicAttackDamage()
+		return math.max(1, math.floor(self:ReadNumber(self.BasicAttackDamage, 20)))
+	end
+
+	method number GetAttackCooldownSeconds()
+		return math.max(0.05, self:ReadNumber(self.AttackCooldownSeconds, 0.45))
+	end
+
+	method number GetHitInvincibleSeconds()
+		return math.max(0, self:ReadNumber(self.HitInvincibleSeconds, 0.25))
+	end
+
+	method number GetAttackBoxWidth()
+		return math.max(0.1, self:ReadNumber(self.AttackBoxWidth, 1.6))
+	end
+
+	method number GetAttackBoxHeight()
+		return math.max(0.1, self:ReadNumber(self.AttackBoxHeight, 1.0))
+	end
+
+	method number GetAttackOffsetX()
+		return math.max(0, self:ReadNumber(self.AttackOffsetX, 0.9))
+	end
+
+	method number GetAttackOffsetY()
+		return self:ReadNumber(self.AttackOffsetY, 0.35)
+	end
+
+	method number GetAttackOffsetYFromFeet()
+		return self:ReadNumber(self.AttackOffsetYFromFeet, 0.35)
+	end
+
+	method number GetPlayerScanSeconds()
+		return math.max(0.1, self:ReadNumber(self.PlayerScanSeconds, 0.25))
+	end
+
+	method number GetPlayerRespawnDuration()
+		return math.max(0, self:ReadNumber(self.PlayerRespawnDuration, 5))
+	end
+
+	method number Now()
+		return _UtilLogic.ElapsedSeconds
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseBattleLog == true then
+			log("[BRBattle] " .. message)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	@EventSender("Service", "UserService")
+	handler HandleUserLeaveEvent(UserLeaveEvent event)
+		self:UnregisterBattlePlayer(event.UserId)
+	end
+
+end

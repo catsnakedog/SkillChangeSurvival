@@ -1,0 +1,200 @@
+@Logic
+script BRMatchRoomQueue extends Logic
+
+	method any CreateEmptyRoomQueue(number now)
+		return {
+			Version = 1,
+			Rooms = {},
+			UpdatedAt = now
+		}
+	end
+
+	method any CreateMatchRoom(any tickets, string mode, string sourceMapName, string dynamicMapName, string worldInstanceId, number targetPlayerCount, number minStartPlayerCount, number now, number ttl)
+		local room = {
+			MatchId = _UtilLogic:NewGuid(),
+			State = "Creating",
+			Mode = self:ReadString(mode, "SoloBattleRoyale"),
+			WorldInstanceId = self:ReadString(worldInstanceId, ""),
+			HostWorldInstanceId = self:ReadString(worldInstanceId, ""),
+			SourceMapName = self:ReadString(sourceMapName, "BattleMap"),
+			DynamicMapName = self:ReadString(dynamicMapName, ""),
+			TargetPlayerCount = math.max(1, math.floor(self:ReadNumber(targetPlayerCount, 1))),
+			MinStartPlayerCount = math.max(1, math.floor(self:ReadNumber(minStartPlayerCount, targetPlayerCount))),
+			CreatedAt = now,
+			StartedAt = 0,
+			EndedAt = 0,
+			ExpiresAt = now + ttl,
+			Players = {}
+		}
+		
+		for index, ticket in ipairs(tickets) do
+			table.insert(room.Players, {
+				UserId = ticket.UserId,
+				TicketId = ticket.TicketId,
+				ProfileCode = self:ReadString(ticket.ProfileCode, ""),
+				WorldInstanceId = self:ReadString(ticket.WorldInstanceId, ""),
+				State = "Selected",
+				SpawnIndex = index,
+				TeamId = 0,
+				ArrivedAt = 0
+			})
+		end
+		
+		return room
+	end
+
+	method void NormalizeRoomQueue(any roomQueue)
+		if roomQueue.Version == nil then
+			roomQueue.Version = 1
+		end
+		if roomQueue.Rooms == nil then
+			roomQueue.Rooms = {}
+		end
+	end
+
+	method boolean AddRoom(any roomQueue, any room)
+		self:NormalizeRoomQueue(roomQueue)
+		if room == nil or room.MatchId == nil or room.MatchId == "" then
+			return false
+		end
+		if self:GetRoom(roomQueue, room.MatchId) ~= nil then
+			return false
+		end
+		
+		table.insert(roomQueue.Rooms, room)
+		roomQueue.UpdatedAt = self:ReadNumber(room.CreatedAt, roomQueue.UpdatedAt)
+		return true
+	end
+
+	method any GetRoom(any roomQueue, string matchId)
+		if roomQueue == nil or roomQueue.Rooms == nil then
+			return nil
+		end
+		for index, room in ipairs(roomQueue.Rooms) do
+			if room.MatchId == matchId then
+				return room
+			end
+		end
+		return nil
+	end
+
+	method boolean RemoveRoom(any roomQueue, string matchId)
+		if roomQueue == nil or roomQueue.Rooms == nil then
+			return false
+		end
+		for index = #roomQueue.Rooms, 1, -1 do
+			if roomQueue.Rooms[index].MatchId == matchId then
+				table.remove(roomQueue.Rooms, index)
+				return true
+			end
+		end
+		return false
+	end
+
+	method boolean UpdateRoomState(any roomQueue, string matchId, string state, number now)
+		local room = self:GetRoom(roomQueue, matchId)
+		if room == nil then
+			return false
+		end
+		
+		room.State = state
+		if state == "Playing" then
+			room.StartedAt = now
+		elseif state == "Ended" or state == "Failed" or state == "Expired" then
+			room.EndedAt = now
+		end
+		roomQueue.UpdatedAt = now
+		return true
+	end
+
+	method boolean SetRoomDynamicMap(any roomQueue, string matchId, string dynamicMapName)
+		local room = self:GetRoom(roomQueue, matchId)
+		if room == nil then
+			return false
+		end
+		
+		room.DynamicMapName = self:ReadString(dynamicMapName, "")
+		return true
+	end
+
+	method boolean MarkPlayerArrived(any roomQueue, string matchId, string userId, number now)
+		local room = self:GetRoom(roomQueue, matchId)
+		if room == nil or room.Players == nil then
+			return false
+		end
+		
+		for index, player in ipairs(room.Players) do
+			if player.UserId == userId then
+				player.State = "Arrived"
+				player.ArrivedAt = now
+				return true
+			end
+		end
+		return false
+	end
+
+	method number GetActiveRoomCount(any roomQueue)
+		local count = 0
+		if roomQueue == nil or roomQueue.Rooms == nil then
+			return count
+		end
+		
+		for index, room in ipairs(roomQueue.Rooms) do
+			if self:IsActiveState(room.State) == true then
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	method boolean CleanExpiredRooms(any roomQueue, number now)
+		if roomQueue == nil or roomQueue.Rooms == nil then
+			return false
+		end
+		
+		local changed = false
+		for index, room in ipairs(roomQueue.Rooms) do
+			if self:IsActiveState(room.State) == true and self:ReadNumber(room.ExpiresAt, now + 1) <= now then
+				room.State = "Expired"
+				room.EndedAt = now
+				changed = true
+			end
+		end
+		if changed == true then
+			roomQueue.UpdatedAt = now
+		end
+		return changed
+	end
+
+	method boolean IsActiveState(string state)
+		return state == "Creating" or state == "Moving" or state == "Gathered" or state == "Playing"
+	end
+
+	method boolean IsFinishedState(string state)
+		return state == "Ended" or state == "Failed" or state == "Expired"
+	end
+
+	method string EncodeRoomQueue(any roomQueue, number now, number ttl)
+		return ""
+	end
+
+	method any DecodeRoomQueue(string encodedRoomQueue, number now, number ttl)
+		return self:CreateEmptyRoomQueue(now)
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

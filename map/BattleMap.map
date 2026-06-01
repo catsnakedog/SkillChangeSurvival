@@ -24,8 +24,8 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": -1,
-          "pathConstraints": "",
+          "displayOrder": 0,
+          "pathConstraints": "//",
           "revision": 1,
           "modelId": null,
           "@components": [
@@ -55,8 +55,8 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": -1,
-          "pathConstraints": "",
+          "displayOrder": 0,
+          "pathConstraints": "///",
           "revision": 1,
           "modelId": null,
           "@components": [
@@ -81,8 +81,8 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": -1,
-          "pathConstraints": "",
+          "displayOrder": 1,
+          "pathConstraints": "///",
           "revision": 1,
           "origin": {
             "type": "Model",
@@ -117,8 +117,8 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": -1,
-          "pathConstraints": "",
+          "displayOrder": 2,
+          "pathConstraints": "///",
           "revision": 1,
           "origin": {
             "type": "Model",
@@ -132,8 +132,8 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 0.0,
-                "y": 0.0,
+                "x": -0.225,
+                "y": -0.15,
                 "z": 1000.0
               },
               "QuaternionRotation": {
@@ -153,6 +153,62 @@
               },
               "Tiles": [],
               "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "73263ddb-e3d1-4a13-bd17-01cdfac5e10d",
+        "path": "/maps/BattleMap/BattleLogic",
+        "componentNames": "MOD.Core.TransformComponent,script.BRBattleLogic",
+        "jsonString": {
+          "name": "BattleLogic",
+          "path": "/maps/BattleMap/BattleLogic",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 3,
+          "pathConstraints": "///",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "mapempty",
+            "sub_entity_id": null,
+            "root_entity_id": "73263ddb-e3d1-4a13-bd17-01cdfac5e10d",
+            "replaced_model_id": null
+          },
+          "modelId": "mapempty",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "script.BRBattleLogic",
+              "Enable": true,
+              "AttackActionName": "Attack",
+              "BattleMaxHp": 100.0,
+              "BasicAttackDamage": 20.0,
+              "AttackCooldownSeconds": 0.45,
+              "HitInvincibleSeconds": 0.25,
+              "AttackBoxWidth": 1.6,
+              "AttackBoxHeight": 1.0,
+              "AttackOffsetX": 0.9,
+              "AttackOffsetY": 0.35,
+              "AttackOffsetYFromFeet": 0.35
             }
           ],
           "@version": 1

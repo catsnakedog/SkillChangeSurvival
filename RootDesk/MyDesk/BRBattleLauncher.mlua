@@ -1,0 +1,149 @@
+@Logic
+script BRBattleLauncher extends Logic
+
+	method any StartMatchRoom(any matchRoom, any owner)
+		if matchRoom == nil then
+			return self:CreateResult(false, "", 0, "MatchRoom is nil")
+		end
+		
+		local dynamicMapName = self:CreateDynamicMapForRoom(matchRoom, owner)
+		if dynamicMapName == "" then
+			return self:CreateResult(false, "", 0, owner.LastError)
+		end
+		
+		matchRoom.DynamicMapName = dynamicMapName
+		local movedCount = self:MovePlayersToMatchRoom(matchRoom, owner)
+		return self:CreateResult(true, dynamicMapName, movedCount, "")
+	end
+
+	method any CreateResult(boolean success, string dynamicMapName, number movedCount, string error)
+		return {
+			Success = success,
+			DynamicMapName = self:ReadString(dynamicMapName, ""),
+			MovedCount = movedCount,
+			Error = self:ReadString(error, "")
+		}
+	end
+
+	method string CreateDynamicMapForRoom(any matchRoom, any owner)
+		local sourceMapName = self:ReadString(matchRoom.SourceMapName, owner:ReadString(owner.GatherMapName, "BattleMap"))
+		local dynamicMapName = self:ReadString(matchRoom.DynamicMapName, "")
+		if dynamicMapName == "" then
+			dynamicMapName = self:GetDynamicMapName(owner:ReadString(owner.DynamicMapPrefix, "gather_"), matchRoom.MatchId)
+		end
+		
+		owner.LastError = ""
+		local result = _DynamicMapService:CreateDynamicMap(sourceMapName, dynamicMapName)
+		if result == DynamicMapResultCode.Success then
+			matchRoom.DynamicMapName = dynamicMapName
+			return dynamicMapName
+		end
+		
+		owner.LastError = "DynamicMap create failed: " .. tostring(result)
+		log("[BRBattleLauncher] dynamic map create failed: source=" .. sourceMapName .. " map=" .. dynamicMapName .. " result=" .. tostring(result))
+		return ""
+	end
+
+	method string GetDynamicMapName(string prefix, string matchId)
+		local rawName = self:ReadString(prefix, "gather_") .. self:ReadString(matchId, _UtilLogic:NewGuid())
+		local safeName = string.gsub(rawName, "[\\/:*?\"<>|#&=]", "_")
+		if string.len(safeName) > 80 then
+			return string.sub(safeName, 1, 80)
+		end
+		return safeName
+	end
+
+	method number MovePlayersToMatchRoom(any matchRoom, any owner)
+		local movedCount = 0
+		if matchRoom == nil or matchRoom.Players == nil then
+			return movedCount
+		end
+		
+		local total = #matchRoom.Players
+		for index, player in ipairs(matchRoom.Players) do
+			local playerEntity = _UserService:GetUserEntityByUserId(player.UserId)
+			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+				local spawnIndex = math.max(1, math.floor(self:ReadNumber(player.SpawnIndex, index)))
+				playerEntity.PlayerComponent:MoveToMapPosition(matchRoom.DynamicMapName, self:GetSpawnPosition(matchRoom, spawnIndex, total, owner))
+				self:SetGatherName(player.UserId, spawnIndex, total)
+				player.State = "Arrived"
+				player.ArrivedAt = owner:Now()
+				movedCount = movedCount + 1
+			end
+		end
+		return movedCount
+	end
+
+	method number ReturnPlayersToLobby(any matchRoom, any owner)
+		local movedCount = 0
+		if matchRoom == nil or matchRoom.Players == nil then
+			return movedCount
+		end
+		
+		local lobbyMapName = owner:ReadString(owner.LobbyMapName, "StartMap")
+		for index, player in ipairs(matchRoom.Players) do
+			local playerEntity = _UserService:GetUserEntityByUserId(player.UserId)
+			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+				playerEntity.PlayerComponent:MoveToMapPosition(lobbyMapName, Vector2(owner:ReadNumber(owner.GatherCenterX, 0), owner:ReadNumber(owner.GatherCenterY, 3)))
+				player.State = "Returned"
+				movedCount = movedCount + 1
+			end
+		end
+		return movedCount
+	end
+
+	method Vector2 GetSpawnPosition(any matchRoom, number index, number total, any owner)
+		local safeTotal = math.max(1, math.floor(total))
+		local columns = math.floor(owner:ReadNumber(owner.GatherColumns, 8))
+		if columns <= 0 then
+			columns = math.ceil(math.sqrt(safeTotal))
+		end
+		columns = math.max(1, math.min(columns, safeTotal))
+		
+		local row = math.floor((index - 1) / columns)
+		local column = (index - 1) % columns
+		local rows = math.ceil(safeTotal / columns)
+		local spacingX = math.max(0.1, owner:ReadNumber(owner.GatherSpacingX, 1.5))
+		local spacingY = math.max(0, owner:ReadNumber(owner.GatherSpacingY, 0.8))
+		local centerX = owner:ReadNumber(owner.GatherCenterX, 0)
+		local centerY = owner:ReadNumber(owner.GatherCenterY, 3)
+		local x = centerX + (column - ((columns - 1) * 0.5)) * spacingX
+		local y = centerY + (((rows - 1) * 0.5) - row) * spacingY
+		return Vector2(x, y)
+	end
+
+	method boolean DestroyDynamicMap(string mapName)
+		if mapName == nil or mapName == "" then
+			return true
+		end
+		
+		local result = _DynamicMapService:DestroyDynamicMap(mapName)
+		return result == DynamicMapResultCode.Success or result == DynamicMapResultCode.DynamicMapNotFound
+	end
+
+	method void SetGatherName(string userId, number index, number total)
+		local playerEntity = _UserService:GetUserEntityByUserId(userId)
+		if playerEntity == nil or playerEntity.NameTagComponent == nil then
+			return
+		end
+		
+		playerEntity.NameTagComponent.Name = "Gathered " .. tostring(index) .. "/" .. tostring(total)
+		playerEntity.NameTagComponent.FontColor = Color(0.6, 1, 0.35, 1)
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

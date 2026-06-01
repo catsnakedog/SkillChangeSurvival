@@ -1,0 +1,191 @@
+@Logic
+script BRMatchQueueStore extends Logic
+
+	method any ReadQueueSnapshot(any owner)
+		if owner.UseGlobalMatchQueue == true then
+			return self:ReadGlobalQueueSnapshot(owner)
+		end
+		
+		return self:ReadLocalQueueSnapshot(owner)
+	end
+
+	method any ReadLocalQueueSnapshot(any owner)
+		if owner._T.queue == nil then
+			owner._T.queue = _BRMatchQueue:CreateEmptyQueue(owner:Now())
+		end
+		
+		_BRMatchQueue:NormalizeQueue(owner._T.queue)
+		return {
+			Backend = "Local",
+			State = owner._T.queue
+		}
+	end
+
+	method any ReadGlobalQueueSnapshot(any owner)
+		local storage = self:GetGlobalQueueStorage(owner)
+		if storage == nil then
+			return nil
+		end
+		
+		local key = self:GetGlobalQueueKey(owner)
+		local code, encodedQueue = storage:GetAndWait(key)
+		local missingQueue = false
+		if self:IsDataStorageSuccess(code) == false then
+			if self:IsDataStorageBadRequest(code) == false then
+				owner.LastError = "Global queue read failed: " .. tostring(code)
+				log("[BRMatchQueueStore] global queue read failed: key=" .. key .. " result=" .. tostring(code))
+				return nil
+			end
+			missingQueue = true
+			encodedQueue = ""
+		end
+		
+		local queue = _BRMatchQueue:DecodeQueue(encodedQueue, owner:Now(), owner:GetTicketTtlSeconds())
+		if queue == nil then
+			owner.LastError = "Global queue decode failed"
+			log("[BRMatchQueueStore] global queue decode failed. Reinitializing queue: key=" .. key)
+			queue = _BRMatchQueue:CreateEmptyQueue(owner:Now())
+		end
+		
+		_BRMatchQueue:NormalizeQueue(queue)
+		return {
+			Backend = "GlobalDataStorage",
+			Storage = storage,
+			Key = key,
+			ExpectedValue = owner:ReadString(encodedQueue, ""),
+			Missing = missingQueue,
+			State = queue
+		}
+	end
+
+	method boolean CommitQueueSnapshot(any owner, any snapshot)
+		if snapshot == nil or snapshot.State == nil then
+			return false
+		end
+		
+		if snapshot.Backend == "GlobalDataStorage" then
+			return self:CommitGlobalQueueSnapshot(owner, snapshot)
+		end
+		
+		owner._T.queue = snapshot.State
+		return true
+	end
+
+	method boolean CommitQueueAndUpdate(any owner, any snapshot, any queue)
+		if self:CommitQueueSnapshot(owner, snapshot) == false then
+			return false
+		end
+		owner:UpdateQueueCounts(queue)
+		return true
+	end
+
+	method boolean CommitGlobalQueueSnapshot(any owner, any snapshot)
+		local storage = snapshot.Storage
+		if storage == nil then
+			storage = self:GetGlobalQueueStorage(owner)
+		end
+		if storage == nil then
+			return false
+		end
+		
+		local key = owner:ReadString(snapshot.Key, self:GetGlobalQueueKey(owner))
+		local expectedValue = owner:ReadString(snapshot.ExpectedValue, "")
+		local newValue = _BRMatchQueue:EncodeQueue(snapshot.State, owner:Now(), owner:GetTicketTtlSeconds())
+		if newValue == "" then
+			owner.LastError = "Global queue encode failed"
+			return false
+		end
+		
+		local code = 0
+		local updatedValue = ""
+		if snapshot.Missing == true then
+			code = storage:SetAndWait(key, newValue)
+		else
+			code, updatedValue = storage:UpdateAndWait(key, expectedValue, newValue)
+		end
+		
+		if self:IsDataStorageSuccess(code) == true then
+			return true
+		end
+		
+		owner.LastError = "Global queue write failed: " .. tostring(code)
+		log("[BRMatchQueueStore] global queue write failed: key=" .. key .. " result=" .. tostring(code))
+		return false
+	end
+
+	method boolean ResetGlobalQueue(any owner)
+		local storage = self:GetGlobalQueueStorage(owner)
+		if storage == nil then
+			return false
+		end
+		
+		local now = owner:Now()
+		local key = self:GetGlobalQueueKey(owner)
+		local emptyQueue = _BRMatchQueue:CreateEmptyQueue(now)
+		local code = storage:SetAndWait(key, _BRMatchQueue:EncodeQueue(emptyQueue, now, owner:GetTicketTtlSeconds()))
+		if self:IsDataStorageSuccess(code) == true then
+			return true
+		end
+		
+		owner.LastError = "Global queue reset failed: " .. tostring(code)
+		log("[BRMatchQueueStore] global queue reset failed: key=" .. key .. " result=" .. tostring(code))
+		return false
+	end
+
+	method GlobalDataStorage GetGlobalQueueStorage(any owner)
+		if _DataStorageService == nil then
+			owner.LastError = "DataStorageService unavailable"
+			log("[BRMatchQueueStore] DataStorageService unavailable.")
+			return nil
+		end
+		
+		return _DataStorageService:GetGlobalDataStorage(owner:ReadString(owner.GlobalQueueStorageName, "SkillChangeSurvivalMatchmaking"))
+	end
+
+	method string GetGlobalQueueKey(any owner)
+		return owner:ReadString(owner.GlobalQueueKey, "br_match_queue")
+	end
+
+	method string GetQueueBackendName(any owner)
+		if owner.UseGlobalMatchQueue == true then
+			return "GlobalDataStorage"
+		end
+		return "Local"
+	end
+
+	method boolean IsDataStorageSuccess(any code)
+		local codeNumber = tonumber(code)
+		if codeNumber ~= nil then
+			return codeNumber == 0
+		end
+		
+		local codeText = tostring(code)
+		return codeText == "Success" or codeText == "WriteResultCode.Success"
+	end
+
+	method boolean IsDataStorageBadRequest(any code)
+		local codeNumber = tonumber(code)
+		if codeNumber ~= nil then
+			return codeNumber == 2
+		end
+		
+		local codeText = tostring(code)
+		return codeText == "BadRequest" or codeText == "WriteResultCode.BadRequest"
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

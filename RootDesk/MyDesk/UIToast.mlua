@@ -11,64 +11,73 @@ script UIToast extends Logic
 
 	property number tweenEventId = 0
 
-	property boolean isTweenPlaying = false
-
 	property boolean inited = false
 
 	property number offset = 0
 
 	@ExecSpace("Client")
 	method void ShowMessage(string message)
-		if self.inited == false then
-			self.inited = true
-			self.offset = -self.message.Entity.UITransformComponent.anchoredPosition.y
-		end
+		self:Init()
 		self.message.Text = message
 		self:StartTween()
+	end
+
+	method void Init()
+		if self.inited == true then
+			return
+		end
+		self.inited = true
+		self.offset = -self.message.Entity.UITransformComponent.anchoredPosition.y
 	end
 
 	method void StartTween()
 		local canvasGroup = self.message.Entity.CanvasGroupComponent
 		local transform = self.message.Entity.UITransformComponent
-		if self.tweenEventId > 0 then
-			_TimerService:ClearTimer(self.tweenEventId)
-			self.tweenEventId = 0
-		else
+		if self:ClearTweenTimer() == false then
 			canvasGroup.GroupAlpha = 0
 		end
+
 		self.toastGroup.Enable = true
 		local time = 0
-		
 		local preTime = _UtilLogic.ElapsedSeconds
-		
+
 		local tween = function()
-			local delta = _UtilLogic.ElapsedSeconds - preTime
+			local now = _UtilLogic.ElapsedSeconds
+			local delta = now - preTime
 			time = time + delta
-			preTime = _UtilLogic.ElapsedSeconds
-		
-			local alpha = canvasGroup.GroupAlpha 
+			preTime = now
+
 			if time >= (self.duration + self.tweenDuration) then		
-				self.toastGroup.Enable = false
-				_TimerService:ClearTimer(self.tweenEventId)
-				self.tweenEventId = 0
-				alpha = 0
-			else
-				if time > self.duration then			
-					alpha = alpha - delta / self.tweenDuration
-				else
-					alpha = alpha + delta / self.tweenDuration
-				end			
-			end	
-			alpha = math.min(1,math.max(alpha,0))
-			
+				self:HideToast(canvasGroup, transform)
+				return
+			end
+
+			local alpha = canvasGroup.GroupAlpha + delta / self.tweenDuration
+			if time > self.duration then
+				alpha = canvasGroup.GroupAlpha - delta / self.tweenDuration
+			end
+			alpha = math.min(1, math.max(alpha, 0))
 			canvasGroup.GroupAlpha = alpha
-			local tweenValue = _TweenLogic:Ease(0,1,1,EaseType.SineEaseIn,alpha)
-			transform.anchoredPosition = Vector2(0,-self.offset * tweenValue)
+			transform.anchoredPosition = Vector2(0, -self.offset * _TweenLogic:Ease(0, 1, 1, EaseType.SineEaseIn, alpha))
 		end
-		
-		self.tweenEventId = _TimerService:SetTimerRepeat(tween,1/60)
-		
-		
+
+		self.tweenEventId = _TimerService:SetTimerRepeat(tween, 1 / 60)
+	end
+
+	method boolean ClearTweenTimer()
+		if self.tweenEventId <= 0 then
+			return false
+		end
+		_TimerService:ClearTimer(self.tweenEventId)
+		self.tweenEventId = 0
+		return true
+	end
+
+	method void HideToast(any canvasGroup, any transform)
+		self.toastGroup.Enable = false
+		canvasGroup.GroupAlpha = 0
+		transform.anchoredPosition = Vector2(0, 0)
+		self:ClearTweenTimer()
 	end
 
 end

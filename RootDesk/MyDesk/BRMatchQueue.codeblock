@@ -1,0 +1,33 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "codeblock://6f55a579-123e-4b42-8c6f-1ae0aa27c0d1",
+  "ContentType": "x-mod/codeblock",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.3.0.0",
+  "StudioVersion": "0.1.0.0",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "CoreVersion": {
+        "Major": 0,
+        "Minor": 2
+      },
+      "ScriptVersion": {
+        "Major": 1,
+        "Minor": 1
+      },
+      "Description": "Queue data helpers for battle royale lobby matchmaking.",
+      "Id": "6f55a579-123e-4b42-8c6f-1ae0aa27c0d1",
+      "Language": 1,
+      "Name": "BRMatchQueue",
+      "Type": 5,
+      "Source": 0,
+      "Target": null
+    }
+  }
+}

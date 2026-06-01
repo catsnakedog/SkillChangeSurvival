@@ -1,0 +1,233 @@
+@Logic
+script BRMatchQueue extends Logic
+
+	method any CreateEmptyQueue(number now)
+		return {
+			Version = 1,
+			Tickets = {},
+			UpdatedAt = now
+		}
+	end
+
+	method any CreateTicket(string userId, string profileCode, string worldInstanceId, number now, number ttl)
+		return {
+			TicketId = _UtilLogic:NewGuid(),
+			UserId = userId,
+			ProfileCode = self:ReadString(profileCode, ""),
+			WorldInstanceId = self:ReadString(worldInstanceId, ""),
+			EnqueuedAt = now,
+			LastSeenAt = now,
+			ExpiresAt = now + ttl
+		}
+	end
+
+	method void NormalizeQueue(any queue)
+		if queue.Version == nil then
+			queue.Version = 1
+		end
+		if queue.Tickets == nil then
+			queue.Tickets = {}
+		end
+	end
+
+	method string EncodeQueue(any queue, number now, number ttl)
+		if queue == nil then
+			return ""
+		end
+		
+		self:NormalizeQueue(queue)
+		local encoded = "BRQ2\n" .. tostring(self:ReadNumber(queue.UpdatedAt, now))
+		for index, ticket in ipairs(queue.Tickets) do
+			encoded = encoded .. "\n" ..
+				self:EncodeQueueField(ticket.TicketId) .. "|" ..
+				self:EncodeQueueField(ticket.UserId) .. "|" ..
+				self:EncodeQueueField(ticket.ProfileCode) .. "|" ..
+				self:EncodeQueueField(ticket.WorldInstanceId) .. "|" ..
+				tostring(self:ReadNumber(ticket.EnqueuedAt, now)) .. "|" ..
+				tostring(self:ReadNumber(ticket.LastSeenAt, now)) .. "|" ..
+				tostring(self:ReadNumber(ticket.ExpiresAt, now + ttl))
+		end
+		
+		return encoded
+	end
+
+	method any DecodeQueue(string encodedQueue, number now, number ttl)
+		if encodedQueue == nil or encodedQueue == "" then
+			return self:CreateEmptyQueue(now)
+		end
+		
+		if string.sub(encodedQueue, 1, 5) ~= "BRQ2\n" then
+			return self:CreateEmptyQueue(now)
+		end
+		
+		local queue = self:CreateEmptyQueue(now)
+		local lineIndex = 0
+		for line in string.gmatch(encodedQueue, "[^\n]+") do
+			lineIndex = lineIndex + 1
+			if lineIndex == 2 then
+				queue.UpdatedAt = self:ReadNumber(line, now)
+			elseif lineIndex > 2 then
+				local fields = self:SplitQueueLine(line)
+				if #fields >= 7 then
+					table.insert(queue.Tickets, {
+						TicketId = fields[1],
+						UserId = fields[2],
+						ProfileCode = fields[3],
+						WorldInstanceId = fields[4],
+						EnqueuedAt = self:ReadNumber(fields[5], now),
+						LastSeenAt = self:ReadNumber(fields[6], now),
+						ExpiresAt = self:ReadNumber(fields[7], now + ttl)
+					})
+				end
+			end
+		end
+		self:NormalizeQueue(queue)
+		return queue
+	end
+
+	method string EncodeQueueField(any value)
+		local text = tostring(self:ReadString(value, ""))
+		text = string.gsub(text, "|", "_")
+		text = string.gsub(text, "\n", "_")
+		text = string.gsub(text, "\r", "_")
+		return text
+	end
+
+	method any SplitQueueLine(string line)
+		local fields = {}
+		local startIndex = 1
+		while #fields < 7 do
+			local separatorIndex = string.find(line, "|", startIndex, true)
+			if separatorIndex == nil then
+				table.insert(fields, string.sub(line, startIndex))
+				break
+			end
+		
+			table.insert(fields, string.sub(line, startIndex, separatorIndex - 1))
+			startIndex = separatorIndex + 1
+		end
+		return fields
+	end
+
+	method boolean CleanExpiredTickets(any queue, number now)
+		self:NormalizeQueue(queue)
+		local beforeCount = #queue.Tickets
+		for index = #queue.Tickets, 1, -1 do
+			local ticket = queue.Tickets[index]
+			local expiresAt = tonumber(ticket.ExpiresAt)
+			if expiresAt == nil or expiresAt <= now then
+				table.remove(queue.Tickets, index)
+			end
+		end
+		return #queue.Tickets ~= beforeCount
+	end
+
+	method boolean RemoveTicket(any queue, string userId, string ticketId)
+		self:NormalizeQueue(queue)
+		local removed = false
+		for index = #queue.Tickets, 1, -1 do
+			local ticket = queue.Tickets[index]
+			if ticket.UserId == userId and (ticketId == nil or ticketId == "" or ticket.TicketId == ticketId) then
+				table.remove(queue.Tickets, index)
+				removed = true
+			end
+		end
+		return removed
+	end
+
+	method void RefreshTicket(any ticket, string worldInstanceId, number now, number ttl)
+		ticket.WorldInstanceId = self:ReadString(worldInstanceId, "")
+		ticket.LastSeenAt = now
+		ticket.ExpiresAt = now + ttl
+	end
+
+	method boolean RefreshLocalTickets(any queue, any localTickets, string worldInstanceId, number now, number ttl)
+		if localTickets == nil then
+			return false
+		end
+		
+		self:NormalizeQueue(queue)
+		local changed = false
+		for index, ticket in ipairs(queue.Tickets) do
+			if localTickets[ticket.UserId] == ticket.TicketId then
+				self:RefreshTicket(ticket, worldInstanceId, now, ttl)
+				changed = true
+			end
+		end
+		return changed
+	end
+
+	method number GetLocalTicketCount(any queue, string worldInstanceId)
+		local count = 0
+		if queue == nil or queue.Tickets == nil then
+			return count
+		end
+		for index, ticket in ipairs(queue.Tickets) do
+			if self:IsLocalTicket(ticket, worldInstanceId) == true then
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	method number GetTotalTicketCount(any queue)
+		if queue == nil or queue.Tickets == nil then
+			return 0
+		end
+		return #queue.Tickets
+	end
+
+	method any TakeLocalTickets(any queue, number count, string worldInstanceId)
+		local selected = {}
+		local index = 1
+		
+		self:NormalizeQueue(queue)
+		while index <= #queue.Tickets do
+			if #selected >= count then
+				break
+			end
+		
+			local ticket = queue.Tickets[index]
+			if ticket ~= nil and self:IsLocalTicket(ticket, worldInstanceId) == true then
+				table.remove(queue.Tickets, index)
+				table.insert(selected, ticket)
+			else
+				index = index + 1
+			end
+		end
+		
+		if #selected < count then
+			for selectedIndex, ticket in ipairs(selected) do
+				table.insert(queue.Tickets, ticket)
+			end
+			return {}
+		end
+		
+		return selected
+	end
+
+	method boolean IsLocalTicket(any ticket, string worldInstanceId)
+		if ticket == nil then
+			return false
+		end
+		
+		local ticketWorldInstanceId = self:ReadString(ticket.WorldInstanceId, "")
+		return ticketWorldInstanceId == "" or ticketWorldInstanceId == self:ReadString(worldInstanceId, "")
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

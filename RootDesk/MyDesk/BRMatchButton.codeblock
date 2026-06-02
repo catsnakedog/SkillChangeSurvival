@@ -1,0 +1,33 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "codeblock://6fdd19fd-6d76-4d7e-9cfe-cd4464b44378",
+  "ContentType": "x-mod/codeblock",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.3.0.0",
+  "StudioVersion": "0.1.0.0",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "CoreVersion": {
+        "Major": 0,
+        "Minor": 2
+      },
+      "ScriptVersion": {
+        "Major": 1,
+        "Minor": 1
+      },
+      "Description": "Lobby UI button that requests battle royale matchmaking from StartMap.",
+      "Id": "6fdd19fd-6d76-4d7e-9cfe-cd4464b44378",
+      "Language": 1,
+      "Name": "BRMatchButton",
+      "Type": 1,
+      "Source": 0,
+      "Target": null
+    }
+  }
+}

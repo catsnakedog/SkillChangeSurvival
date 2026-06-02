@@ -1,0 +1,104 @@
+@Component
+script BRSkillPartPanel extends Component
+
+	property number RefreshSeconds = 0.25
+
+	property number RequestSeconds = 1
+
+	property boolean HideWhenNoPlayer = true
+
+	property boolean HideWhenEmpty = false
+
+	property string WaitingText = "PARTS\nLoading..."
+
+	property number refreshTimerId = 0
+
+	property number nextRequestAt = 0
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		self:RefreshPanel()
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshPanel() end, self:GetRefreshSeconds(), 0.1)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshPanel()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			self:SetPanelVisible(self.HideWhenNoPlayer == false)
+			self:SetPanelText(self:ReadString(self.WaitingText, "PARTS"))
+			return
+		end
+
+		local now = _UtilLogic.ElapsedSeconds
+		if _BRSkillSystem ~= nil and now >= self.nextRequestAt then
+			self.nextRequestAt = now + self:GetRequestSeconds()
+			_BRSkillSystem:RequestUserSnapshot(localPlayer.PlayerComponent.UserId)
+		end
+
+		local text = self:ReadString(self.WaitingText, "PARTS")
+		local hasParts = false
+		if _BRSkillSystem ~= nil then
+			text = _BRSkillSystem:GetLocalPanelText()
+			hasParts = _BRSkillSystem:LocalSnapshotHasParts()
+		end
+
+		if self.HideWhenEmpty == true and hasParts == false then
+			self:SetPanelVisible(false)
+			return
+		end
+
+		self:SetPanelVisible(true)
+		self:SetPanelText(text)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetPanelVisible(boolean value)
+		if self.Entity == nil then
+			return
+		end
+		self.Entity.Visible = value
+		if self.Entity.SpriteGUIRendererComponent ~= nil then
+			self.Entity.SpriteGUIRendererComponent.Enable = value
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetPanelText(string text)
+		if self.Entity ~= nil and self.Entity.TextComponent ~= nil then
+			self.Entity.TextComponent.Text = self:ReadString(text, "PARTS")
+		end
+	end
+
+	method number GetRefreshSeconds()
+		return math.max(0.1, self:ReadNumber(self.RefreshSeconds, 0.25))
+	end
+
+	method number GetRequestSeconds()
+		return math.max(self:GetRefreshSeconds(), self:ReadNumber(self.RequestSeconds, 1))
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

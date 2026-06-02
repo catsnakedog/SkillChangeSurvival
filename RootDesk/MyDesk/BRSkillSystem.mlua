@@ -1,0 +1,426 @@
+@Logic
+script BRSkillSystem extends Logic
+
+	property boolean AutoEquipDroppedParts = true
+
+	property boolean VerboseLog = true
+
+	property number PanelMaxPartRows = 5
+
+	method void EnsureRuntime()
+		if self._T.userStates == nil then
+			self._T.userStates = {}
+		end
+		if self._T.catalog == nil then
+			self._T.catalog = self:CreateCatalog()
+		end
+		if self._T.partIds == nil then
+			self._T.partIds = self:CreatePartIdList()
+		end
+		if self._T.randomSeeded ~= true then
+			self._T.randomSeeded = true
+			math.randomseed(math.floor(_UtilLogic.ElapsedSeconds * 100000) + 17)
+		end
+	end
+
+	method any CreateCatalog()
+		local catalog = {}
+		self:AddPartDefinition(catalog, "power_core", "Core", "Power Core", 0, 6, 0, 0)
+		self:AddPartDefinition(catalog, "vital_core", "Core", "Vital Core", 30, 0, 0, 0)
+		self:AddPartDefinition(catalog, "swift_frame", "Frame", "Swift Frame", 0, 0, 0.2, 0)
+		self:AddPartDefinition(catalog, "spring_frame", "Frame", "Spring Frame", 0, 0, 0, 0.25)
+		self:AddPartDefinition(catalog, "battle_circuit", "Circuit", "Battle Circuit", 10, 3, 0, 0)
+		self:AddPartDefinition(catalog, "agile_circuit", "Circuit", "Agile Circuit", 0, 2, 0.12, 0.12)
+		return catalog
+	end
+
+	method void AddPartDefinition(any catalog, string partId, string slotKey, string displayName, number maxHpBonus, number damageBonus, number speedBonus, number jumpBonus)
+		catalog[partId] = {
+			PartId = partId,
+			SlotKey = slotKey,
+			DisplayName = displayName,
+			MaxHpBonus = maxHpBonus,
+			DamageBonus = damageBonus,
+			SpeedBonus = speedBonus,
+			JumpBonus = jumpBonus
+		}
+	end
+
+	method any CreatePartIdList()
+		return {
+			"power_core",
+			"vital_core",
+			"swift_frame",
+			"spring_frame",
+			"battle_circuit",
+			"agile_circuit"
+		}
+	end
+
+	method void ResetUser(string userId)
+		self:EnsureRuntime()
+		if userId == nil or userId == "" then
+			return
+		end
+		self._T.userStates[userId] = self:CreateUserState()
+		self:NotifyUserChanged(userId)
+		self:Log("reset user=" .. userId)
+	end
+
+	method any CreateUserState()
+		return {
+			Parts = {},
+			Equipped = {},
+			NextInstanceId = 1
+		}
+	end
+
+	method any GetUserState(string userId)
+		self:EnsureRuntime()
+		if userId == nil or userId == "" then
+			return nil
+		end
+		if self._T.userStates[userId] == nil then
+			self._T.userStates[userId] = self:CreateUserState()
+		end
+		return self._T.userStates[userId]
+	end
+
+	method any OpenBoxForUser(string userId, number dropCount, boolean autoEquip, string sourceId)
+		self:EnsureRuntime()
+		local result = {
+			Dropped = {},
+			LastPart = nil
+		}
+		local count = math.max(1, math.floor(self:ReadNumber(dropCount, 1)))
+		for index = 1, count do
+			local part = self:GrantRandomPart(userId, autoEquip, sourceId)
+			if part ~= nil then
+				table.insert(result.Dropped, part)
+				result.LastPart = part
+			end
+		end
+		return result
+	end
+
+	method any GrantRandomPart(string userId, boolean autoEquip, string sourceId)
+		local partId = self:RollPartId()
+		return self:GrantPart(userId, partId, autoEquip, sourceId)
+	end
+
+	method string RollPartId()
+		self:EnsureRuntime()
+		local index = math.random(1, #self._T.partIds)
+		return self._T.partIds[index]
+	end
+
+	method any GrantPart(string userId, string partId, boolean autoEquip, string sourceId)
+		self:EnsureRuntime()
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return nil
+		end
+		
+		local definition = self._T.catalog[self:ReadString(partId, "")]
+		if definition == nil then
+			definition = self._T.catalog["power_core"]
+		end
+		
+		local part = self:CreatePartInstance(state, definition, sourceId)
+		table.insert(state.Parts, part)
+		if autoEquip == true then
+			self:EquipPartInstance(userId, part.InstanceId)
+		else
+			self:NotifyUserChanged(userId)
+		end
+
+		self:Log("grant user=" .. userId .. " part=" .. part.PartId .. " slot=" .. part.SlotKey .. " autoEquip=" .. tostring(autoEquip))
+		return part
+	end
+
+	method any CreatePartInstance(any state, any definition, string sourceId)
+		local instanceId = state.NextInstanceId
+		state.NextInstanceId = instanceId + 1
+		return {
+			InstanceId = instanceId,
+			PartId = definition.PartId,
+			SlotKey = definition.SlotKey,
+			DisplayName = definition.DisplayName,
+			MaxHpBonus = definition.MaxHpBonus,
+			DamageBonus = definition.DamageBonus,
+			SpeedBonus = definition.SpeedBonus,
+			JumpBonus = definition.JumpBonus,
+			SourceId = self:ReadString(sourceId, "")
+		}
+	end
+
+	method boolean EquipPartInstance(string userId, number instanceId)
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+		local part = self:FindPartInState(state, instanceId)
+		if part == nil then
+			return false
+		end
+
+		state.Equipped[part.SlotKey] = part.InstanceId
+		self:NotifyUserChanged(userId)
+		self:Log("equip user=" .. userId .. " slot=" .. part.SlotKey .. " part=" .. part.PartId)
+		return true
+	end
+
+	method boolean EquipLatestPartInSlot(string userId, string slotKey)
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+		for index = #state.Parts, 1, -1 do
+			local part = state.Parts[index]
+			if part ~= nil and part.SlotKey == slotKey then
+				return self:EquipPartInstance(userId, part.InstanceId)
+			end
+		end
+		return false
+	end
+
+	method any FindPartInState(any state, number instanceId)
+		if state == nil or state.Parts == nil then
+			return nil
+		end
+		for index, part in ipairs(state.Parts) do
+			if part ~= nil and part.InstanceId == instanceId then
+				return part
+			end
+		end
+		return nil
+	end
+
+	method any GetEquippedStats(string userId)
+		local stats = {
+			MaxHpBonus = 0,
+			DamageBonus = 0,
+			SpeedBonus = 0,
+			JumpBonus = 0
+		}
+		local state = self:GetUserState(userId)
+		if state == nil or state.Equipped == nil then
+			return stats
+		end
+		
+		for slotKey, instanceId in pairs(state.Equipped) do
+			local part = self:FindPartInState(state, instanceId)
+			if part ~= nil then
+				stats.MaxHpBonus = stats.MaxHpBonus + self:ReadNumber(part.MaxHpBonus, 0)
+				stats.DamageBonus = stats.DamageBonus + self:ReadNumber(part.DamageBonus, 0)
+				stats.SpeedBonus = stats.SpeedBonus + self:ReadNumber(part.SpeedBonus, 0)
+				stats.JumpBonus = stats.JumpBonus + self:ReadNumber(part.JumpBonus, 0)
+			end
+		end
+		return stats
+	end
+
+	method number GetMaxHp(string userId, number baseMaxHp)
+		local stats = self:GetEquippedStats(userId)
+		return math.max(1, math.floor(self:ReadNumber(baseMaxHp, 100) + self:ReadNumber(stats.MaxHpBonus, 0)))
+	end
+
+	method number GetBasicAttackDamage(string userId, number baseDamage)
+		local stats = self:GetEquippedStats(userId)
+		return math.max(1, math.floor(self:ReadNumber(baseDamage, 20) + self:ReadNumber(stats.DamageBonus, 0)))
+	end
+
+	method void ApplyMovementStatsToPlayer(Entity playerEntity, any baseStats)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		
+		local stats = self:GetEquippedStats(playerEntity.PlayerComponent.UserId)
+		local speedBonus = self:ReadNumber(stats.SpeedBonus, 0)
+		local jumpBonus = self:ReadNumber(stats.JumpBonus, 0)
+		
+		if playerEntity.MovementComponent ~= nil and baseStats ~= nil then
+			playerEntity.MovementComponent.InputSpeed = math.max(0.1, self:ReadNumber(baseStats.InputSpeed, playerEntity.MovementComponent.InputSpeed) + speedBonus)
+			playerEntity.MovementComponent.JumpForce = math.max(0.1, self:ReadNumber(baseStats.JumpForce, playerEntity.MovementComponent.JumpForce) + jumpBonus)
+		end
+		if playerEntity.RigidbodyComponent ~= nil and baseStats ~= nil then
+			playerEntity.RigidbodyComponent.WalkSpeed = math.max(0.1, self:ReadNumber(baseStats.WalkSpeed, playerEntity.RigidbodyComponent.WalkSpeed) + speedBonus)
+			playerEntity.RigidbodyComponent.WalkJump = math.max(0.1, self:ReadNumber(baseStats.WalkJump, playerEntity.RigidbodyComponent.WalkJump) + jumpBonus)
+		end
+	end
+
+	method string GetPartSummary(any part)
+		if part == nil then
+			return ""
+		end
+		local summary = self:ReadString(part.DisplayName, part.PartId)
+		if self:ReadNumber(part.MaxHpBonus, 0) ~= 0 then
+			summary = summary .. " HP+" .. tostring(part.MaxHpBonus)
+		end
+		if self:ReadNumber(part.DamageBonus, 0) ~= 0 then
+			summary = summary .. " DMG+" .. tostring(part.DamageBonus)
+		end
+		if self:ReadNumber(part.SpeedBonus, 0) ~= 0 then
+			summary = summary .. " SPD+" .. tostring(part.SpeedBonus)
+		end
+		if self:ReadNumber(part.JumpBonus, 0) ~= 0 then
+			summary = summary .. " JMP+" .. tostring(part.JumpBonus)
+		end
+		return summary
+	end
+
+	@ExecSpace("Server")
+	method void RequestUserSnapshot(string userId)
+		self:NotifyUserChanged(userId)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void NotifyUserChanged(string userId)
+		if userId == nil or userId == "" then
+			return
+		end
+		local snapshot = self:BuildUserSnapshot(userId)
+		self:PushUserSnapshot(userId, snapshot.PanelText, snapshot.HasParts)
+	end
+
+	@ExecSpace("Client")
+	method void PushUserSnapshot(string userId, string panelText, boolean hasParts)
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return
+		end
+		if self:ReadString(userId, "") ~= self:ReadString(localPlayer.PlayerComponent.UserId, "") then
+			return
+		end
+
+		self._T.localPanelText = self:ReadString(panelText, self:GetEmptyPanelText())
+		self._T.localPanelHasParts = hasParts == true
+		self._T.localPanelUpdatedAt = _UtilLogic.ElapsedSeconds
+	end
+
+	@ExecSpace("Client")
+	method string GetLocalPanelText()
+		return self:ReadString(self._T.localPanelText, self:GetEmptyPanelText())
+	end
+
+	@ExecSpace("Client")
+	method boolean LocalSnapshotHasParts()
+		return self._T.localPanelHasParts == true
+	end
+
+	method any BuildUserSnapshot(string userId)
+		local state = self:GetUserState(userId)
+		local hasParts = false
+		if state ~= nil and state.Parts ~= nil and #state.Parts > 0 then
+			hasParts = true
+		end
+
+		local text = "PARTS"
+			.. "\n" .. self:BuildEquippedText(state)
+			.. "\n" .. self:BuildStatsText(userId)
+			.. "\n" .. self:BuildOwnedPartsText(state)
+
+		return {
+			PanelText = text,
+			HasParts = hasParts
+		}
+	end
+
+	method string BuildEquippedText(any state)
+		return "Core: " .. self:GetEquippedSlotSummary(state, "Core")
+			.. "\nFrame: " .. self:GetEquippedSlotSummary(state, "Frame")
+			.. "\nCircuit: " .. self:GetEquippedSlotSummary(state, "Circuit")
+	end
+
+	method string GetEquippedSlotSummary(any state, string slotKey)
+		local part = self:GetEquippedPartInSlot(state, slotKey)
+		if part == nil then
+			return "-"
+		end
+		return self:GetPartSummary(part)
+	end
+
+	method any GetEquippedPartInSlot(any state, string slotKey)
+		if state == nil or state.Equipped == nil then
+			return nil
+		end
+		local instanceId = state.Equipped[slotKey]
+		if instanceId == nil then
+			return nil
+		end
+		return self:FindPartInState(state, instanceId)
+	end
+
+	method string BuildStatsText(string userId)
+		local stats = self:GetEquippedStats(userId)
+		return "Stats: HP+" .. self:FormatNumber(stats.MaxHpBonus)
+			.. " DMG+" .. self:FormatNumber(stats.DamageBonus)
+			.. " SPD+" .. self:FormatNumber(stats.SpeedBonus)
+			.. " JMP+" .. self:FormatNumber(stats.JumpBonus)
+	end
+
+	method string BuildOwnedPartsText(any state)
+		if state == nil or state.Parts == nil or #state.Parts <= 0 then
+			return "Bag(0): empty"
+		end
+
+		local count = #state.Parts
+		local firstIndex = math.max(1, count - self:GetPanelMaxPartRows() + 1)
+		local text = "Bag(" .. tostring(count) .. ")"
+		for index = firstIndex, count do
+			local part = state.Parts[index]
+			if part ~= nil then
+				text = text .. "\n#" .. tostring(part.InstanceId) .. " " .. self:GetPartSummary(part)
+				if self:IsPartEquipped(state, part) == true then
+					text = text .. " [E]"
+				end
+			end
+		end
+		return text
+	end
+
+	method boolean IsPartEquipped(any state, any part)
+		if state == nil or state.Equipped == nil or part == nil then
+			return false
+		end
+		return state.Equipped[part.SlotKey] == part.InstanceId
+	end
+
+	method string GetEmptyPanelText()
+		return "PARTS\nCore: -\nFrame: -\nCircuit: -\nStats: HP+0 DMG+0 SPD+0 JMP+0\nBag(0): empty"
+	end
+
+	method number GetPanelMaxPartRows()
+		return math.max(1, math.floor(self:ReadNumber(self.PanelMaxPartRows, 5)))
+	end
+
+	method string FormatNumber(number value)
+		local numberValue = self:ReadNumber(value, 0)
+		if math.floor(numberValue) == numberValue then
+			return tostring(math.floor(numberValue))
+		end
+		return tostring(math.floor(numberValue * 100 + 0.5) / 100)
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRSkill] " .. message)
+		end
+	end
+
+end

@@ -1,0 +1,146 @@
+@Component
+script BRMatchButton extends Component
+
+	property string MatchmakerPath = "/maps/StartMap/MatchMaker"
+
+	property string LobbyMapName = "StartMap"
+
+	property string ReadyText = "MATCH"
+
+	property string WaitingText = "MATCHING..."
+
+	property boolean HideOutsideLobby = true
+
+	property number ClickCooldownSeconds = 0.5
+
+	property any buttonHandler = nil
+
+	property number refreshTimerId = 0
+
+	property number nextClickAt = 0
+
+	property boolean waiting = false
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		self:ConnectButton()
+		self:RefreshButtonState()
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshButtonState() end, 0.25)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		self:DisconnectButton()
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ConnectButton()
+		if self.buttonHandler ~= nil or self.Entity == nil then
+			return
+		end
+		self.buttonHandler = self.Entity:ConnectEvent(ButtonClickEvent, self.HandleButtonClickEvent)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisconnectButton()
+		if self.buttonHandler == nil or self.Entity == nil then
+			return
+		end
+		self.Entity:DisconnectEvent(ButtonClickEvent, self.buttonHandler)
+		self.buttonHandler = nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void HandleButtonClickEvent(ButtonClickEvent event)
+		if self:IsLocalPlayerInLobby() == false then
+			self:RefreshButtonState()
+			return
+		end
+		
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self.nextClickAt then
+			return
+		end
+		self.nextClickAt = now + math.max(0.1, self.ClickCooldownSeconds)
+		
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			self:ShowLocalToast("Player is not ready.")
+			return
+		end
+		
+		local matchmaker = self:GetMatchmaker()
+		if matchmaker == nil then
+			self:ShowLocalToast("Matchmaker is not ready.")
+			return
+		end
+		
+		self.waiting = true
+		self:SetButtonText(self.WaitingText)
+		matchmaker:RequestJoinQueue(localPlayer.PlayerComponent.UserId)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshButtonState()
+		local inLobby = self:IsLocalPlayerInLobby()
+		if self.Entity ~= nil and self.HideOutsideLobby == true then
+			self.Entity.Visible = inLobby
+			if self.Entity.ButtonComponent ~= nil then
+				self.Entity.ButtonComponent.Enable = inLobby
+			end
+		end
+		if inLobby == false then
+			self.waiting = false
+			return
+		end
+		if self.waiting == true then
+			self:SetButtonText(self.WaitingText)
+		else
+			self:SetButtonText(self.ReadyText)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsLocalPlayerInLobby()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return false
+		end
+		return self:ReadString(localPlayer.CurrentMapName, "") == self:ReadString(self.LobbyMapName, "StartMap")
+	end
+
+	@ExecSpace("ClientOnly")
+	method any GetMatchmaker()
+		local entity = _EntityService:GetEntityByPath(self:ReadString(self.MatchmakerPath, "/maps/StartMap/MatchMaker"))
+		if entity == nil then
+			return nil
+		end
+		return entity.BRLobbyMatchmaker
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetButtonText(string text)
+		if self.Entity ~= nil and self.Entity.TextComponent ~= nil then
+			self.Entity.TextComponent.Text = self:ReadString(text, "MATCH")
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ShowLocalToast(string message)
+		if _UIToast ~= nil then
+			_UIToast:ShowMessage(message)
+		end
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+end

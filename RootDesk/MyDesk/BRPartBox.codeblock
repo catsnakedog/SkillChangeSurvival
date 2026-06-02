@@ -1,0 +1,33 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "codeblock://74d2dc13-7474-40c8-a01a-8f0a4c9f1ac7",
+  "ContentType": "x-mod/codeblock",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.3.0.0",
+  "StudioVersion": "0.1.0.0",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "CoreVersion": {
+        "Major": 0,
+        "Minor": 2
+      },
+      "ScriptVersion": {
+        "Major": 1,
+        "Minor": 1
+      },
+      "Description": "Pickup box that grants random skill parts and optionally auto-equips them.",
+      "Id": "74d2dc13-7474-40c8-a01a-8f0a4c9f1ac7",
+      "Language": 1,
+      "Name": "BRPartBox",
+      "Type": 1,
+      "Source": 0,
+      "Target": null
+    }
+  }
+}

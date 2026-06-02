@@ -1,0 +1,33 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "codeblock://d768f4cf-317c-48b7-92d8-c44a98d16d7e",
+  "ContentType": "x-mod/codeblock",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.3.0.0",
+  "StudioVersion": "0.1.0.0",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "CoreVersion": {
+        "Major": 0,
+        "Minor": 2
+      },
+      "ScriptVersion": {
+        "Major": 1,
+        "Minor": 1
+      },
+      "Description": "Runtime skill part inventory, equipment, and stat bonus helpers.",
+      "Id": "d768f4cf-317c-48b7-92d8-c44a98d16d7e",
+      "Language": 1,
+      "Name": "BRSkillSystem",
+      "Type": 5,
+      "Source": 0,
+      "Target": null
+    }
+  }
+}

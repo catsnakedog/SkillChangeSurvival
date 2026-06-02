@@ -23,13 +23,29 @@ script BRBattleLogic extends Component
 
 	property number AttackOffsetYFromFeet = 0.35
 
-	property number PlayerScanSeconds = 0.25
+	property number PlayerScanSeconds = 0.05
 
 	property number PlayerRespawnDuration = 5
 
+	property boolean EnablePlatformFallback = false
+
+	property number PlatformGroundingSeconds = 0.033
+
+	property number FallResetY = -5
+
+	property number BattleGravity = 1
+
+	property number BattleWalkSpeed = 1.8
+
+	property number BattleWalkJump = 1.8
+
+	property boolean OverridePlayerPhysicsStats = false
+
 	property boolean ResetHpOnEnter = true
 
-	property boolean VerboseBattleLog = true
+	property boolean VerboseBattleLog = false
+
+	property boolean LogPhysicsStateOnRegister = false
 
 	@Sync
 	property number AlivePlayerCount = 0
@@ -57,9 +73,17 @@ script BRBattleLogic extends Component
 		self._T.nextAttackAt = {}
 		self._T.invincibleUntil = {}
 		self._T.preparedPlayers = {}
-		self._T.serverTimerId = _TimerService:SetTimerRepeat(function() self:RefreshBattlePlayers() end, self:GetPlayerScanSeconds(), 0.1)
+		self._T.lastPositions = {}
+		self._T.basePhysicsStats = {}
+		self._T.serverTimerId = _TimerService:SetTimerRepeat(function() self:RefreshBattlePlayers() end, self:GetPlayerScanSeconds(), 0)
+		if self.EnablePlatformFallback == true then
+			self._T.groundTimerId = _TimerService:SetTimerRepeat(function() self:GroundBattlePlayers() end, self:GetPlatformGroundingSeconds(), 0.1)
+		else
+			self._T.groundTimerId = 0
+		end
 		self:RefreshBattlePlayers()
 		self.BattlePhase = "Ready"
+		self:LogMapFootholdState()
 		self:Log("started map=" .. self:GetBattleMapName())
 	end
 
@@ -69,6 +93,10 @@ script BRBattleLogic extends Component
 			_TimerService:ClearTimer(self._T.serverTimerId)
 		end
 		self._T.serverTimerId = 0
+		if self._T.groundTimerId ~= nil and self._T.groundTimerId > 0 then
+			_TimerService:ClearTimer(self._T.groundTimerId)
+		end
+		self._T.groundTimerId = 0
 		
 		if self._T.playerHandlers ~= nil then
 			for userId, entry in pairs(self._T.playerHandlers) do
@@ -79,6 +107,8 @@ script BRBattleLogic extends Component
 		self._T.nextAttackAt = {}
 		self._T.invincibleUntil = {}
 		self._T.preparedPlayers = {}
+		self._T.lastPositions = {}
+		self._T.basePhysicsStats = {}
 	end
 
 	@ExecSpace("ServerOnly")
@@ -120,11 +150,16 @@ script BRBattleLogic extends Component
 			return
 		end
 		
-		self:PreparePlayerForBattle(playerEntity)
 		if self._T.playerHandlers[userId] ~= nil then
 			self._T.playerHandlers[userId].Entity = playerEntity
+			if self.OverridePlayerPhysicsStats == true then
+				self:ApplyBattlePhysicsSettings(playerEntity, false)
+			end
+			self:ApplySkillStatsToPlayer(playerEntity)
 			return
 		end
+
+		self:PreparePlayerForBattle(playerEntity)
 		
 		local actionHandler = playerEntity:ConnectEvent(PlayerActionEvent, self.HandlePlayerActionEvent)
 		self._T.playerHandlers[userId] = {
@@ -154,6 +189,12 @@ script BRBattleLogic extends Component
 		if self._T.preparedPlayers ~= nil then
 			self._T.preparedPlayers[userId] = nil
 		end
+		if self._T.lastPositions ~= nil then
+			self._T.lastPositions[userId] = nil
+		end
+		if self._T.basePhysicsStats ~= nil then
+			self._T.basePhysicsStats[userId] = nil
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -173,21 +214,273 @@ script BRBattleLogic extends Component
 			return
 		end
 		
-		local maxHp = self:GetBattleMaxHp()
+		local userId = playerComponent.UserId
+		if self._T.preparedPlayers[userId] == nil then
+			self:ResetSkillState(userId)
+		end
+		self:CaptureBasePhysicsStats(playerEntity)
+
+		local maxHp = self:GetAdjustedBattleMaxHp(playerEntity)
 		playerComponent.PVPMode = true
 		playerComponent.MaxHp = maxHp
 		playerComponent.RespawnDuration = self:GetPlayerRespawnDuration()
+		self:PreparePlayerPhysics(playerEntity)
+		self:ApplySkillStatsToPlayer(playerEntity)
 		if self._T.preparedPlayers == nil then
 			self._T.preparedPlayers = {}
 		end
 		
-		if self.ResetHpOnEnter == true and self._T.preparedPlayers[playerComponent.UserId] == nil then
+		if self.ResetHpOnEnter == true and self._T.preparedPlayers[userId] == nil then
 			playerComponent.Hp = maxHp
 		elseif playerComponent.Hp <= 0 then
 			playerComponent.Hp = maxHp
 		end
 		
-		self._T.preparedPlayers[playerComponent.UserId] = true
+		self._T.preparedPlayers[userId] = true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PreparePlayerPhysics(Entity playerEntity)
+		self:ApplyBattlePhysicsSettings(playerEntity, true)
+		if self.LogPhysicsStateOnRegister == true then
+			self:LogPlayerPhysicsSetup(playerEntity)
+			_TimerService:SetTimerOnce(function() self:LogPlayerGroundState(playerEntity) end, 0.25)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyBattlePhysicsSettings(Entity playerEntity, boolean resetPosition)
+		if playerEntity == nil then
+			return
+		end
+
+		if playerEntity.RigidbodyComponent ~= nil then
+			playerEntity.RigidbodyComponent.Enable = true
+			playerEntity.RigidbodyComponent.KinematicMove = false
+			playerEntity.RigidbodyComponent.IsolatedMove = false
+			playerEntity.RigidbodyComponent.IgnoreMoveBoundary = true
+			if self.OverridePlayerPhysicsStats == true then
+				playerEntity.RigidbodyComponent.Gravity = self:GetBattleGravity()
+				playerEntity.RigidbodyComponent.WalkSpeed = self:GetBattleWalkSpeed()
+				playerEntity.RigidbodyComponent.WalkJump = self:GetBattleWalkJump()
+			end
+			if resetPosition == true then
+				playerEntity.RigidbodyComponent:PositionReset()
+			end
+		else
+			self:Log("missing RigidbodyComponent user=" .. self:GetUserId(playerEntity))
+		end
+
+		if self.OverridePlayerPhysicsStats == true and playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent.InputSpeed = self:GetBattleWalkSpeed()
+			playerEntity.MovementComponent.JumpForce = self:GetBattleWalkJump()
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ResetSkillState(string userId)
+		if _BRSkillSystem ~= nil then
+			_BRSkillSystem:ResetUser(userId)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplySkillStatsToPlayer(Entity playerEntity)
+		if _BRSkillSystem == nil or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		local maxHp = self:GetAdjustedBattleMaxHp(playerEntity)
+		playerEntity.PlayerComponent.MaxHp = maxHp
+		if playerEntity.PlayerComponent.Hp > maxHp then
+			playerEntity.PlayerComponent.Hp = maxHp
+		end
+		_BRSkillSystem:ApplyMovementStatsToPlayer(playerEntity, self:CaptureBasePhysicsStats(playerEntity))
+	end
+
+	@ExecSpace("ServerOnly")
+	method any CaptureBasePhysicsStats(Entity playerEntity)
+		self:EnsureServerRuntimeTables()
+		local userId = self:GetUserId(playerEntity)
+		if userId == "" then
+			return nil
+		end
+		if self._T.basePhysicsStats[userId] ~= nil then
+			return self._T.basePhysicsStats[userId]
+		end
+
+		local stats = {
+			InputSpeed = self:GetBattleWalkSpeed(),
+			JumpForce = self:GetBattleWalkJump(),
+			WalkSpeed = self:GetBattleWalkSpeed(),
+			WalkJump = self:GetBattleWalkJump()
+		}
+		if playerEntity.MovementComponent ~= nil then
+			stats.InputSpeed = self:ReadNumber(playerEntity.MovementComponent.InputSpeed, stats.InputSpeed)
+			stats.JumpForce = self:ReadNumber(playerEntity.MovementComponent.JumpForce, stats.JumpForce)
+		end
+		if playerEntity.RigidbodyComponent ~= nil then
+			stats.WalkSpeed = self:ReadNumber(playerEntity.RigidbodyComponent.WalkSpeed, stats.WalkSpeed)
+			stats.WalkJump = self:ReadNumber(playerEntity.RigidbodyComponent.WalkJump, stats.WalkJump)
+		end
+		self._T.basePhysicsStats[userId] = stats
+		return stats
+	end
+
+	@ExecSpace("ServerOnly")
+	method void LogMapFootholdState()
+		if self.LogPhysicsStateOnRegister == false then
+			return
+		end
+		if self.Entity == nil or self.Entity.CurrentMap == nil then
+			self:Log("map physics map=nil footholds=-1 customFootholds=-1")
+			return
+		end
+
+		local mapEntity = self.Entity.CurrentMap
+		local footholdCount = -1
+		if mapEntity.FootholdComponent ~= nil then
+			local footholds = mapEntity.FootholdComponent:GetFootholdAll()
+			if footholds ~= nil then
+				footholdCount = #footholds
+			else
+				footholdCount = 0
+			end
+		end
+
+		local customFootholdCount = 0
+		local customFootholds = mapEntity:GetChildComponentsByTypeName("CustomFootholdComponent", true)
+		if customFootholds == nil or #customFootholds == 0 then
+			customFootholds = mapEntity:GetChildComponentsByTypeName("MOD.Core.CustomFootholdComponent", true)
+		end
+		if customFootholds ~= nil then
+			customFootholdCount = #customFootholds
+		end
+
+		local tileMapMode = "nil"
+		if mapEntity.MapComponent ~= nil then
+			tileMapMode = tostring(mapEntity.MapComponent.TileMapMode)
+		end
+		self:Log("map physics map=" .. self:GetBattleMapName() .. " tileMode=" .. tileMapMode .. " footholds=" .. tostring(footholdCount) .. " customFootholds=" .. tostring(customFootholdCount))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void LogPlayerPhysicsSetup(Entity playerEntity)
+		if playerEntity == nil then
+			return
+		end
+
+		local position = self:GetEntityPosition2(playerEntity)
+		local hasRigidbody = playerEntity.RigidbodyComponent ~= nil
+		local hasMovement = playerEntity.MovementComponent ~= nil
+		local hasController = playerEntity.PlayerControllerComponent ~= nil
+		self:Log("player physics setup user=" .. self:GetUserId(playerEntity)
+			.. " rigidbody=" .. tostring(hasRigidbody)
+			.. " movement=" .. tostring(hasMovement)
+			.. " controller=" .. tostring(hasController)
+			.. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void LogPlayerGroundState(Entity playerEntity)
+		if playerEntity == nil or playerEntity.RigidbodyComponent == nil then
+			return
+		end
+
+		local position = self:GetEntityPosition2(playerEntity)
+		local onGround = playerEntity.RigidbodyComponent:IsOnGround()
+		local footholdId = "nil"
+		local foothold = playerEntity.RigidbodyComponent:GetCurrentFoothold()
+		if foothold ~= nil then
+			footholdId = tostring(foothold.Id)
+		end
+
+		self:Log("player ground state user=" .. self:GetUserId(playerEntity)
+			.. " onGround=" .. tostring(onGround)
+			.. " foothold=" .. footholdId
+			.. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void GroundBattlePlayers()
+		if self.EnablePlatformFallback == false then
+			return
+		end
+
+		self:EnsureServerRuntimeTables()
+		local users = _UserService:GetUsersByMapName(self:GetBattleMapName())
+		if users == nil then
+			return
+		end
+
+		for index, playerEntity in ipairs(users) do
+			self:GroundBattlePlayer(playerEntity)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void GroundBattlePlayer(Entity playerEntity)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		local userId = playerEntity.PlayerComponent.UserId
+		local position = self:GetEntityPosition2(playerEntity)
+		local lastPosition = self._T.lastPositions[userId]
+		if lastPosition == nil then
+			lastPosition = Vector2(position.x, position.y + 2)
+		end
+
+		if position.y < self:GetFallResetY() then
+			self:SetEntityWorldPosition2(playerEntity, Vector2(0, self:GetMainFloorY() + 0.1))
+			self._T.lastPositions[userId] = Vector2(0, self:GetMainFloorY() + 0.1)
+			return
+		end
+
+		local groundY = self:FindPlatformY(position.x, position.y, lastPosition.y)
+		if groundY ~= nil then
+			local groundedPosition = Vector2(position.x, groundY)
+			self:SetEntityWorldPosition2(playerEntity, groundedPosition)
+			self._T.lastPositions[userId] = groundedPosition
+			return
+		end
+
+		self._T.lastPositions[userId] = position
+	end
+
+	method any FindPlatformY(number x, number y, number lastY)
+		local bestY = nil
+		bestY = self:PickPlatformY(bestY, x, y, lastY, 0, 2.25, 14)
+		bestY = self:PickPlatformY(bestY, x, y, lastY, -5.4, 4.15, 3)
+		bestY = self:PickPlatformY(bestY, x, y, lastY, 5.4, 4.15, 3)
+		bestY = self:PickPlatformY(bestY, x, y, lastY, 0, 5.75, 2.4)
+		return bestY
+	end
+
+	method any PickPlatformY(any currentY, number x, number y, number lastY, number centerX, number platformY, number halfWidth)
+		if x < centerX - halfWidth or x > centerX + halfWidth then
+			return currentY
+		end
+		if lastY < platformY or y > platformY then
+			return currentY
+		end
+		if currentY ~= nil and platformY <= currentY then
+			return currentY
+		end
+		return platformY
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SetEntityWorldPosition2(Entity playerEntity, Vector2 position)
+		if playerEntity == nil then
+			return
+		end
+
+		if playerEntity.RigidbodyComponent ~= nil then
+			playerEntity.RigidbodyComponent:SetWorldPosition(position)
+		elseif playerEntity.PlayerComponent ~= nil then
+			playerEntity.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -283,7 +576,7 @@ script BRBattleLogic extends Component
 			return
 		end
 		
-		local damage = self:GetBasicAttackDamage()
+		local damage = self:GetAdjustedBasicAttackDamage(attackerEntity)
 		targetPlayer.Hp = math.max(0, targetPlayer.Hp - damage)
 		self._T.invincibleUntil[targetPlayer.UserId] = now + self:GetHitInvincibleSeconds()
 		
@@ -356,6 +649,12 @@ script BRBattleLogic extends Component
 		if self._T.preparedPlayers == nil then
 			self._T.preparedPlayers = {}
 		end
+		if self._T.lastPositions == nil then
+			self._T.lastPositions = {}
+		end
+		if self._T.basePhysicsStats == nil then
+			self._T.basePhysicsStats = {}
+		end
 	end
 
 	method boolean IsAttackAction(string actionName)
@@ -397,6 +696,20 @@ script BRBattleLogic extends Component
 		return math.max(1, math.floor(self:ReadNumber(self.BasicAttackDamage, 20)))
 	end
 
+	method number GetAdjustedBattleMaxHp(Entity playerEntity)
+		if _BRSkillSystem == nil or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return self:GetBattleMaxHp()
+		end
+		return _BRSkillSystem:GetMaxHp(playerEntity.PlayerComponent.UserId, self:GetBattleMaxHp())
+	end
+
+	method number GetAdjustedBasicAttackDamage(Entity attackerEntity)
+		if _BRSkillSystem == nil or attackerEntity == nil or attackerEntity.PlayerComponent == nil then
+			return self:GetBasicAttackDamage()
+		end
+		return _BRSkillSystem:GetBasicAttackDamage(attackerEntity.PlayerComponent.UserId, self:GetBasicAttackDamage())
+	end
+
 	method number GetAttackCooldownSeconds()
 		return math.max(0.05, self:ReadNumber(self.AttackCooldownSeconds, 0.45))
 	end
@@ -426,11 +739,42 @@ script BRBattleLogic extends Component
 	end
 
 	method number GetPlayerScanSeconds()
-		return math.max(0.1, self:ReadNumber(self.PlayerScanSeconds, 0.25))
+		return math.max(0.033, self:ReadNumber(self.PlayerScanSeconds, 0.05))
 	end
 
 	method number GetPlayerRespawnDuration()
 		return math.max(0, self:ReadNumber(self.PlayerRespawnDuration, 5))
+	end
+
+	method number GetPlatformGroundingSeconds()
+		return math.max(0.016, self:ReadNumber(self.PlatformGroundingSeconds, 0.033))
+	end
+
+	method number GetFallResetY()
+		return self:ReadNumber(self.FallResetY, -5)
+	end
+
+	method number GetMainFloorY()
+		return 2.25
+	end
+
+	method number GetBattleGravity()
+		return math.max(0.1, self:ReadNumber(self.BattleGravity, 1))
+	end
+
+	method number GetBattleWalkSpeed()
+		return math.max(0.1, self:ReadNumber(self.BattleWalkSpeed, 1.8))
+	end
+
+	method number GetBattleWalkJump()
+		return math.max(0.1, self:ReadNumber(self.BattleWalkJump, 1.8))
+	end
+
+	method string GetUserId(Entity entity)
+		if entity ~= nil and entity.PlayerComponent ~= nil then
+			return self:ReadString(entity.PlayerComponent.UserId, "")
+		end
+		return ""
 	end
 
 	method number Now()

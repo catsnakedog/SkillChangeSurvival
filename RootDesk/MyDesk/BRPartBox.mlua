@@ -1,0 +1,177 @@
+@Component
+script BRPartBox extends Component
+
+	property boolean EnablePartBox = true
+
+	property number TouchRadius = 1.25
+
+	property number PollSeconds = 0.1
+
+	property number RespawnSeconds = 20
+
+	property number DropCount = 1
+
+	property boolean AutoEquipOnDrop = true
+
+	property boolean VerboseLog = false
+
+	property boolean available = true
+
+	property number pollTimerId = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		if self.EnablePartBox == false then
+			return
+		end
+		self.available = true
+		self:SetVisualAvailable(true)
+		self.pollTimerId = _TimerService:SetTimerRepeat(function() self:ScanPlayers() end, self:GetPollSeconds(), 0.1)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnEndPlay()
+		if self.pollTimerId ~= nil and self.pollTimerId > 0 then
+			_TimerService:ClearTimer(self.pollTimerId)
+		end
+		self.pollTimerId = 0
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ScanPlayers()
+		if self.EnablePartBox == false or self.available == false then
+			return
+		end
+		
+		local mapName = self:GetMapName()
+		if mapName == "" then
+			return
+		end
+		
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users == nil then
+			return
+		end
+		
+		local boxPosition = self:GetEntityPosition2(self.Entity)
+		local radius = self:GetTouchRadius()
+		for index, playerEntity in ipairs(users) do
+			if self:IsPlayerCloseEnough(playerEntity, boxPosition, radius) == true then
+				self:OpenForPlayer(playerEntity)
+				return
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean IsPlayerCloseEnough(Entity playerEntity, Vector2 boxPosition, number radius)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
+		end
+		if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+		
+		local playerPosition = self:GetEntityPosition2(playerEntity)
+		local dx = playerPosition.x - boxPosition.x
+		local dy = playerPosition.y - boxPosition.y
+		return dx * dx + dy * dy <= radius * radius
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OpenForPlayer(Entity playerEntity)
+		if self.available == false or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		self.available = false
+		self:SetVisualAvailable(false)
+		
+		local userId = playerEntity.PlayerComponent.UserId
+		local result = nil
+		if _BRSkillSystem ~= nil then
+			result = _BRSkillSystem:OpenBoxForUser(userId, self.DropCount, self.AutoEquipOnDrop, self.Entity.Id)
+		end
+		
+		if result ~= nil and result.LastPart ~= nil then
+			self:ShowPickupLabel(playerEntity, _BRSkillSystem:GetPartSummary(result.LastPart))
+			self:Log("open user=" .. userId .. " part=" .. result.LastPart.PartId)
+		else
+			self:Log("open user=" .. userId .. " part=nil")
+		end
+		
+		if self.RespawnSeconds > 0 then
+			_TimerService:SetTimerOnce(function() self:RespawnBox() end, self.RespawnSeconds)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RespawnBox()
+		self.available = true
+		self:SetVisualAvailable(true)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SetVisualAvailable(boolean value)
+		if self.Entity == nil then
+			return
+		end
+		self.Entity.Visible = value
+		if self.Entity.PolygonRendererComponent ~= nil then
+			self.Entity.PolygonRendererComponent.Enable = value
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ShowPickupLabel(Entity playerEntity, string message)
+		if playerEntity == nil or playerEntity.NameTagComponent == nil then
+			return
+		end
+		playerEntity.NameTagComponent.Name = self:ReadString(message, "Skill Part")
+		playerEntity.NameTagComponent.FontColor = Color(0.85, 0.75, 1, 1)
+	end
+
+	method string GetMapName()
+		if self.Entity ~= nil and self.Entity.CurrentMapName ~= nil then
+			return self.Entity.CurrentMapName
+		end
+		return ""
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method number GetTouchRadius()
+		return math.max(0.1, self:ReadNumber(self.TouchRadius, 1.25))
+	end
+
+	method number GetPollSeconds()
+		return math.max(0.033, self:ReadNumber(self.PollSeconds, 0.1))
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRPartBox] " .. message)
+		end
+	end
+
+end

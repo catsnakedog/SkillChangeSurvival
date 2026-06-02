@@ -16,7 +16,7 @@ script BRMatchRoomQueue extends Logic
 			Mode = self:ReadString(mode, "SoloBattleRoyale"),
 			WorldInstanceId = self:ReadString(worldInstanceId, ""),
 			HostWorldInstanceId = self:ReadString(worldInstanceId, ""),
-			SourceMapName = self:ReadString(sourceMapName, "BattleMap"),
+			SourceMapName = self:ReadString(sourceMapName, "RoomTestMap"),
 			DynamicMapName = self:ReadString(dynamicMapName, ""),
 			TargetPlayerCount = math.max(1, math.floor(self:ReadNumber(targetPlayerCount, 1))),
 			MinStartPlayerCount = math.max(1, math.floor(self:ReadNumber(minStartPlayerCount, targetPlayerCount))),

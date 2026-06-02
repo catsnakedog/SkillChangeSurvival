@@ -3,9 +3,9 @@ script BRLobbyMatchmaker extends Component
 
 	property boolean EnableLobbyMatchmaker = true
 
-	property boolean AutoQueueOnEnter = true
+	property boolean AutoQueueOnEnter = false
 
-	property boolean AutoJoinCurrentUsersOnBeginPlay = true
+	property boolean AutoJoinCurrentUsersOnBeginPlay = false
 
 	property number AutoJoinCurrentUsersDelay = 1
 
@@ -37,11 +37,13 @@ script BRLobbyMatchmaker extends Component
 
 	property string LobbyMapName = "StartMap"
 
+	property boolean RequireUserOnLobbyMapForQueue = true
+
 	property boolean VerboseDebugLog = true
 
 	property number DebugLogIntervalSeconds = 5
 
-	property string GatherMapName = "BattleMap"
+	property string GatherMapName = "RoomTestMap"
 
 	property string DynamicMapPrefix = "gather_"
 
@@ -151,8 +153,9 @@ script BRLobbyMatchmaker extends Component
 			if entity.PlayerComponent ~= nil then
 				profileCode = entity.PlayerComponent.ProfileCode
 			end
-			self:JoinQueue(userId, profileCode)
-			joinedCount = joinedCount + 1
+			if self:JoinQueue(userId, profileCode) == true then
+				joinedCount = joinedCount + 1
+			end
 		end
 		log("[BRLobby] join current users requested count=" .. tostring(joinedCount))
 	end
@@ -306,6 +309,10 @@ script BRLobbyMatchmaker extends Component
 		if userId == nil or userId == "" then
 			return false
 		end
+		if self.RequireUserOnLobbyMapForQueue == true and self:IsUserInLobbyMap(userId) == false then
+			log("[BRLobby] queue skipped outside lobby: user=" .. tostring(userId) .. " lobby=" .. self:ReadString(self.LobbyMapName, "StartMap"))
+			return false
+		end
 
 		local now = self:Now()
 		local ticket = _BRMatchQueue:CreateTicket(userId, profileCode, self:GetCurrentWorldInstanceId(), now, self:GetTicketTtlSeconds())
@@ -334,6 +341,29 @@ script BRLobbyMatchmaker extends Component
 
 		log("[BRLobby] failed to join queue: " .. userId)
 		return false
+	end
+
+	@ExecSpace("Server")
+	method void RequestJoinQueue(string userId)
+		self:EnsureRuntimeStarted()
+		if self.EnableLobbyMatchmaker == false then
+			log("[BRLobby] button join ignored: disabled user=" .. tostring(userId))
+			return
+		end
+		if userId == nil or userId == "" then
+			log("[BRLobby] button join ignored: empty user")
+			return
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(userId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			log("[BRLobby] button join ignored: missing player user=" .. tostring(userId))
+			return
+		end
+
+		if self:JoinQueue(userId, playerEntity.PlayerComponent.ProfileCode) == true then
+			self:TryMakeMatch(false)
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -584,7 +614,7 @@ script BRLobbyMatchmaker extends Component
 	method string CreateDynamicGatherMap(string gatherId)
 		local matchRoom = {
 			MatchId = gatherId,
-			SourceMapName = self:ReadString(self.GatherMapName, "BattleMap"),
+			SourceMapName = self:ReadString(self.GatherMapName, "RoomTestMap"),
 			DynamicMapName = self:GetDynamicGatherMapName(gatherId)
 		}
 		return _BRBattleLauncher:CreateDynamicMapForRoom(matchRoom, self)
@@ -737,6 +767,19 @@ script BRLobbyMatchmaker extends Component
 		end
 
 		return string.sub(path, 1, string.len(lobbyRoot) + 1) == lobbyRoot .. "/"
+	end
+
+	method boolean IsUserInLobbyMap(string userId)
+		local playerEntity = _UserService:GetUserEntityByUserId(userId)
+		if playerEntity == nil then
+			return false
+		end
+
+		return self:IsLobbyMapName(playerEntity.CurrentMapName)
+	end
+
+	method boolean IsLobbyMapName(string mapName)
+		return self:ReadString(mapName, "") == self:ReadString(self.LobbyMapName, "StartMap")
 	end
 
 	method void EnsureRoomQueue()

@@ -31,13 +31,150 @@
           "@components": [
             {
               "@type": "MOD.Core.MapComponent",
+              "Gravity": 1.8,
               "IsInstanceMap": false,
+              "LeftBottom": {
+                "x": -18.0,
+                "y": -6.0
+              },
+              "RightTop": {
+                "x": 18.0,
+                "y": 9.0
+              },
               "TileMapMode": 0,
+              "UseCustomBound": true,
               "Enable": true
             },
             {
               "@type": "MOD.Core.FootholdComponent",
-              "FootholdsByLayer": {},
+              "FootholdsByLayer": {
+                "1": [
+                  {
+                    "Length": 28.0,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 1,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "8013463a-44d7-4ff0-a957-74d65501d4c1",
+                    "Id": 1,
+                    "StartPoint": {
+                      "x": -14.0,
+                      "y": 2.25
+                    },
+                    "EndPoint": {
+                      "x": 14.0,
+                      "y": 2.25
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 5.99999952,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 2,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "e3ca654d-6771-43db-80b0-8b20ecfe8e67",
+                    "Id": 2,
+                    "StartPoint": {
+                      "x": -8.4,
+                      "y": 4.15
+                    },
+                    "EndPoint": {
+                      "x": -2.4,
+                      "y": 4.15
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 5.99999952,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 3,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "ed7f4b53-ea7f-4e24-93bc-83162ed1d69f",
+                    "Id": 3,
+                    "StartPoint": {
+                      "x": 2.4,
+                      "y": 4.15
+                    },
+                    "EndPoint": {
+                      "x": 8.4,
+                      "y": 4.15
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 4.8,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 4,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "e567d2de-78f7-4992-91fc-8621d97e79b6",
+                    "Id": 4,
+                    "StartPoint": {
+                      "x": -2.4,
+                      "y": 5.75
+                    },
+                    "EndPoint": {
+                      "x": 2.4,
+                      "y": 5.75
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  }
+                ]
+              },
               "Enable": true
             }
           ],
@@ -99,7 +236,7 @@
               "LayerSortOrder": 0,
               "Locked": false,
               "MapLayerName": "Layer1",
-              "Thumbnail": null,
+              "Thumbnail": "",
               "Enable": true
             }
           ],
@@ -146,12 +283,405 @@
             },
             {
               "@type": "MOD.Core.TileMapComponent",
+              "IsOddGridPosition": false,
               "SortingLayer": "MapLayer0",
               "TileMapVersion": 1,
               "TileSetRUID": {
                 "DataId": "055a388951174b58826a7868852ad4d0"
               },
               "Tiles": [],
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "8013463a-44d7-4ff0-a957-74d65501d4c1",
+        "path": "/maps/BattleMap/MainFloor",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.CustomFootholdComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "MainFloor",
+          "path": "/maps/BattleMap/MainFloor",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 3,
+          "pathConstraints": "///",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "mapempty",
+            "sub_entity_id": null,
+            "root_entity_id": "8013463a-44d7-4ff0-a957-74d65501d4c1",
+            "replaced_model_id": null
+          },
+          "modelId": "mapempty",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0.0,
+                "y": 2.25,
+                "z": 999.998
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "FootholdDrag": 1.0,
+              "FootholdForce": 0.0,
+              "FootholdWalkSpeedFactor": 1.0,
+              "IsBlockVerticalLine": false,
+              "IsDynamicFoothold": false,
+              "PhysicsInteractable": true,
+              "RigidbodyMovementOption": 0,
+              "edgeLists": [
+                [
+                  {
+                    "x": -14.0,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 14.0,
+                    "y": 0.0
+                  }
+                ]
+              ],
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.18,
+                "g": 0.31,
+                "b": 0.35,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 10,
+              "Points": [
+                {
+                  "x": -14.0,
+                  "y": 0.0
+                },
+                {
+                  "x": 14.0,
+                  "y": 0.0
+                },
+                {
+                  "x": 14.0,
+                  "y": -0.35
+                },
+                {
+                  "x": -14.0,
+                  "y": -0.35
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "e3ca654d-6771-43db-80b0-8b20ecfe8e67",
+        "path": "/maps/BattleMap/LeftPlatform",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.CustomFootholdComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LeftPlatform",
+          "path": "/maps/BattleMap/LeftPlatform",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 4,
+          "pathConstraints": "///",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "mapempty",
+            "sub_entity_id": null,
+            "root_entity_id": "e3ca654d-6771-43db-80b0-8b20ecfe8e67",
+            "replaced_model_id": null
+          },
+          "modelId": "mapempty",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": -5.4,
+                "y": 4.15,
+                "z": 999.998
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "FootholdDrag": 1.0,
+              "FootholdForce": 0.0,
+              "FootholdWalkSpeedFactor": 1.0,
+              "IsBlockVerticalLine": false,
+              "IsDynamicFoothold": false,
+              "PhysicsInteractable": false,
+              "RigidbodyMovementOption": 0,
+              "edgeLists": [
+                [
+                  {
+                    "x": -3.0,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 3.0,
+                    "y": 0.0
+                  }
+                ]
+              ],
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.23,
+                "g": 0.39,
+                "b": 0.43,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 11,
+              "Points": [
+                {
+                  "x": -3.0,
+                  "y": 0.0
+                },
+                {
+                  "x": 3.0,
+                  "y": 0.0
+                },
+                {
+                  "x": 3.0,
+                  "y": -0.28
+                },
+                {
+                  "x": -3.0,
+                  "y": -0.28
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "ed7f4b53-ea7f-4e24-93bc-83162ed1d69f",
+        "path": "/maps/BattleMap/RightPlatform",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.CustomFootholdComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "RightPlatform",
+          "path": "/maps/BattleMap/RightPlatform",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 5,
+          "pathConstraints": "///",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "mapempty",
+            "sub_entity_id": null,
+            "root_entity_id": "ed7f4b53-ea7f-4e24-93bc-83162ed1d69f",
+            "replaced_model_id": null
+          },
+          "modelId": "mapempty",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 5.4,
+                "y": 4.15,
+                "z": 999.998
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "FootholdDrag": 1.0,
+              "FootholdForce": 0.0,
+              "FootholdWalkSpeedFactor": 1.0,
+              "IsBlockVerticalLine": false,
+              "IsDynamicFoothold": false,
+              "PhysicsInteractable": false,
+              "RigidbodyMovementOption": 0,
+              "edgeLists": [
+                [
+                  {
+                    "x": -3.0,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 3.0,
+                    "y": 0.0
+                  }
+                ]
+              ],
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.23,
+                "g": 0.39,
+                "b": 0.43,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 11,
+              "Points": [
+                {
+                  "x": -3.0,
+                  "y": 0.0
+                },
+                {
+                  "x": 3.0,
+                  "y": 0.0
+                },
+                {
+                  "x": 3.0,
+                  "y": -0.28
+                },
+                {
+                  "x": -3.0,
+                  "y": -0.28
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "e567d2de-78f7-4992-91fc-8621d97e79b6",
+        "path": "/maps/BattleMap/TopPlatform",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.CustomFootholdComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "TopPlatform",
+          "path": "/maps/BattleMap/TopPlatform",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 6,
+          "pathConstraints": "///",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "mapempty",
+            "sub_entity_id": null,
+            "root_entity_id": "e567d2de-78f7-4992-91fc-8621d97e79b6",
+            "replaced_model_id": null
+          },
+          "modelId": "mapempty",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0.0,
+                "y": 5.75,
+                "z": 999.998
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "FootholdDrag": 1.0,
+              "FootholdForce": 0.0,
+              "FootholdWalkSpeedFactor": 1.0,
+              "IsBlockVerticalLine": false,
+              "IsDynamicFoothold": false,
+              "PhysicsInteractable": false,
+              "RigidbodyMovementOption": 0,
+              "edgeLists": [
+                [
+                  {
+                    "x": -2.4,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 2.4,
+                    "y": 0.0
+                  }
+                ]
+              ],
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.3,
+                "g": 0.46,
+                "b": 0.48,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 12,
+              "Points": [
+                {
+                  "x": -2.4,
+                  "y": 0.0
+                },
+                {
+                  "x": 2.4,
+                  "y": 0.0
+                },
+                {
+                  "x": 2.4,
+                  "y": -0.25
+                },
+                {
+                  "x": -2.4,
+                  "y": -0.25
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
               "Enable": true
             }
           ],
@@ -169,7 +699,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 3,
+          "displayOrder": 7,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -208,7 +738,105 @@
               "AttackBoxHeight": 1.0,
               "AttackOffsetX": 0.9,
               "AttackOffsetY": 0.35,
-              "AttackOffsetYFromFeet": 0.35
+              "AttackOffsetYFromFeet": 0.35,
+              "PlayerScanSeconds": 0.05,
+              "PlayerRespawnDuration": 5.0,
+              "EnablePlatformFallback": false,
+              "PlatformGroundingSeconds": 0.033,
+              "FallResetY": -5.0,
+              "BattleGravity": 1.0,
+              "BattleWalkSpeed": 1.8,
+              "BattleWalkJump": 3.0,
+              "OverridePlayerPhysicsStats": false,
+              "ResetHpOnEnter": true,
+              "VerboseBattleLog": false,
+              "LogPhysicsStateOnRegister": false
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "3bfca720-f81e-4bc7-9205-7e6fcb15a4db",
+        "path": "/maps/BattleMap/SkillPartBox",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,script.BRPartBox",
+        "jsonString": {
+          "name": "SkillPartBox",
+          "path": "/maps/BattleMap/SkillPartBox",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 8,
+          "pathConstraints": "///",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "mapempty",
+            "sub_entity_id": null,
+            "root_entity_id": "3bfca720-f81e-4bc7-9205-7e6fcb15a4db",
+            "replaced_model_id": null
+          },
+          "modelId": "mapempty",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 3.0,
+                "y": 3.0,
+                "z": 999.997
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.55,
+                "g": 0.35,
+                "b": 0.9,
+                "a": 0.9
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 20,
+              "Points": [
+                {
+                  "x": -0.45,
+                  "y": -0.45
+                },
+                {
+                  "x": 0.45,
+                  "y": -0.45
+                },
+                {
+                  "x": 0.45,
+                  "y": 0.45
+                },
+                {
+                  "x": -0.45,
+                  "y": 0.45
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRPartBox",
+              "Enable": true,
+              "EnablePartBox": true,
+              "TouchRadius": 1.25,
+              "PollSeconds": 0.1,
+              "RespawnSeconds": 20.0,
+              "DropCount": 1.0,
+              "AutoEquipOnDrop": true,
+              "VerboseLog": false
             }
           ],
           "@version": 1

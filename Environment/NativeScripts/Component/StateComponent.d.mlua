@@ -7,12 +7,21 @@ script StateComponent extends Component
 	@Sync
 	readonly property string CurrentStateName = "IDLE"
 
+	---@description "Sets whether this Component operates with the legacy system."
+	---@sealed
+	property boolean IsLegacy = false
+
+	---@description "The Id of the StateSet to apply to the internal state machine of StateComponent."
+	---@sealed
+	property string StateSetId = ""
+
 	---@description "This function is now deprecated. Use another AddCondition (string, string, boolean) function."
 	---@deprecated
 	---@sealed
 	method boolean AddCondition(string stateName, string nextStateName, func -> boolean conditionCheckFunction, boolean reverseResult = false) end
 
 	---@description "Connects stateName's status and nextStateName's status. Returns false if it fails."
+	---@deprecated
 	---@sealed
 	method boolean AddCondition(string stateName, string nextStateName, boolean reverseResult = false) end
 
@@ -30,6 +39,7 @@ script StateComponent extends Component
 	method boolean ChangeState(string stateName) end
 
 	---@description "Disconnects the state stateName from the state nextStateName."
+	---@deprecated
 	---@sealed
 	method void RemoveCondition(string stateName, string nextStateName) end
 

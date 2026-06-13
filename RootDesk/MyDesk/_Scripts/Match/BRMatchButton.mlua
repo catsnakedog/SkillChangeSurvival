@@ -9,17 +9,23 @@ script BRMatchButton extends Component
 
 	property string WaitingText = "MATCHING..."
 
-	property boolean HideOutsideLobby = true
+	property boolean RequireLobbyMap = true
 
 	property number ClickCooldownSeconds = 0.5
+
+	property number QueueRequestDebounceSeconds = 3
 
 	property any buttonHandler = nil
 
 	property number refreshTimerId = 0
 
+	property number queueRequestTimerId = 0
+
 	property number nextClickAt = 0
 
 	property boolean waiting = false
+
+	property boolean committedWaiting = false
 
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
@@ -35,6 +41,7 @@ script BRMatchButton extends Component
 			_TimerService:ClearTimer(self.refreshTimerId)
 		end
 		self.refreshTimerId = 0
+		self:ClearPendingQueueRequest()
 	end
 
 	@ExecSpace("ClientOnly")
@@ -56,7 +63,7 @@ script BRMatchButton extends Component
 
 	@ExecSpace("ClientOnly")
 	method void HandleButtonClickEvent(ButtonClickEvent event)
-		if self:IsLocalPlayerInLobby() == false then
+		if self.RequireLobbyMap == true and self:IsLocalPlayerInLobby() == false then
 			self:RefreshButtonState()
 			return
 		end
@@ -79,22 +86,23 @@ script BRMatchButton extends Component
 			return
 		end
 		
-		self.waiting = true
-		self:SetButtonText(self.WaitingText)
-		matchmaker:RequestJoinQueue(localPlayer.PlayerComponent.UserId)
+		self.waiting = not self.waiting
+		self:RefreshButtonState()
+		self:ScheduleQueueRequest()
 	end
 
 	@ExecSpace("ClientOnly")
 	method void RefreshButtonState()
 		local inLobby = self:IsLocalPlayerInLobby()
-		if self.Entity ~= nil and self.HideOutsideLobby == true then
-			self.Entity.Visible = inLobby
-			if self.Entity.ButtonComponent ~= nil then
-				self.Entity.ButtonComponent.Enable = inLobby
-			end
+		local canUse = inLobby == true or self.RequireLobbyMap == false
+		if self.Entity ~= nil and self.Entity.ButtonComponent ~= nil then
+			self.Entity.ButtonComponent.Enable = canUse
 		end
-		if inLobby == false then
+		if canUse == false then
 			self.waiting = false
+			self.committedWaiting = false
+			self:ClearPendingQueueRequest()
+			self:SetButtonText(self.ReadyText)
 			return
 		end
 		if self.waiting == true then
@@ -102,6 +110,57 @@ script BRMatchButton extends Component
 		else
 			self:SetButtonText(self.ReadyText)
 		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ScheduleQueueRequest()
+		self:ClearPendingQueueRequest()
+		self.queueRequestTimerId = _TimerService:SetTimerOnce(function() self:CommitQueueRequest() end, self:GetQueueRequestDebounceSeconds())
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ClearPendingQueueRequest()
+		if self.queueRequestTimerId ~= nil and self.queueRequestTimerId > 0 then
+			_TimerService:ClearTimer(self.queueRequestTimerId)
+		end
+		self.queueRequestTimerId = 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method void CommitQueueRequest()
+		self.queueRequestTimerId = 0
+		if self.RequireLobbyMap == true and self:IsLocalPlayerInLobby() == false then
+			self.waiting = false
+			self.committedWaiting = false
+			self:RefreshButtonState()
+			return
+		end
+		if self.waiting == self.committedWaiting then
+			return
+		end
+		
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			self:ShowLocalToast("Player is not ready.")
+			self.waiting = self.committedWaiting
+			self:RefreshButtonState()
+			return
+		end
+		
+		local matchmaker = self:GetMatchmaker()
+		if matchmaker == nil then
+			self:ShowLocalToast("Matchmaker is not ready.")
+			self.waiting = self.committedWaiting
+			self:RefreshButtonState()
+			return
+		end
+		
+		if self.waiting == true then
+			matchmaker:RequestJoinQueue(localPlayer.PlayerComponent.UserId)
+		else
+			matchmaker:RequestCancelQueue(localPlayer.PlayerComponent.UserId)
+		end
+		self.committedWaiting = self.waiting
 	end
 
 	@ExecSpace("ClientOnly")
@@ -141,6 +200,10 @@ script BRMatchButton extends Component
 			return fallback
 		end
 		return value
+	end
+
+	method number GetQueueRequestDebounceSeconds()
+		return math.max(0.1, self.QueueRequestDebounceSeconds)
 	end
 
 end

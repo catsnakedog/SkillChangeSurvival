@@ -9,6 +9,10 @@ script AntiCheatService extends Service
 
 	---@sealed
 	@ExecSpace("ServerOnly")
+	method MODScriptAsyncTask RequestUserAnalysisAndWait(int32 type, string userId) end
+
+	---@sealed
+	@ExecSpace("ServerOnly")
 	method int32 SendActionLog(int32 type, string userId, table extra) end
 
 	---@sealed

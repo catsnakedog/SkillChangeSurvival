@@ -242,14 +242,14 @@ script TestMapGenerate extends Component
 		if #cells == 1 then
 			return 0
 		end
-
+		
 		local portalCount = 0
 		local visited = {}
 		local visitedCells = {}
 		local startCell = cells[self:NextRandomIndex(#cells)]
 		visited[startCell.Id] = true
 		table.insert(visitedCells, startCell)
-
+		
 		while #visitedCells < #cells do
 			local candidates = {}
 			for index, candidate in ipairs(visitedCells) do
@@ -264,7 +264,7 @@ script TestMapGenerate extends Component
 			if #candidates == 0 then
 				break
 			end
-
+		
 			local candidate = candidates[self:NextRandomIndex(#candidates)]
 			local fromCell = candidate.Cell
 			local neighbors = candidate.Neighbors
@@ -275,7 +275,7 @@ script TestMapGenerate extends Component
 			visited[picked.Cell.Id] = true
 			table.insert(visitedCells, picked.Cell)
 		end
-
+		
 		for index, cell in ipairs(cells) do
 			local neighbors = self:GetNeighborInfos(cell, gridSize)
 			for neighborIndex, neighbor in ipairs(neighbors) do
@@ -286,7 +286,7 @@ script TestMapGenerate extends Component
 				end
 			end
 		end
-
+		
 		return portalCount
 	end
 
@@ -306,7 +306,7 @@ script TestMapGenerate extends Component
 		if cell == nil then
 			return neighbors
 		end
-
+		
 		self:AddNeighborInfo(neighbors, "N", cell.Row - 1, cell.Column, gridSize)
 		self:AddNeighborInfo(neighbors, "S", cell.Row + 1, cell.Column, gridSize)
 		self:AddNeighborInfo(neighbors, "W", cell.Row, cell.Column - 1, gridSize)
@@ -318,12 +318,12 @@ script TestMapGenerate extends Component
 		if row < 1 or row > gridSize or column < 1 or column > gridSize then
 			return
 		end
-
+		
 		local cell = self._T.cellById[self:GetCellId(row, column)]
 		if cell == nil then
 			return
 		end
-
+		
 		table.insert(neighbors, {
 			Direction = direction,
 			Cell = cell
@@ -334,7 +334,7 @@ script TestMapGenerate extends Component
 		if fromCell == nil or toCell == nil then
 			return false
 		end
-
+		
 		local addedForward = self:AddPortal(fromCell, direction, toCell.Row, toCell.Column)
 		local addedBackward = self:AddPortal(toCell, self:GetOppositeDirection(direction), fromCell.Row, fromCell.Column)
 		return addedForward == true or addedBackward == true
@@ -472,13 +472,13 @@ script TestMapGenerate extends Component
 		if self.EnableCellCameraBounds == false or playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return
 		end
-
+		
 		local position = self:GetEntityPosition2(playerEntity)
 		local cell = self:FindCellByPosition(position)
 		if cell == nil then
 			return
 		end
-
+		
 		self:ApplyCameraBounds(playerEntity, cell, false)
 	end
 
@@ -487,12 +487,12 @@ script TestMapGenerate extends Component
 		if self.EnableCellCameraBounds == false or playerEntity == nil or cell == nil then
 			return
 		end
-
+		
 		local userId = self:GetPlayerUserId(playerEntity)
 		if force == false and self._T.lastCameraCellByUser ~= nil and self._T.lastCameraCellByUser[userId] == cell.Id then
 			return
 		end
-
+		
 		if self.UseFixedCellCameras == true then
 			local cameraEntity = self:GetCellCameraEntity(cell)
 			if cameraEntity ~= nil and cameraEntity.CameraComponent ~= nil then
@@ -505,11 +505,11 @@ script TestMapGenerate extends Component
 			end
 			self:Log("cell camera missing: " .. self:GetCellCameraPath(cell))
 		end
-
+		
 		if playerEntity.CameraComponent == nil then
 			return
 		end
-
+		
 		local left = cell.Center.x
 		local right = cell.Center.x
 		local bottom = cell.Center.y
@@ -530,7 +530,7 @@ script TestMapGenerate extends Component
 			bottom = cell.Center.y - halfHeight + padding
 			top = cell.Center.y + halfHeight - padding
 		end
-
+		
 		playerEntity.CameraComponent.Enable = true
 		playerEntity.CameraComponent.ConfineCameraArea = true
 		playerEntity.CameraComponent.UseCustomBound = true
@@ -539,7 +539,7 @@ script TestMapGenerate extends Component
 		if self.EnableCellCameraZoom == true then
 			playerEntity.CameraComponent:SetZoomTo(self:GetCellCameraZoomRatio(), self:GetCellCameraZoomDuration(), userId)
 		end
-
+		
 		if self._T.lastCameraCellByUser == nil then
 			self._T.lastCameraCellByUser = {}
 		end
@@ -590,12 +590,12 @@ script TestMapGenerate extends Component
 		if cell == nil then
 			return
 		end
-
+		
 		if self.UsePreplacedRoomPool == true then
 			self:UsePreplacedRoom(cell)
 			return
 		end
-
+		
 		self:SpawnCellPrefab(cell)
 	end
 
@@ -612,7 +612,7 @@ script TestMapGenerate extends Component
 			self:Log("preplaced room missing: " .. self:GetPreplacedRoomPath(cell))
 			return
 		end
-
+		
 		if room.TransformComponent ~= nil then
 			room.TransformComponent.Position = Vector3(cell.Center.x, cell.Center.y, 999.998)
 		end
@@ -685,7 +685,7 @@ script TestMapGenerate extends Component
 		if roomEntity == nil or cell == nil then
 			return
 		end
-
+		
 		self:SetPortalGuideVisible(roomEntity, "PortalGuideNorth", self:CellHasPortal(cell, "N"))
 		self:SetPortalGuideVisible(roomEntity, "PortalGuideSouth", self:CellHasPortal(cell, "S"))
 		self:SetPortalGuideVisible(roomEntity, "PortalGuideWest", self:CellHasPortal(cell, "W"))
@@ -697,12 +697,12 @@ script TestMapGenerate extends Component
 		if roomPath == "" then
 			return
 		end
-
+		
 		local guide = _EntityService:GetEntityByPath(roomPath .. "/" .. childName)
 		if guide == nil then
 			return
 		end
-
+		
 		guide:SetEnable(visible)
 		guide:SetVisible(visible)
 	end
@@ -718,7 +718,7 @@ script TestMapGenerate extends Component
 		if roomEntity == nil or cell == nil or cell.PlatformVisibility == nil then
 			return
 		end
-
+		
 		self:SetRoomChildVisible(roomEntity, "LeftPlatform", cell.PlatformVisibility["LeftPlatform"] == true)
 		self:SetRoomChildVisible(roomEntity, "RightPlatform", cell.PlatformVisibility["RightPlatform"] == true)
 		self:SetRoomChildVisible(roomEntity, "RightPlatform_1", cell.PlatformVisibility["RightPlatform_1"] == true)
@@ -729,12 +729,12 @@ script TestMapGenerate extends Component
 		if roomPath == "" then
 			return
 		end
-
+		
 		local child = _EntityService:GetEntityByPath(roomPath .. "/" .. childName)
 		if child == nil then
 			return
 		end
-
+		
 		child:SetEnable(visible)
 		child:SetVisible(visible)
 	end
@@ -769,12 +769,12 @@ script TestMapGenerate extends Component
 			self._T.preplacedEntities = {}
 		end
 		self._T.preplacedPoolById = {}
-
+		
 		local root = _EntityService:GetEntityByPath(self:ResolveMapChildPath(self:ReadString(self.PreplacedRoomRootPath, "GeneratedRooms")))
 		if root == nil then
 			return
 		end
-
+		
 		for index, room in ipairs(root.Children) do
 			if room ~= nil then
 				self._T.preplacedPoolById[room.Name] = room
@@ -805,7 +805,7 @@ script TestMapGenerate extends Component
 		if cell == nil then
 			return
 		end
-
+		
 		cell.PlatformVisibility = {}
 		local platformNames = {"LeftPlatform", "RightPlatform", "RightPlatform_1"}
 		local visibleCount = 0
@@ -819,7 +819,7 @@ script TestMapGenerate extends Component
 				visibleCount = visibleCount + 1
 			end
 		end
-
+		
 		if visibleCount == 0 then
 			cell.PlatformVisibility[platformNames[self:NextRandomIndex(#platformNames)]] = true
 		end
@@ -829,7 +829,7 @@ script TestMapGenerate extends Component
 		if cell ~= nil and cell.TemplateName ~= nil and cell.TemplateName ~= "" then
 			return cell.TemplateName
 		end
-
+		
 		local names = self:GetTemplateNames()
 		if names ~= nil and #names > 0 and cell ~= nil then
 			local index = ((cell.Row - 1) * self:GetGridSize() + cell.Column - 1) % #names + 1
@@ -943,7 +943,7 @@ script TestMapGenerate extends Component
 		if seed <= 0 then
 			seed = 1
 		end
-
+		
 		self._T.randomState = seed % 2147483647
 		if self._T.randomState <= 0 then
 			self._T.randomState = 1
@@ -964,7 +964,7 @@ script TestMapGenerate extends Component
 		if self._T.randomState == nil or self._T.randomState <= 0 then
 			self:ResetRandom()
 		end
-
+		
 		self._T.randomState = (self._T.randomState * 48271) % 2147483647
 		return self._T.randomState / 2147483647
 	end

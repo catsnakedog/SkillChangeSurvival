@@ -47,15 +47,15 @@ script SpotTypeOverlayLightInfo
 	---@sealed
 	property float SpotOuterAngle
 
-	---@description "The world space coordinates of the light source."
+	---@description "The world's spacial coordinates for the light source."
 	---@sealed
 	property Vector3 WorldPosition
 
-	---@description "The world's spatial z-axis-based rotation value where the light source will be applied."
+	---@description "The world's spatial z-axis-based rotation value for where the light source will be applied."
 	---@sealed
 	property float WorldZRotation
 
-	---@description "Initializes SpotTypeOverlayLightInfo to the specified value."
+	---@description "Applies SpotTypeOverlayLightInfo with the specified value."
 	constructor SpotTypeOverlayLightInfo(Entity instigator) end
 
 	---@description "Initializes SpotTypeOverlayLightInfo to the specified value."

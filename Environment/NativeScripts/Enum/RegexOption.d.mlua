@@ -20,6 +20,6 @@ script RegexOption
 	---@description "Converts numbers to the applicable type."
 	static method RegexOption CastFrom(number value) end
 
-	---@description "Converts strings to the applicable type."
+	---@description "This converts strings to the applicable type."
 	static method RegexOption CastFrom(string value) end
 end

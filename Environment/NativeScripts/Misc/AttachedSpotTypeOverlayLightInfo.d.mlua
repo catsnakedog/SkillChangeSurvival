@@ -27,11 +27,11 @@ script AttachedSpotTypeOverlayLightInfo
 	---@sealed
 	property int32 LightOrder
 
-	---@description "The parent entity's spatial coordinates where the light source will be placed in."
+	---@description "The parent entity's spatial coordinates for where the light source will be placed."
 	---@sealed
 	property Vector3 LocalPosition
 
-	---@description "The parent entity's spatial z-axis-based rotation value where the light source will be applied to."
+	---@description "The parent entity's spatial z-axis-based rotation value for where the light source will be applied."
 	---@sealed
 	property float LocalZRotation
 

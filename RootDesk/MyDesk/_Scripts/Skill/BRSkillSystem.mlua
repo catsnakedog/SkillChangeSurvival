@@ -133,7 +133,7 @@ script BRSkillSystem extends Logic
 		else
 			self:NotifyUserChanged(userId)
 		end
-
+		
 		self:Log("grant user=" .. userId .. " part=" .. part.PartId .. " slot=" .. part.SlotKey .. " autoEquip=" .. tostring(autoEquip))
 		return part
 	end
@@ -163,7 +163,7 @@ script BRSkillSystem extends Logic
 		if part == nil then
 			return false
 		end
-
+		
 		state.Equipped[part.SlotKey] = part.InstanceId
 		self:NotifyUserChanged(userId)
 		self:Log("equip user=" .. userId .. " slot=" .. part.SlotKey .. " part=" .. part.PartId)
@@ -292,7 +292,7 @@ script BRSkillSystem extends Logic
 		if self:ReadString(userId, "") ~= self:ReadString(localPlayer.PlayerComponent.UserId, "") then
 			return
 		end
-
+		
 		self._T.localPanelText = self:ReadString(panelText, self:GetEmptyPanelText())
 		self._T.localPanelHasParts = hasParts == true
 		self._T.localPanelUpdatedAt = _UtilLogic.ElapsedSeconds
@@ -314,12 +314,12 @@ script BRSkillSystem extends Logic
 		if state ~= nil and state.Parts ~= nil and #state.Parts > 0 then
 			hasParts = true
 		end
-
+		
 		local text = "PARTS"
 			.. "\n" .. self:BuildEquippedText(state)
 			.. "\n" .. self:BuildStatsText(userId)
 			.. "\n" .. self:BuildOwnedPartsText(state)
-
+		
 		return {
 			PanelText = text,
 			HasParts = hasParts
@@ -363,7 +363,7 @@ script BRSkillSystem extends Logic
 		if state == nil or state.Parts == nil or #state.Parts <= 0 then
 			return "Bag(0): empty"
 		end
-
+		
 		local count = #state.Parts
 		local firstIndex = math.max(1, count - self:GetPanelMaxPartRows() + 1)
 		local text = "Bag(" .. tostring(count) .. ")"

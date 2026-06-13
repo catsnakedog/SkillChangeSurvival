@@ -2,6 +2,14 @@
 @Component
 script AIComponent extends Component
 
+	---@description "The unique identifier of the behavior tree entry."
+	---@sealed
+	property string BehaviourTreeId
+
+	---@description "This is the data store that is used in the AI behavior tree. It's managed in key-value pairs, and data is shared between behavior tree nodes."
+	---@sealed
+	readonly property Blackboard BlackBoard
+
 	---@description "Sets whether to support the legacy system. Previous systems must use the ExclusiveExecutionWhenRunning property in order to set the node as Running. The legacy system is no longer supported and will be deleted at a later date."
 	---@sealed
 	property boolean IsLegacy = false

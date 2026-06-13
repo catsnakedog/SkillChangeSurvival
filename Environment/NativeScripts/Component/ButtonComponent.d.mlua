@@ -29,6 +29,10 @@ script ButtonComponent extends Component
 	@Sync
 	property boolean OverrideSorting = false
 
+	---@description "The option that sets whether a button's selection state can be maintained."
+	---@sealed
+	property boolean Selectable = true
+
 	---@description "When two or more entities overlap, the priority is determined according to the Sorting Layer."
 	---@sealed
 	@Sync

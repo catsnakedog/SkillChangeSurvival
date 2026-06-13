@@ -37,25 +37,25 @@ script BRSkillPartPanel extends Component
 			self:SetPanelText(self:ReadString(self.WaitingText, "PARTS"))
 			return
 		end
-
+		
 		local now = _UtilLogic.ElapsedSeconds
 		if _BRSkillSystem ~= nil and now >= self.nextRequestAt then
 			self.nextRequestAt = now + self:GetRequestSeconds()
 			_BRSkillSystem:RequestUserSnapshot(localPlayer.PlayerComponent.UserId)
 		end
-
+		
 		local text = self:ReadString(self.WaitingText, "PARTS")
 		local hasParts = false
 		if _BRSkillSystem ~= nil then
 			text = _BRSkillSystem:GetLocalPanelText()
 			hasParts = _BRSkillSystem:LocalSnapshotHasParts()
 		end
-
+		
 		if self.HideWhenEmpty == true and hasParts == false then
 			self:SetPanelVisible(false)
 			return
 		end
-
+		
 		self:SetPanelVisible(true)
 		self:SetPanelText(text)
 	end

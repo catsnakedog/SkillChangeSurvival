@@ -2,7 +2,7 @@
 ---@description "This code represents the results of requests related to room and world instance events."
 @Enum
 script SendEventRequestResultCode
-	---@description "Request processed successfully."
+	---@description "Request processing was successful."
 	member OK = 0
 	---@description "Request cancelled."
 	member Cancelled = 1000000

@@ -101,6 +101,7 @@ script TextGUIRendererComponent extends Component
 	---@sealed
 	property RectOffset Padding
 
+	---@description "Displays the text across multiple pages."
 	---@sealed
 	property int32 Page = 1
 

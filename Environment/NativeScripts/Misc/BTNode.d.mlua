@@ -17,7 +17,7 @@ script BTNode
 
 	---@description "AIComponent to have the node."
 	---@sealed
-	property AIComponent ParentAI
+	readonly property AIComponent ParentAI
 
 	---@description "Executes the node."
 	---@sealed

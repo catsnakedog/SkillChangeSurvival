@@ -7,7 +7,7 @@
   "Usage": 0,
   "UsePublish": 1,
   "UseService": 0,
-  "CoreVersion": "26.3.0.0",
+  "CoreVersion": "26.5.0.0",
   "StudioVersion": "0.1.0.0",
   "DynamicLoading": 0,
   "ContentProto": {
@@ -200,8 +200,6 @@
             {
               "@type": "script.BRLobbyMatchmaker",
               "Enable": true,
-              "AutoQueueOnEnter": false,
-              "AutoJoinCurrentUsersOnBeginPlay": false,
               "TargetPlayerCount": 2.0,
               "LobbyMapName": "StartMap",
               "GatherMapName": "RoomTestMap"

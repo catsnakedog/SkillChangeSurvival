@@ -1,0 +1,23 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "directory://dade6b5fd44b4687be75f4e13b5c5a9e",
+  "ContentType": "x-mod/directory",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.5.0.0",
+  "StudioVersion": "0.1.0.0",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "entry_id": "directory://dade6b5fd44b4687be75f4e13b5c5a9e",
+      "name": "Battle",
+      "lock": false,
+      "folding": false,
+      "nameEditable": true
+    }
+  }
+}

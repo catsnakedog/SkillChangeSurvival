@@ -158,7 +158,7 @@ script BRBattleLogic extends Component
 			self:ApplySkillStatsToPlayer(playerEntity)
 			return
 		end
-
+		
 		self:PreparePlayerForBattle(playerEntity)
 		
 		local actionHandler = playerEntity:ConnectEvent(PlayerActionEvent, self.HandlePlayerActionEvent)
@@ -219,7 +219,7 @@ script BRBattleLogic extends Component
 			self:ResetSkillState(userId)
 		end
 		self:CaptureBasePhysicsStats(playerEntity)
-
+		
 		local maxHp = self:GetAdjustedBattleMaxHp(playerEntity)
 		playerComponent.PVPMode = true
 		playerComponent.MaxHp = maxHp
@@ -253,7 +253,7 @@ script BRBattleLogic extends Component
 		if playerEntity == nil then
 			return
 		end
-
+		
 		if playerEntity.RigidbodyComponent ~= nil then
 			playerEntity.RigidbodyComponent.Enable = true
 			playerEntity.RigidbodyComponent.KinematicMove = false
@@ -270,7 +270,7 @@ script BRBattleLogic extends Component
 		else
 			self:Log("missing RigidbodyComponent user=" .. self:GetUserId(playerEntity))
 		end
-
+		
 		if self.OverridePlayerPhysicsStats == true and playerEntity.MovementComponent ~= nil then
 			playerEntity.MovementComponent.InputSpeed = self:GetBattleWalkSpeed()
 			playerEntity.MovementComponent.JumpForce = self:GetBattleWalkJump()
@@ -289,7 +289,7 @@ script BRBattleLogic extends Component
 		if _BRSkillSystem == nil or playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return
 		end
-
+		
 		local maxHp = self:GetAdjustedBattleMaxHp(playerEntity)
 		playerEntity.PlayerComponent.MaxHp = maxHp
 		if playerEntity.PlayerComponent.Hp > maxHp then
@@ -308,7 +308,7 @@ script BRBattleLogic extends Component
 		if self._T.basePhysicsStats[userId] ~= nil then
 			return self._T.basePhysicsStats[userId]
 		end
-
+		
 		local stats = {
 			InputSpeed = self:GetBattleWalkSpeed(),
 			JumpForce = self:GetBattleWalkJump(),
@@ -336,7 +336,7 @@ script BRBattleLogic extends Component
 			self:Log("map physics map=nil footholds=-1 customFootholds=-1")
 			return
 		end
-
+		
 		local mapEntity = self.Entity.CurrentMap
 		local footholdCount = -1
 		if mapEntity.FootholdComponent ~= nil then
@@ -347,7 +347,7 @@ script BRBattleLogic extends Component
 				footholdCount = 0
 			end
 		end
-
+		
 		local customFootholdCount = 0
 		local customFootholds = mapEntity:GetChildComponentsByTypeName("CustomFootholdComponent", true)
 		if customFootholds == nil or #customFootholds == 0 then
@@ -356,7 +356,7 @@ script BRBattleLogic extends Component
 		if customFootholds ~= nil then
 			customFootholdCount = #customFootholds
 		end
-
+		
 		local tileMapMode = "nil"
 		if mapEntity.MapComponent ~= nil then
 			tileMapMode = tostring(mapEntity.MapComponent.TileMapMode)
@@ -369,7 +369,7 @@ script BRBattleLogic extends Component
 		if playerEntity == nil then
 			return
 		end
-
+		
 		local position = self:GetEntityPosition2(playerEntity)
 		local hasRigidbody = playerEntity.RigidbodyComponent ~= nil
 		local hasMovement = playerEntity.MovementComponent ~= nil
@@ -386,7 +386,7 @@ script BRBattleLogic extends Component
 		if playerEntity == nil or playerEntity.RigidbodyComponent == nil then
 			return
 		end
-
+		
 		local position = self:GetEntityPosition2(playerEntity)
 		local onGround = playerEntity.RigidbodyComponent:IsOnGround()
 		local footholdId = "nil"
@@ -394,7 +394,7 @@ script BRBattleLogic extends Component
 		if foothold ~= nil then
 			footholdId = tostring(foothold.Id)
 		end
-
+		
 		self:Log("player ground state user=" .. self:GetUserId(playerEntity)
 			.. " onGround=" .. tostring(onGround)
 			.. " foothold=" .. footholdId
@@ -406,13 +406,13 @@ script BRBattleLogic extends Component
 		if self.EnablePlatformFallback == false then
 			return
 		end
-
+		
 		self:EnsureServerRuntimeTables()
 		local users = _UserService:GetUsersByMapName(self:GetBattleMapName())
 		if users == nil then
 			return
 		end
-
+		
 		for index, playerEntity in ipairs(users) do
 			self:GroundBattlePlayer(playerEntity)
 		end
@@ -423,20 +423,20 @@ script BRBattleLogic extends Component
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return
 		end
-
+		
 		local userId = playerEntity.PlayerComponent.UserId
 		local position = self:GetEntityPosition2(playerEntity)
 		local lastPosition = self._T.lastPositions[userId]
 		if lastPosition == nil then
 			lastPosition = Vector2(position.x, position.y + 2)
 		end
-
+		
 		if position.y < self:GetFallResetY() then
 			self:SetEntityWorldPosition2(playerEntity, Vector2(0, self:GetMainFloorY() + 0.1))
 			self._T.lastPositions[userId] = Vector2(0, self:GetMainFloorY() + 0.1)
 			return
 		end
-
+		
 		local groundY = self:FindPlatformY(position.x, position.y, lastPosition.y)
 		if groundY ~= nil then
 			local groundedPosition = Vector2(position.x, groundY)
@@ -444,7 +444,7 @@ script BRBattleLogic extends Component
 			self._T.lastPositions[userId] = groundedPosition
 			return
 		end
-
+		
 		self._T.lastPositions[userId] = position
 	end
 
@@ -475,7 +475,7 @@ script BRBattleLogic extends Component
 		if playerEntity == nil then
 			return
 		end
-
+		
 		if playerEntity.RigidbodyComponent ~= nil then
 			playerEntity.RigidbodyComponent:SetWorldPosition(position)
 		elseif playerEntity.PlayerComponent ~= nil then

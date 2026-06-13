@@ -1,10 +1,13 @@
 ---@sealed
+---@description "The match results."
 @Misc
 script MatchResultInfo
 
+	---@description "The away user."
 	---@sealed
 	readonly property MatchResultUserInfo Away
 
+	---@description "The home user."
 	---@sealed
 	readonly property MatchResultUserInfo Home
 

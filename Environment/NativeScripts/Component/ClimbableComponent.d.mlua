@@ -28,6 +28,10 @@ script ClimbableComponent extends Component
 	---@sealed
 	property boolean IsUseDefaultObjectBoxSize = true
 
+	---@description "Set if movement will only be limited with a climbable area. If true, you can only leave the climbable area from the start and end points. Only valid when AllowHorizontalMove is true."
+	---@sealed
+	property boolean LockMovementInBoundary = false
+
 	---@description "When climbing, this value is multiplied to the speed traveled in the X or Y direction. The greater the value, the faster the movement."
 	---@sealed
 	property Vector2 SpeedFactor = Vector2(1.000, 1.000)

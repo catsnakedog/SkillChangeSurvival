@@ -3,12 +3,6 @@ script BRLobbyMatchmaker extends Component
 
 	property boolean EnableLobbyMatchmaker = true
 
-	property boolean AutoQueueOnEnter = false
-
-	property boolean AutoJoinCurrentUsersOnBeginPlay = false
-
-	property number AutoJoinCurrentUsersDelay = 1
-
 	property number TargetPlayerCount = 3
 
 	property number QueuePollSeconds = 1
@@ -19,15 +13,11 @@ script BRLobbyMatchmaker extends Component
 
 	property number MaxQueueUpdateRetries = 5
 
-	property number MaxMatchesPerTick = 8
-
 	property number MaxActiveMatches = 3
 
 	property number MatchRoomTtlSeconds = 600
 
 	property string MatchMode = "SoloBattleRoyale"
-
-	property number MinStartPlayerCount = 0
 
 	property boolean UseGlobalMatchQueue = true
 
@@ -90,10 +80,9 @@ script BRLobbyMatchmaker extends Component
 			self:DisableOutsideLobby()
 			return
 		end
-
+		
 		self:ResetRuntime()
 		self:StartPollTimer()
-		self:TryJoinCurrentUsersSoon()
 	end
 
 	method void DisableOutsideLobby()
@@ -122,7 +111,7 @@ script BRLobbyMatchmaker extends Component
 		self.ActiveMatchCount = 0
 		self.LastError = ""
 		self.CurrentWorldInstanceId = self:GetCurrentWorldInstanceId()
-		log("[BRLobby] begin backend=" .. self:GetQueueBackendName() .. " autoQueue=" .. tostring(self.AutoQueueOnEnter) .. " autoCurrent=" .. tostring(self.AutoJoinCurrentUsersOnBeginPlay) .. " groupSize=" .. tostring(self:GetTargetCount()) .. " ttl=" .. tostring(self:GetTicketTtlSeconds()) .. " heartbeat=" .. tostring(self:GetHeartbeatSeconds()) .. " instance=" .. self.CurrentWorldInstanceId)
+		log("[BRLobby] begin backend=" .. self:GetQueueBackendName() .. " groupSize=" .. tostring(self:GetTargetCount()) .. " ttl=" .. tostring(self:GetTicketTtlSeconds()) .. " heartbeat=" .. tostring(self:GetHeartbeatSeconds()) .. " instance=" .. self.CurrentWorldInstanceId)
 	end
 
 	@ExecSpace("ServerOnly")
@@ -137,27 +126,10 @@ script BRLobbyMatchmaker extends Component
 		if self._T.runtimeReady == true then
 			return
 		end
-
+		
 		log("[BRLobby] runtime was not ready. initializing now.")
 		self:ResetRuntime()
 		self:StartPollTimer()
-	end
-
-	@ExecSpace("ServerOnly")
-	@InspectorButton("Join Current Users")
-	method void JoinCurrentUsers()
-		self:EnsureRuntimeStarted()
-		local joinedCount = 0
-		for userId, entity in pairs(_UserService.UserEntities) do
-			local profileCode = ""
-			if entity.PlayerComponent ~= nil then
-				profileCode = entity.PlayerComponent.ProfileCode
-			end
-			if self:JoinQueue(userId, profileCode) == true then
-				joinedCount = joinedCount + 1
-			end
-		end
-		log("[BRLobby] join current users requested count=" .. tostring(joinedCount))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -170,13 +142,6 @@ script BRLobbyMatchmaker extends Component
 	end
 
 	@ExecSpace("ServerOnly")
-	@InspectorButton("Gather Match")
-	method void GatherMatchNow()
-		self:EnsureRuntimeStarted()
-		self:TryMakeMatch(true)
-	end
-
-	@ExecSpace("ServerOnly")
 	@InspectorButton("Clear Dynamic Matches")
 	method void ClearDynamicMatches()
 		self:EnsureRuntimeStarted()
@@ -185,11 +150,11 @@ script BRLobbyMatchmaker extends Component
 			_BRBattleLauncher:DestroyDynamicMap(room.DynamicMapName)
 		end
 		self._T.roomQueue = _BRMatchRoomQueue:CreateEmptyRoomQueue(self:Now())
-
+		
 		if self._T.dynamicMaps == nil then
 			self._T.dynamicMaps = {}
 		end
-
+		
 		for mapName, active in pairs(self._T.dynamicMaps) do
 			if active == true then
 				if _BRBattleLauncher:DestroyDynamicMap(mapName) == false then
@@ -197,7 +162,7 @@ script BRLobbyMatchmaker extends Component
 				end
 			end
 		end
-
+		
 		self._T.matches = {}
 		self._T.dynamicMaps = {}
 		self.ActiveMatchCount = 0
@@ -208,7 +173,7 @@ script BRLobbyMatchmaker extends Component
 	method void CleanupEndedMatches()
 		self:EnsureRuntimeStarted()
 		self:EnsureRoomQueue()
-
+		
 		for index = #self._T.roomQueue.Rooms, 1, -1 do
 			local room = self._T.roomQueue.Rooms[index]
 			if _BRMatchRoomQueue:IsFinishedState(room.State) == true then
@@ -216,7 +181,7 @@ script BRLobbyMatchmaker extends Component
 				table.remove(self._T.roomQueue.Rooms, index)
 			end
 		end
-
+		
 		self:UpdateActiveMatchCount()
 	end
 
@@ -233,7 +198,7 @@ script BRLobbyMatchmaker extends Component
 			log("[BRLobby] global queue reset: key=" .. self:GetGlobalQueueKey())
 			return
 		end
-
+		
 		log("[BRLobby] global queue reset failed: key=" .. self:GetGlobalQueueKey() .. " error=" .. self.LastError)
 	end
 
@@ -246,7 +211,7 @@ script BRLobbyMatchmaker extends Component
 			log("[BRLobby] debug failed: queue unavailable")
 			return
 		end
-
+		
 		local queue = snapshot.State
 		_BRMatchQueue:NormalizeQueue(queue)
 		self:UpdateQueueCounts(queue)
@@ -264,30 +229,13 @@ script BRLobbyMatchmaker extends Component
 			log("[BRLobby] poll timer already running id=" .. tostring(self._T.pollTimerId))
 			return
 		end
-
+		
 		local tick = function()
 			self:OnMatchmakerTick()
 		end
-
+		
 		self._T.pollTimerId = _TimerService:SetTimerRepeat(tick, math.max(0.2, self.QueuePollSeconds))
 		log("[BRLobby] poll timer started id=" .. tostring(self._T.pollTimerId) .. " interval=" .. tostring(math.max(0.2, self.QueuePollSeconds)))
-	end
-
-	@ExecSpace("ServerOnly")
-	method void TryJoinCurrentUsersSoon()
-		if self.EnableLobbyMatchmaker == false or self.AutoQueueOnEnter == false or self.AutoJoinCurrentUsersOnBeginPlay == false then
-			log("[BRLobby] auto join current users skipped: enabled=" .. tostring(self.EnableLobbyMatchmaker) .. " autoQueue=" .. tostring(self.AutoQueueOnEnter) .. " autoCurrent=" .. tostring(self.AutoJoinCurrentUsersOnBeginPlay))
-			return
-		end
-
-		local joinUsers = function()
-			log("[BRLobby] auto join current users fired")
-			self:JoinCurrentUsers()
-			self:TryMakeMatch(false)
-		end
-
-		_TimerService:SetTimerOnce(joinUsers, math.max(0, self.AutoJoinCurrentUsersDelay))
-		log("[BRLobby] auto join current users scheduled delay=" .. tostring(math.max(0, self.AutoJoinCurrentUsersDelay)))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -296,10 +244,9 @@ script BRLobbyMatchmaker extends Component
 		if self.EnableLobbyMatchmaker == false then
 			return
 		end
-
+		
 		self:CleanExpiredMatchRooms()
 		self:RefreshLocalTicketHeartbeats()
-		self:TryMakeMatch(false)
 		self:LogPeriodicStatus()
 	end
 
@@ -313,22 +260,22 @@ script BRLobbyMatchmaker extends Component
 			log("[BRLobby] queue skipped outside lobby: user=" .. tostring(userId) .. " lobby=" .. self:ReadString(self.LobbyMapName, "StartMap"))
 			return false
 		end
-
+		
 		local now = self:Now()
 		local ticket = _BRMatchQueue:CreateTicket(userId, profileCode, self:GetCurrentWorldInstanceId(), now, self:GetTicketTtlSeconds())
-
+		
 		for attempt = 1, self.MaxQueueUpdateRetries do
 			local snapshot = self:ReadQueueSnapshot()
 			if snapshot == nil then
 				return false
 			end
-
+		
 			local queue = snapshot.State
 			_BRMatchQueue:NormalizeQueue(queue)
 			_BRMatchQueue:RemoveTicket(queue, userId, "")
 			table.insert(queue.Tickets, ticket)
 			queue.UpdatedAt = now
-
+		
 			if self:CommitQueueAndUpdate(snapshot, queue) == true then
 				self._T.localTickets[userId] = ticket.TicketId
 				self.MatchmakingPhase = "Queued"
@@ -338,7 +285,7 @@ script BRLobbyMatchmaker extends Component
 				return true
 			end
 		end
-
+		
 		log("[BRLobby] failed to join queue: " .. userId)
 		return false
 	end
@@ -354,16 +301,36 @@ script BRLobbyMatchmaker extends Component
 			log("[BRLobby] button join ignored: empty user")
 			return
 		end
-
+		
 		local playerEntity = _UserService:GetUserEntityByUserId(userId)
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
 			log("[BRLobby] button join ignored: missing player user=" .. tostring(userId))
 			return
 		end
-
-		if self:JoinQueue(userId, playerEntity.PlayerComponent.ProfileCode) == true then
-			self:TryMakeMatch(false)
+		
+		if self:IsUserQueuedLocally(userId) == true then
+			log("[BRLobby] button join ignored: already queued user=" .. tostring(userId))
+			return
 		end
+		
+		if self:JoinQueue(userId, playerEntity.PlayerComponent.ProfileCode) == true then
+			self:TryMakeMatch()
+		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestCancelQueue(string userId)
+		self:EnsureRuntimeStarted()
+		if self.EnableLobbyMatchmaker == false then
+			log("[BRLobby] button cancel ignored: disabled user=" .. tostring(userId))
+			return
+		end
+		if userId == nil or userId == "" then
+			log("[BRLobby] button cancel ignored: empty user")
+			return
+		end
+		
+		self:CancelQueue(userId)
 	end
 
 	@ExecSpace("ServerOnly")
@@ -372,29 +339,29 @@ script BRLobbyMatchmaker extends Component
 		if userId == nil or userId == "" then
 			return false
 		end
-
+		
 		local localTicketId = self._T.localTickets[userId]
 		if localTicketId == nil or localTicketId == "" then
 			return true
 		end
-
+		
 		for attempt = 1, self.MaxQueueUpdateRetries do
 			local snapshot = self:ReadQueueSnapshot()
 			if snapshot == nil then
 				return false
 			end
-
+		
 			local queue = snapshot.State
 			_BRMatchQueue:NormalizeQueue(queue)
 			local removed = _BRMatchQueue:RemoveTicket(queue, userId, localTicketId)
 			queue.UpdatedAt = self:Now()
-
+		
 			if removed == false then
 				self._T.localTickets[userId] = nil
 				self:UpdateQueueCounts(queue)
 				return true
 			end
-
+		
 			if self:CommitQueueAndUpdate(snapshot, queue) == true then
 				self._T.localTickets[userId] = nil
 				self.MatchmakingPhase = "Canceled"
@@ -403,7 +370,7 @@ script BRLobbyMatchmaker extends Component
 				return true
 			end
 		end
-
+		
 		log("[BRLobby] failed to cancel queue: " .. userId)
 		return false
 	end
@@ -411,29 +378,33 @@ script BRLobbyMatchmaker extends Component
 	@ExecSpace("ServerOnly")
 	method void RefreshLocalTicketHeartbeats()
 		self:EnsureRuntimeStarted()
+		if self:HasLocalTickets() == false then
+			return
+		end
+		
 		local now = self:Now()
 		if self._T.lastHeartbeatAt ~= nil and now - self._T.lastHeartbeatAt < self:GetHeartbeatSeconds() then
 			return
 		end
 		self._T.lastHeartbeatAt = now
-
+		
 		for attempt = 1, self.MaxQueueUpdateRetries do
 			local snapshot = self:ReadQueueSnapshot()
 			if snapshot == nil then
 				return
 			end
-
+		
 			local queue = snapshot.State
 			_BRMatchQueue:NormalizeQueue(queue)
 			local beforeCleanCount = #queue.Tickets
 			local changed = _BRMatchQueue:RefreshLocalTickets(queue, self._T.localTickets, self:GetCurrentWorldInstanceId(), now, self:GetTicketTtlSeconds())
-
+		
 			if _BRMatchQueue:CleanExpiredTickets(queue, now) == true then
 				changed = true
 				log("[BRLobby] expired tickets removed during heartbeat: before=" .. tostring(beforeCleanCount) .. " after=" .. tostring(#queue.Tickets) .. " now=" .. tostring(now) .. " ttl=" .. tostring(self:GetTicketTtlSeconds()))
 			end
 			queue.UpdatedAt = now
-
+		
 			if changed == false then
 				self:UpdateQueueCounts(queue)
 				return
@@ -445,44 +416,31 @@ script BRLobbyMatchmaker extends Component
 	end
 
 	@ExecSpace("ServerOnly")
-	method boolean TryMakeMatch(boolean force)
+	method boolean TryMakeMatch()
 		self:EnsureRuntimeStarted()
 		if self.EnableLobbyMatchmaker == false then
 			return false
 		end
-
+		
 		self:CleanExpiredMatchRooms()
-		local madeMatch = false
-		local maxMatches = math.max(1, math.floor(self:ReadNumber(self.MaxMatchesPerTick, 8)))
-		for matchIndex = 1, maxMatches do
-			if self:TryMakeSingleMatch(force) == false then
-				return madeMatch
-			end
-
-			madeMatch = true
-			if force == true then
-				force = false
-			end
-		end
-
-		return madeMatch
+		return self:TryMakeSingleMatch()
 	end
 
 	@ExecSpace("ServerOnly")
-	method boolean TryMakeSingleMatch(boolean force)
+	method boolean TryMakeSingleMatch()
 		if self:CanCreateMoreMatches() == false then
 			local activeCount = _BRMatchRoomQueue:GetActiveRoomCount(self._T.roomQueue)
 			self.ActiveMatchCount = activeCount
 			self.MatchmakingPhase = "Match capacity full " .. tostring(activeCount) .. "/" .. tostring(self.MaxActiveMatches)
 			return false
 		end
-
+		
 		for attempt = 1, self.MaxQueueUpdateRetries do
 			local snapshot = self:ReadQueueSnapshot()
 			if snapshot == nil then
 				return false
 			end
-
+		
 			local queue = snapshot.State
 			_BRMatchQueue:NormalizeQueue(queue)
 			local beforeCleanCount = #queue.Tickets
@@ -491,31 +449,31 @@ script BRLobbyMatchmaker extends Component
 				log("[BRLobby] expired tickets removed during match check: before=" .. tostring(beforeCleanCount) .. " after=" .. tostring(#queue.Tickets) .. " now=" .. tostring(self:Now()) .. " ttl=" .. tostring(self:GetTicketTtlSeconds()))
 			end
 			self:UpdateQueueCounts(queue)
-
-			if self:CanStartWithQueue(queue, force) == false then
+		
+			if self:CanStartWithQueue(queue) == false then
 				self:UpdateWaitingPhase(queue)
 				if queueChanged == true then
 					self:CommitQueueSnapshot(snapshot)
 				end
 				return false
 			end
-
+		
 			local selectedTickets = _BRMatchQueue:TakeLocalTickets(queue, self:GetTargetCount(), self:GetCurrentWorldInstanceId())
 			if #selectedTickets == 0 then
 				return false
 			end
-
+		
 			queue.UpdatedAt = self:Now()
 			if self:CommitQueueAndUpdate(snapshot, queue) == true then
 				self:GatherTickets(selectedTickets)
 				return true
 			end
 		end
-
+		
 		return false
 	end
 
-	method boolean CanStartWithQueue(any queue, boolean force)
+	method boolean CanStartWithQueue(any queue)
 		local queuedCount = _BRMatchQueue:GetLocalTicketCount(queue, self:GetCurrentWorldInstanceId())
 		return queuedCount >= self:GetTargetCount()
 	end
@@ -539,17 +497,17 @@ script BRLobbyMatchmaker extends Component
 			log("[BRLobby] gather canceled because selected users are not in this server.")
 			return
 		end
-
+		
 		self:EnsureRoomQueue()
 		local now = self:Now()
-		local matchRoom = _BRMatchRoomQueue:CreateMatchRoom(tickets, self.MatchMode, self.GatherMapName, "", self:GetCurrentWorldInstanceId(), self:GetTargetCount(), self:GetMinStartPlayerCount(), now, self:GetMatchRoomTtlSeconds())
+		local matchRoom = _BRMatchRoomQueue:CreateMatchRoom(tickets, self.MatchMode, self.GatherMapName, "", self:GetCurrentWorldInstanceId(), self:GetTargetCount(), now, self:GetMatchRoomTtlSeconds())
 		if _BRMatchRoomQueue:AddRoom(self._T.roomQueue, matchRoom) == false then
 			self.MatchmakingPhase = "RoomAddFailed"
 			self:RestoreTickets(tickets)
 			log("[BRLobby] match room add failed: " .. tostring(matchRoom.MatchId))
 			return
 		end
-
+		
 		self:UpdateActiveMatchCount()
 		_BRMatchRoomQueue:UpdateRoomState(self._T.roomQueue, matchRoom.MatchId, "Moving", now)
 		local launchResult = _BRBattleLauncher:StartMatchRoom(matchRoom, self)
@@ -557,14 +515,14 @@ script BRLobbyMatchmaker extends Component
 			self:FailMatchRoom(matchRoom, tickets, launchResult, "DynamicMapFailed")
 			return
 		end
-
+		
 		_BRMatchRoomQueue:SetRoomDynamicMap(self._T.roomQueue, matchRoom.MatchId, launchResult.DynamicMapName)
-		if launchResult.MovedCount < self:GetMinStartPlayerCount() then
+		if launchResult.MovedCount < self:GetTargetCount() then
 			_BRBattleLauncher:ReturnPlayersToLobby(matchRoom, self)
 			self:FailMatchRoom(matchRoom, tickets, launchResult, "MoveFailed")
 			return
 		end
-
+		
 		_BRMatchRoomQueue:UpdateRoomState(self._T.roomQueue, matchRoom.MatchId, "Gathered", self:Now())
 		self:SaveDynamicMatch(matchRoom.MatchId, launchResult.DynamicMapName, players)
 		self.LastGatherId = matchRoom.MatchId
@@ -597,33 +555,6 @@ script BRLobbyMatchmaker extends Component
 		return players
 	end
 
-	method number MovePlayersToGatherMap(any players, string dynamicMapName)
-		local matchRoom = {
-			DynamicMapName = dynamicMapName,
-			Players = {}
-		}
-		for index, userId in ipairs(players) do
-			table.insert(matchRoom.Players, {
-				UserId = userId,
-				SpawnIndex = index
-			})
-		end
-		return _BRBattleLauncher:MovePlayersToMatchRoom(matchRoom, self)
-	end
-
-	method string CreateDynamicGatherMap(string gatherId)
-		local matchRoom = {
-			MatchId = gatherId,
-			SourceMapName = self:ReadString(self.GatherMapName, "RoomTestMap"),
-			DynamicMapName = self:GetDynamicGatherMapName(gatherId)
-		}
-		return _BRBattleLauncher:CreateDynamicMapForRoom(matchRoom, self)
-	end
-
-	method string GetDynamicGatherMapName(string gatherId)
-		return _BRBattleLauncher:GetDynamicMapName(self.DynamicMapPrefix, gatherId)
-	end
-
 	method void SaveDynamicMatch(string gatherId, string mapName, any players)
 		if self._T.matches == nil then
 			self._T.matches = {}
@@ -631,7 +562,7 @@ script BRLobbyMatchmaker extends Component
 		if self._T.dynamicMaps == nil then
 			self._T.dynamicMaps = {}
 		end
-
+		
 		self._T.matches[gatherId] = {
 			Id = gatherId,
 			MapName = mapName,
@@ -663,7 +594,7 @@ script BRLobbyMatchmaker extends Component
 				table.insert(expiredRooms, room)
 			end
 		end
-
+		
 		if _BRMatchRoomQueue:CleanExpiredRooms(self._T.roomQueue, now) == true then
 			for index, room in ipairs(expiredRooms) do
 				_BRBattleLauncher:ReturnPlayersToLobby(room, self)
@@ -679,13 +610,13 @@ script BRLobbyMatchmaker extends Component
 		for index, ticket in ipairs(tickets) do
 			_BRMatchQueue:RefreshTicket(ticket, self:GetCurrentWorldInstanceId(), now, self:GetTicketTtlSeconds())
 		end
-
+		
 		for attempt = 1, self.MaxQueueUpdateRetries do
 			local snapshot = self:ReadQueueSnapshot()
 			if snapshot == nil then
 				return
 			end
-
+		
 			local queue = snapshot.State
 			_BRMatchQueue:NormalizeQueue(queue)
 			for index, ticket in ipairs(tickets) do
@@ -694,7 +625,7 @@ script BRLobbyMatchmaker extends Component
 				self._T.localTickets[ticket.UserId] = ticket.TicketId
 			end
 			queue.UpdatedAt = now
-
+		
 			if self:CommitQueueAndUpdate(snapshot, queue) == true then
 				return
 			end
@@ -755,17 +686,17 @@ script BRLobbyMatchmaker extends Component
 		if self.Entity == nil then
 			return true
 		end
-
+		
 		local path = self:ReadString(self.Entity.Path, "")
 		if path == "" then
 			return true
 		end
-
+		
 		local lobbyRoot = "/maps/" .. self:ReadString(self.LobbyMapName, "StartMap")
 		if path == lobbyRoot then
 			return true
 		end
-
+		
 		return string.sub(path, 1, string.len(lobbyRoot) + 1) == lobbyRoot .. "/"
 	end
 
@@ -774,7 +705,7 @@ script BRLobbyMatchmaker extends Component
 		if playerEntity == nil then
 			return false
 		end
-
+		
 		return self:IsLobbyMapName(playerEntity.CurrentMapName)
 	end
 
@@ -800,6 +731,26 @@ script BRLobbyMatchmaker extends Component
 		return _BRMatchRoomQueue:GetActiveRoomCount(self._T.roomQueue) < maxActive
 	end
 
+	method boolean HasLocalTickets()
+		if self._T.localTickets == nil then
+			return false
+		end
+		for userId, ticketId in pairs(self._T.localTickets) do
+			if ticketId ~= nil and ticketId ~= "" then
+				return true
+			end
+		end
+		return false
+	end
+
+	method boolean IsUserQueuedLocally(string userId)
+		if self._T.localTickets == nil then
+			return false
+		end
+		local ticketId = self._T.localTickets[userId]
+		return ticketId ~= nil and ticketId ~= ""
+	end
+
 	method void UpdateQueueCounts(any queue)
 		self.QueueCount = _BRMatchQueue:GetLocalTicketCount(queue, self:GetCurrentWorldInstanceId())
 		self.TotalQueueCount = _BRMatchQueue:GetTotalTicketCount(queue)
@@ -811,14 +762,14 @@ script BRLobbyMatchmaker extends Component
 		if self.VerboseDebugLog == false then
 			return
 		end
-
+		
 		local now = self:Now()
 		local interval = math.max(1, self:ReadNumber(self.DebugLogIntervalSeconds, 5))
 		if self._T.lastDebugLogAt ~= nil and now - self._T.lastDebugLogAt < interval then
 			return
 		end
 		self._T.lastDebugLogAt = now
-
+		
 		log("[BRLobby] tick backend=" .. self:GetQueueBackendName() .. " users=" .. tostring(self:GetConnectedUserCount()) .. " localQueue=" .. tostring(self.QueueCount) .. " totalQueue=" .. tostring(self.TotalQueueCount) .. " phase=" .. self.MatchmakingPhase .. " instance=" .. self.CurrentWorldInstanceId .. " lastError=" .. self.LastError)
 	end
 
@@ -842,15 +793,11 @@ script BRLobbyMatchmaker extends Component
 		return true
 	end
 
-	method Vector2 GetGatherPosition(number index, number total)
-		return _BRBattleLauncher:GetSpawnPosition(nil, index, total, self)
-	end
-
 	method number GetActiveMatchCount()
 		if self._T.roomQueue ~= nil then
 			return _BRMatchRoomQueue:GetActiveRoomCount(self._T.roomQueue)
 		end
-
+		
 		local count = 0
 		if self._T.matches == nil then
 			return count
@@ -875,14 +822,6 @@ script BRLobbyMatchmaker extends Component
 
 	method number GetMatchRoomTtlSeconds()
 		return math.max(30, self:ReadNumber(self.MatchRoomTtlSeconds, 600))
-	end
-
-	method number GetMinStartPlayerCount()
-		local minStart = math.floor(self:ReadNumber(self.MinStartPlayerCount, 0))
-		if minStart <= 0 then
-			return self:GetTargetCount()
-		end
-		return math.max(1, minStart)
 	end
 
 	method number Now()
@@ -921,7 +860,7 @@ script BRLobbyMatchmaker extends Component
 		if playerEntity == nil or playerEntity.NameTagComponent == nil then
 			return
 		end
-
+		
 		playerEntity.NameTagComponent.Name = self:GetMatchingLabel(queueCount)
 		playerEntity.NameTagComponent.FontColor = Color(0.2, 1, 1, 1)
 	end
@@ -940,26 +879,13 @@ script BRLobbyMatchmaker extends Component
 
 	@ExecSpace("ServerOnly")
 	@EventSender("Service", "UserService")
-	handler HandleUserEnterEvent(UserEnterEvent event)
-		self:EnsureRuntimeStarted()
-		if self.EnableLobbyMatchmaker == false or self.AutoQueueOnEnter == false then
-			log("[BRLobby] user enter ignored: enabled=" .. tostring(self.EnableLobbyMatchmaker) .. " autoQueue=" .. tostring(self.AutoQueueOnEnter) .. " user=" .. tostring(event.UserId))
-			return
-		end
-
-		log("[BRLobby] user enter user=" .. tostring(event.UserId) .. " profile=" .. tostring(event.ProfileCode))
-		self:JoinQueue(event.UserId, event.ProfileCode)
-	end
-
-	@ExecSpace("ServerOnly")
-	@EventSender("Service", "UserService")
 	handler HandleUserLeaveEvent(UserLeaveEvent event)
 		self:EnsureRuntimeStarted()
 		if self.EnableLobbyMatchmaker == false then
 			log("[BRLobby] user leave ignored: disabled user=" .. tostring(event.UserId))
 			return
 		end
-
+		
 		log("[BRLobby] user leave user=" .. tostring(event.UserId))
 		self:CancelQueue(event.UserId)
 	end

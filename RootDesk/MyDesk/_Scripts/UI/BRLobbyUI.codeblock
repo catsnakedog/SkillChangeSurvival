@@ -1,13 +1,13 @@
 {
   "Id": "",
   "GameId": "",
-  "EntryKey": "codeblock://b348b30e-6c0f-44a8-9afd-01e21d4bdcab",
+  "EntryKey": "codeblock://3e12f18b-8d83-4e2f-82e9-cc888951911a",
   "ContentType": "x-mod/codeblock",
   "Content": "",
   "Usage": 0,
   "UsePublish": 1,
   "UseService": 0,
-  "CoreVersion": "26.3.0.0",
+  "CoreVersion": "26.5.0.0",
   "StudioVersion": "0.1.0.0",
   "DynamicLoading": 0,
   "ContentProto": {
@@ -21,16 +21,13 @@
         "Major": 1,
         "Minor": 1
       },
-      "Description": "HUD panel that shows the local player's equipped and owned skill parts.",
-      "Id": "b348b30e-6c0f-44a8-9afd-01e21d4bdcab",
+      "Description": "Controls visibility for the lobby UI root based on the local player's current map.",
+      "Id": "3e12f18b-8d83-4e2f-82e9-cc888951911a",
       "Language": 1,
-      "Name": "BRSkillPartPanel",
+      "Name": "BRLobbyUI",
       "Type": 1,
       "Source": 0,
-      "Target": null,
-      "worldCoreVersion": "26.3.0.0",
-      "worldStudioVersion": "0.1.0.0",
-      "useService": 0
+      "Target": null
     }
   }
 }

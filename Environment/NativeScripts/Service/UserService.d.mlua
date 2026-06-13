@@ -15,6 +15,12 @@ script UserService extends Service
 	---@sealed
 	readonly property ReadOnlyDictionary<string, User> Users
 
+	---@description "Checks the sanction reason of a sanctioned user via World Insight. Operates only in the release environment."
+	---@sealed
+	@ReleaseOnly
+	@ExecSpace("ServerOnly")
+	method string GetUserBanReason(string profileCode) end
+
 	---@description "Finds and returns the user information that corresponds to profileCode. "
 	---@sealed
 	method User GetUserByProfileCode(string profileCode) end
@@ -34,6 +40,12 @@ script UserService extends Service
 	---@description "Finds and returns users that belong to the map corresponding to mapName."
 	---@sealed
 	method table<Entity> GetUsersByMapName(string mapName) end
+
+	---@description "Checks whether the user is sanctioned via World Insight. Operates only in the release environment."
+	---@sealed
+	@ReleaseOnly
+	@ExecSpace("ServerOnly")
+	method boolean IsUserBanned(string profileCode) end
 
 	---@description "Exile the user corresponding to userId. The expelled user is informed that he has been deported for reasons corresponding to kickReason."
 	---@sealed

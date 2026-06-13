@@ -74,10 +74,6 @@ script TextInputComponent extends Component
 
 	emitter EmitTextInputValueChangeEvent(TextInputValueChangeEvent event) end
 
-	emitter EmitTextInputKeyDownEvent(TextInputKeyDownEvent event) end
-
-	emitter EmitTextInputKeyUpEvent(TextInputKeyUpEvent event) end
-
 	emitter EmitOrderInLayerChangedEvent(OrderInLayerChangedEvent event) end
 
 	emitter EmitSortingLayerChangedEvent(SortingLayerChangedEvent event) end

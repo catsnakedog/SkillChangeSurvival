@@ -1,0 +1,263 @@
+@Logic
+script UIPopup extends Logic
+
+	property TextComponent message = "3606e39d-32de-427e-8d23-b38af810a3b4"
+
+	property ButtonComponent btnOk = "94a274e4-4111-40f1-924d-c95a3a1f14d5"
+
+	property ButtonComponent btnCancel = "0f5de49b-2adc-409a-816d-15aa43df8e0d"
+
+	property Entity popupGroup = "fb7a3b06-7026-4590-8efe-bb33416dd8f9"
+
+	property Entity popup = "aa954759-0e39-430f-85fa-80bf2e5fe31d"
+
+	property string DefaultMessage = ""
+
+	property string OkText = "OK"
+
+	property string CancelText = "CANCEL"
+
+	property any onOk = nil
+
+	property any onCancel = nil
+
+	property number duration = 0.15
+
+	property number from = 0.5
+
+	property number to = 1
+
+	property boolean isOpen = false
+
+	property boolean isTweenPlaying = false
+
+	property number tweenEventId = 0
+
+	property any okHandler = nil
+
+	property any cancelHandler = nil
+
+	@ExecSpace("Client")
+	method void OnBeginPlay()
+		self:HideImmediate()
+	end
+
+	@ExecSpace("Client")
+	method void OpenConfirm(string message, any onOk, any onCancel)
+		self:OpenInternal(message, onOk, onCancel, true)
+	end
+
+	@ExecSpace("Client")
+	method void OpenAlert(string message, any onOk)
+		self:OpenInternal(message, onOk, nil, false)
+	end
+
+	@ExecSpace("Client")
+	method void Open(string message, any onOk, any onCancel)
+		self:OpenConfirm(message, onOk, onCancel)
+	end
+
+	@ExecSpace("Client")
+	method void OpenInternal(string popupMessage, any okCallback, any cancelCallback, boolean showCancel)
+		if self:IsReady() == false then
+			return
+		end
+		if self.isTweenPlaying == true then
+			return
+		end
+		if self.isOpen == true then
+			self:CloseImmediate()
+		end
+		
+		self.isOpen = true
+		self.popupGroup.Enable = true
+		self.popupGroup.Visible = true
+		self.message.Text = self:ReadString(popupMessage, self:ReadString(self.DefaultMessage, ""))
+		self.onOk = okCallback
+		self.onCancel = cancelCallback
+		self:ApplyButtonText()
+		self:SetCancelVisible(showCancel)
+		self:ConnectButtons()
+		self:StartTween(true)
+	end
+
+	method void ApplyButtonText()
+		if self.btnOk ~= nil and self.btnOk.Entity ~= nil and self.btnOk.Entity.TextComponent ~= nil then
+			self.btnOk.Entity.TextComponent.Text = self:ReadString(self.OkText, "OK")
+		end
+		if self.btnCancel ~= nil and self.btnCancel.Entity ~= nil and self.btnCancel.Entity.TextComponent ~= nil then
+			self.btnCancel.Entity.TextComponent.Text = self:ReadString(self.CancelText, "CANCEL")
+		end
+	end
+
+	method void SetCancelVisible(boolean value)
+		if self.btnCancel == nil or self.btnCancel.Entity == nil then
+			return
+		end
+		self.btnCancel.Entity.Visible = value
+		self.btnCancel.Enable = value
+	end
+
+	method void ConnectButtons()
+		self:DisconnectButtons()
+		if self.btnOk ~= nil and self.btnOk.Entity ~= nil then
+			self.okHandler = self.btnOk.Entity:ConnectEvent(ButtonClickEvent, self.OnClickOk)
+		end
+		if self.btnCancel ~= nil and self.btnCancel.Entity ~= nil then
+			self.cancelHandler = self.btnCancel.Entity:ConnectEvent(ButtonClickEvent, self.OnClickCancel)
+		end
+	end
+
+	method void OnClickOk()
+		self:Choose(self.onOk)
+	end
+
+	method void OnClickCancel()
+		self:Choose(self.onCancel)
+	end
+
+	method void Choose(any callback)
+		if self.isTweenPlaying == true then
+			return
+		end
+		if callback ~= nil then
+			callback()
+		end
+		self.onOk = nil
+		self.onCancel = nil
+		self:Close()
+	end
+
+	@ExecSpace("Client")
+	method void Close()
+		if self.isOpen == false then
+			return
+		end
+		self:DisconnectButtons()
+		self:StartTween(false)
+	end
+
+	method void CloseImmediate()
+		self:DisconnectButtons()
+		self:ClearTweenTimer()
+		self.isTweenPlaying = false
+		self.isOpen = false
+		self.onOk = nil
+		self.onCancel = nil
+		self:HideImmediate()
+	end
+
+	method void HideImmediate()
+		if self.popupGroup ~= nil then
+			self.popupGroup.Enable = false
+			self.popupGroup.Visible = false
+			if self.popupGroup.CanvasGroupComponent ~= nil then
+				self.popupGroup.CanvasGroupComponent.GroupAlpha = 0
+			end
+		end
+		if self.popup ~= nil and self.popup.UITransformComponent ~= nil then
+			self.popup.UITransformComponent.UIScale = Vector3(self.to, self.to, 1)
+		end
+	end
+
+	method void DisconnectButtons()
+		if self.okHandler ~= nil and self.btnOk ~= nil and self.btnOk.Entity ~= nil then
+			self.btnOk.Entity:DisconnectEvent(ButtonClickEvent, self.okHandler)
+		end
+		if self.cancelHandler ~= nil and self.btnCancel ~= nil and self.btnCancel.Entity ~= nil then
+			self.btnCancel.Entity:DisconnectEvent(ButtonClickEvent, self.cancelHandler)
+		end
+		self.okHandler = nil
+		self.cancelHandler = nil
+	end
+
+	method void StartTween(boolean open)
+		if self:IsReady() == false then
+			return
+		end
+		
+		local transform = self.popup.UITransformComponent
+		local canvasGroup = self.popupGroup.CanvasGroupComponent
+		self:ClearTweenTimer()
+		
+		if open == true then
+			canvasGroup.GroupAlpha = 0
+			transform.UIScale = Vector3(self.from, self.from, 1)
+		else
+			transform.UIScale = Vector3(self.to, self.to, 1)
+		end
+		
+		self.isTweenPlaying = true
+		local time = 0
+		local preTime = _UtilLogic.ElapsedSeconds
+		
+		local tween = function()
+			local now = _UtilLogic.ElapsedSeconds
+			local delta = now - preTime
+			time = time + delta
+			preTime = now
+		
+			local timeValue = math.min(time, self:GetTweenDuration())
+			if open == false then
+				timeValue = self:GetTweenDuration() - timeValue
+			end
+			local tweenValue = _TweenLogic:Ease(self.from, self.to, self:GetTweenDuration(), EaseType.SineEaseIn, timeValue)
+			transform.UIScale = Vector3(tweenValue, tweenValue, 1)
+			canvasGroup.GroupAlpha = timeValue / self:GetTweenDuration()
+		
+			if time >= self:GetTweenDuration() then
+				self:FinishTween(open)
+			end
+		end
+		self.tweenEventId = _TimerService:SetTimerRepeat(tween, 1 / 60)
+	end
+
+	method void FinishTween(boolean open)
+		if open == false then
+			self:HideImmediate()
+			self.isOpen = false
+		end
+		self.isTweenPlaying = false
+		self:ClearTweenTimer()
+	end
+
+	method boolean ClearTweenTimer()
+		if self.tweenEventId == nil or self.tweenEventId <= 0 then
+			self.tweenEventId = 0
+			return false
+		end
+		_TimerService:ClearTimer(self.tweenEventId)
+		self.tweenEventId = 0
+		return true
+	end
+
+	method boolean IsReady()
+		if self.message == nil or self.btnOk == nil or self.btnCancel == nil then
+			return false
+		end
+		if self.popupGroup == nil or self.popup == nil then
+			return false
+		end
+		return self.popup.UITransformComponent ~= nil and self.popupGroup.CanvasGroupComponent ~= nil
+	end
+
+	method number GetTweenDuration()
+		return math.max(0.01, self:ReadNumber(self.duration, 0.15))
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

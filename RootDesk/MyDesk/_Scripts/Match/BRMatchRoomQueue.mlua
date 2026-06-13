@@ -9,7 +9,7 @@ script BRMatchRoomQueue extends Logic
 		}
 	end
 
-	method any CreateMatchRoom(any tickets, string mode, string sourceMapName, string dynamicMapName, string worldInstanceId, number targetPlayerCount, number minStartPlayerCount, number now, number ttl)
+	method any CreateMatchRoom(any tickets, string mode, string sourceMapName, string dynamicMapName, string worldInstanceId, number targetPlayerCount, number now, number ttl)
 		local room = {
 			MatchId = _UtilLogic:NewGuid(),
 			State = "Creating",
@@ -19,7 +19,6 @@ script BRMatchRoomQueue extends Logic
 			SourceMapName = self:ReadString(sourceMapName, "RoomTestMap"),
 			DynamicMapName = self:ReadString(dynamicMapName, ""),
 			TargetPlayerCount = math.max(1, math.floor(self:ReadNumber(targetPlayerCount, 1))),
-			MinStartPlayerCount = math.max(1, math.floor(self:ReadNumber(minStartPlayerCount, targetPlayerCount))),
 			CreatedAt = now,
 			StartedAt = 0,
 			EndedAt = 0,
@@ -117,22 +116,6 @@ script BRMatchRoomQueue extends Logic
 		return true
 	end
 
-	method boolean MarkPlayerArrived(any roomQueue, string matchId, string userId, number now)
-		local room = self:GetRoom(roomQueue, matchId)
-		if room == nil or room.Players == nil then
-			return false
-		end
-		
-		for index, player in ipairs(room.Players) do
-			if player.UserId == userId then
-				player.State = "Arrived"
-				player.ArrivedAt = now
-				return true
-			end
-		end
-		return false
-	end
-
 	method number GetActiveRoomCount(any roomQueue)
 		local count = 0
 		if roomQueue == nil or roomQueue.Rooms == nil then
@@ -172,14 +155,6 @@ script BRMatchRoomQueue extends Logic
 
 	method boolean IsFinishedState(string state)
 		return state == "Ended" or state == "Failed" or state == "Expired"
-	end
-
-	method string EncodeRoomQueue(any roomQueue, number now, number ttl)
-		return ""
-	end
-
-	method any DecodeRoomQueue(string encodedRoomQueue, number now, number ttl)
-		return self:CreateEmptyRoomQueue(now)
 	end
 
 	method string ReadString(any value, string fallback)

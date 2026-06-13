@@ -2,7 +2,7 @@
 @Component
 script AvatarStateAnimationComponent extends Component
 
-	---@description "The table the animation's name and AnimationClip are mapped to. Used when IsLegacy's value is true."
+	---@description "This is a table in which animation names and AnimationClip are mapped. Used when IsLegacy's value is true."
 	---@sealed
 	@Sync
 	property SyncDictionary<string, string> ActionSheet

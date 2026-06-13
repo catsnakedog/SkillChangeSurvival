@@ -1,0 +1,78 @@
+@Component
+script BRLobbyUI extends Component
+
+	property string LobbyMapName = "StartMap"
+
+	property boolean ShowOnLobbyMap = true
+
+	property boolean HideWhenNoPlayer = true
+
+	property number RefreshSeconds = 0.25
+
+	property number refreshTimerId = 0
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		self:RefreshVisibility()
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshVisibility() end, self:GetRefreshSeconds())
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshVisibility()
+		self:SetRootVisible(self:ShouldShowLobbyUI())
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean ShouldShowLobbyUI()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return self.HideWhenNoPlayer == false
+		end
+		
+		local isLobbyMap = self:IsLobbyMapName(localPlayer.CurrentMapName)
+		if self.ShowOnLobbyMap == true then
+			return isLobbyMap
+		end
+		return isLobbyMap == false
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetRootVisible(boolean value)
+		if self.Entity == nil then
+			return
+		end
+		self.Entity.Visible = value
+	end
+
+	method boolean IsLobbyMapName(string mapName)
+		return self:ReadString(mapName, "") == self:ReadString(self.LobbyMapName, "StartMap")
+	end
+
+	method number GetRefreshSeconds()
+		return math.max(0.1, self:ReadNumber(self.RefreshSeconds, 0.25))
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

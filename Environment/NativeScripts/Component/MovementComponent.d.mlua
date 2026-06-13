@@ -21,6 +21,10 @@ script MovementComponent extends Component
 	---@sealed
 	method boolean DownJump() end
 
+	---@description "Returns the interactive height at which a character can climb a ladder or rope."
+	---@sealed
+	method float GetClimbableHeight() end
+
 	---@description "Returns whether an Entity is pointing to the left."
 	---@sealed
 	method boolean IsFaceLeft() end
@@ -44,6 +48,10 @@ script MovementComponent extends Component
 	---@description "Stops moving."
 	---@sealed
 	method void Stop() end
+
+	---@description "Updates the relative offset to ClimbableComponent while a character climbs a ladder or rope."
+	---@sealed
+	method void UpdateClimbableOffset() end
 
 	emitter EmitChangedMovementInputEvent(ChangedMovementInputEvent event) end
 

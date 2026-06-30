@@ -1,0 +1,162 @@
+@Logic
+script BRBattleTimerSystem extends Logic
+
+	property number DefaultDurationSeconds = 1800
+
+	property string DefaultTimerLabel = "BOSS"
+
+	property string DefaultTimerMapName = "RoomTestMap"
+
+	property boolean HideWhenFinished = true
+
+	property boolean VerboseLog = true
+
+	@Sync
+	property number DurationSeconds = 0
+
+	@Sync
+	property number RemainingSeconds = 0
+
+	@Sync
+	property boolean TimerRunning = false
+
+	@Sync
+	property boolean TimerVisible = false
+
+	@Sync
+	property string TimerLabel = ""
+
+	@Sync
+	property string TimerMapName = ""
+
+	property number remainingPrecise = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		-- Initializes the timer in a hidden idle state for a fresh world session.
+		self:ResetTimerState()
+		self:Log("ready defaultDuration=" .. tostring(self:GetDefaultDurationSeconds()))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnUpdate(number delta)
+		-- Advances the active battle timer using per-session delta time.
+		if self.TimerRunning ~= true then
+			return
+		end
+
+		self.remainingPrecise = math.max(0, self.remainingPrecise - math.max(0, delta))
+		local displaySeconds = math.ceil(self.remainingPrecise)
+		if displaySeconds ~= self.RemainingSeconds then
+			self.RemainingSeconds = displaySeconds
+		end
+
+		if self.remainingPrecise <= 0 then
+			self:FinishTimer()
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartTimer(number durationSeconds, string mapName, string timerLabel)
+		-- Starts a synchronized boss-style countdown timer.
+		local duration = self:NormalizeDuration(durationSeconds)
+		self.DurationSeconds = duration
+		self.RemainingSeconds = duration
+		self.remainingPrecise = duration
+		self.TimerMapName = self:ReadString(mapName, self:ReadString(self.DefaultTimerMapName, ""))
+		self.TimerLabel = self:ReadString(timerLabel, self:ReadString(self.DefaultTimerLabel, "BOSS"))
+		self.TimerVisible = true
+		self.TimerRunning = true
+		self:Log("started map=" .. self.TimerMapName .. " label=" .. self.TimerLabel .. " duration=" .. tostring(duration))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StopTimer()
+		-- Stops and hides the active battle timer.
+		self:ResetTimerState()
+		self:Log("stopped")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void FinishTimer()
+		-- Finalizes the countdown when it reaches zero.
+		local finishedMapName = self:ReadString(self.TimerMapName, "")
+		self.TimerRunning = false
+		self.RemainingSeconds = 0
+		self.remainingPrecise = 0
+		if self.HideWhenFinished == true then
+			self.TimerVisible = false
+		end
+		if _BRSupplySystem ~= nil and finishedMapName ~= "" then
+			_BRSupplySystem:DropSuppliesForMap(finishedMapName)
+		end
+		self:Log("finished map=" .. finishedMapName)
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Start Boss Timer")
+	method void DebugStartBossTimer()
+		-- Starts the default boss timer for local playtesting.
+		self:StartTimer(self:GetDefaultDurationSeconds(), self:ReadString(self.DefaultTimerMapName, "RoomTestMap"), self:ReadString(self.DefaultTimerLabel, "BOSS"))
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Start 90s Timer")
+	method void DebugStartShortTimer()
+		-- Starts a short boss timer for fast UI verification.
+		self:StartTimer(90, self:ReadString(self.DefaultTimerMapName, "RoomTestMap"), self:ReadString(self.DefaultTimerLabel, "BOSS"))
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Stop Boss Timer")
+	method void DebugStopBossTimer()
+		-- Stops the boss timer during local playtesting.
+		self:StopTimer()
+	end
+
+	method void ResetTimerState()
+		-- Clears every synchronized timer field.
+		self.DurationSeconds = 0
+		self.RemainingSeconds = 0
+		self.TimerRunning = false
+		self.TimerVisible = false
+		self.TimerLabel = self:ReadString(self.DefaultTimerLabel, "BOSS")
+		self.TimerMapName = ""
+		self.remainingPrecise = 0
+	end
+
+	method number NormalizeDuration(number durationSeconds)
+		-- Returns a positive integer timer duration.
+		return math.max(1, math.floor(self:ReadNumber(durationSeconds, self:GetDefaultDurationSeconds())))
+	end
+
+	method number GetDefaultDurationSeconds()
+		-- Returns the configured default timer duration.
+		return math.max(1, math.floor(self:ReadNumber(self.DefaultDurationSeconds, 1800)))
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a timer log when verbose logging is enabled.
+		if self.VerboseLog == true then
+			log("[BRBattleTimer] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

@@ -1,127 +1,723 @@
 @Logic
 script BRBattleLauncher extends Logic
 
+	property number BattleTimerSeconds = 1800
+
+	property string BattleTimerLabel = "BOSS"
+
+	property boolean EnableMagneticZone = true
+
+	property number MagneticZoneShrinkIntervalSeconds = 30
+
+	property number MagneticZoneWarningSeconds = 5
+
+	property number MagneticZoneForbiddenSeconds = 20
+
+	property number MagneticZoneShrinkAmount = 2
+
+	property number StartCornerSideInsetX = 1.5
+
+	property number StartCornerFloorOffsetY = 0.25
+
+	property number FallbackStartRoomWidth = 20
+
+	property number FallbackStartRoomHeight = 10
+
+	property number FallbackStartGapX = 3
+
+	property number FallbackStartGapY = 3
+
+	property number FallbackStartOriginX = 0
+
+	property number FallbackStartOriginY = 3
+
+	@ExecSpace("ServerOnly")
 	method any StartMatchRoom(any matchRoom, any owner)
+		-- Starts a match on a fixed physical map and prepares its logical room graph.
 		if matchRoom == nil then
 			return self:CreateResult(false, "", 0, "MatchRoom is nil")
 		end
 		
-		local dynamicMapName = self:CreateDynamicMapForRoom(matchRoom, owner)
-		if dynamicMapName == "" then
-			return self:CreateResult(false, "", 0, owner.LastError)
+		local targetMapName = self:ResolveTargetMapForRoom(matchRoom, owner)
+		if targetMapName == "" then
+			return self:CreateResult(false, "", 0, "Target map is empty")
 		end
 		
-		matchRoom.DynamicMapName = dynamicMapName
+		matchRoom.TargetMapName = targetMapName
+		self:EnsurePhysicalGrid(targetMapName)
+		local roomGraph = self:GenerateRoomGraph(matchRoom, owner)
+		if roomGraph == nil then
+			return self:CreateResult(false, targetMapName, 0, "Room graph generation failed")
+		end
+
+		self:PrepareSupplies(matchRoom, roomGraph, targetMapName)
+
 		local movedCount = self:MovePlayersToMatchRoom(matchRoom, owner)
-		return self:CreateResult(true, dynamicMapName, movedCount, "")
+		if movedCount > 0 then
+			self:StartBattleTimer(matchRoom, owner, targetMapName)
+			self:StartMagneticZone(matchRoom, owner, targetMapName)
+		end
+
+		local result = self:CreateResult(true, targetMapName, movedCount, "")
+		self:ApplyRoomGraphToResult(result, roomGraph)
+		return result
 	end
 
-	method any CreateResult(boolean success, string dynamicMapName, number movedCount, string error)
+	method any CreateResult(boolean success, string targetMapName, number movedCount, string error)
+		-- Creates the launch result table consumed by the lobby matchmaker.
 		return {
 			Success = success,
-			DynamicMapName = self:ReadString(dynamicMapName, ""),
+			TargetMapName = self:ReadString(targetMapName, ""),
 			MovedCount = movedCount,
-			Error = self:ReadString(error, "")
+			Error = self:ReadString(error, ""),
+			RoomGraphSummary = "",
+			RoomGraphRoomCount = 0,
+			RoomGraphConnectionCount = 0,
+			RoomGraphAssignmentCount = 0
 		}
 	end
 
-	method string CreateDynamicMapForRoom(any matchRoom, any owner)
-		local sourceMapName = self:ReadString(matchRoom.SourceMapName, owner:ReadString(owner.GatherMapName, "RoomTestMap"))
-		local dynamicMapName = self:ReadString(matchRoom.DynamicMapName, "")
-		if dynamicMapName == "" then
-			dynamicMapName = self:GetDynamicMapName(owner:ReadString(owner.DynamicMapPrefix, "gather_"), matchRoom.MatchId)
+	@ExecSpace("ServerOnly")
+	method any GenerateRoomGraph(any matchRoom, any owner)
+		-- Delegates logical room graph creation to the graph generator.
+		if _BRRoomGraphGenerator == nil then
+			log("[BRBattleLauncher] room graph skipped: generator missing")
+			return nil
 		end
-		
-		owner.LastError = ""
-		local result = _DynamicMapService:CreateDynamicMap(sourceMapName, dynamicMapName)
-		if result == DynamicMapResultCode.Success then
-			matchRoom.DynamicMapName = dynamicMapName
-			return dynamicMapName
-		end
-		
-		owner.LastError = "DynamicMap create failed: " .. tostring(result)
-		log("[BRBattleLauncher] dynamic map create failed: source=" .. sourceMapName .. " map=" .. dynamicMapName .. " result=" .. tostring(result))
-		return ""
+		return _BRRoomGraphGenerator:CreateGraphForMatch(matchRoom, owner)
 	end
 
-	method string GetDynamicMapName(string prefix, string matchId)
-		local rawName = self:ReadString(prefix, "gather_") .. self:ReadString(matchId, _UtilLogic:NewGuid())
-		local safeName = string.gsub(rawName, "[\\/:*?\"<>|#&=]", "_")
-		if string.len(safeName) > 80 then
-			return string.sub(safeName, 1, 80)
+	method void ApplyRoomGraphToResult(any result, any roomGraph)
+		-- Copies graph summary fields into the launch result.
+		if result == nil or roomGraph == nil then
+			return
 		end
-		return safeName
+		result.RoomGraphSummary = self:ReadString(roomGraph.Summary, "")
+		result.RoomGraphRoomCount = self:ReadNumber(roomGraph.RoomCount, #roomGraph.Rooms)
+		result.RoomGraphConnectionCount = self:ReadNumber(roomGraph.ConnectionCount, 0)
+		result.RoomGraphAssignmentCount = self:ReadNumber(roomGraph.AssignmentCount, 0)
 	end
 
+	method string ResolveTargetMapForRoom(any matchRoom, any owner)
+		-- Resolves the fixed physical map that will host this match.
+		if matchRoom == nil then
+			return ""
+		end
+
+		local explicitTargetMapName = self:ReadString(matchRoom.TargetMapName, "")
+		if explicitTargetMapName ~= "" then
+			return explicitTargetMapName
+		end
+
+		local fallbackMapName = "RoomTestMap"
+		if owner ~= nil then
+			fallbackMapName = self:ReadString(owner.GatherMapName, fallbackMapName)
+		end
+		return self:ReadString(matchRoom.SourceMapName, fallbackMapName)
+	end
+
+	@ExecSpace("ServerOnly")
 	method number MovePlayersToMatchRoom(any matchRoom, any owner)
+		-- Moves selected players into their fixed corner battle start slots.
 		local movedCount = 0
 		if matchRoom == nil or matchRoom.Players == nil then
+			return movedCount
+		end
+
+		local targetMapName = self:ResolveTargetMapForRoom(matchRoom, owner)
+		if targetMapName == "" then
+			log("[BRBattleLauncher] move skipped: empty target map")
 			return movedCount
 		end
 		
 		local total = #matchRoom.Players
+		self:EnsurePhysicalGrid(targetMapName)
 		for index, player in ipairs(matchRoom.Players) do
 			local playerEntity = _UserService:GetUserEntityByUserId(player.UserId)
 			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
-				local spawnIndex = math.max(1, math.floor(self:ReadNumber(player.SpawnIndex, index)))
-				playerEntity.PlayerComponent:MoveToMapPosition(matchRoom.DynamicMapName, self:GetSpawnPosition(matchRoom, spawnIndex, total, owner))
+				local requestedSpawnIndex = self:ReadNumber(player.SpawnIndex, index)
+				local spawnIndex = self:GetStartCornerSlotIndex(movedCount + 1)
+				local spawnPosition = self:GetSpawnPosition(matchRoom, spawnIndex, total, owner)
+				local spawnCornerName = self:GetStartCornerRoomName(spawnIndex)
+				self:MovePlayerToBattleStart(playerEntity, targetMapName, spawnPosition, spawnIndex)
 				self:SetGatherName(player.UserId, spawnIndex, total)
+				player.SpawnIndex = spawnIndex
+				player.SpawnCornerName = spawnCornerName
+				player.SpawnPositionX = spawnPosition.x
+				player.SpawnPositionY = spawnPosition.y
 				player.State = "Arrived"
-				player.ArrivedAt = owner:Now()
+				player.ArrivedAt = _UtilLogic.ServerElapsedSeconds
 				movedCount = movedCount + 1
+				log("[BRBattleLauncher] start assigned user=" .. tostring(player.UserId) .. " requestedSlot=" .. tostring(requestedSpawnIndex) .. " slot=" .. tostring(spawnIndex) .. " corner=" .. spawnCornerName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
 			end
 		end
+		log("[BRBattleLauncher] moved players to fixed map: map=" .. targetMapName .. " count=" .. tostring(movedCount) .. "/" .. tostring(total))
 		return movedCount
 	end
 
+	@ExecSpace("ServerOnly")
+	method void EnsurePhysicalGrid(string targetMapName)
+		-- Ensures fixed physical room parts exist before portals, supplies, or player starts use them.
+		local gridTool = self:GetGridMapEditorTool(targetMapName)
+		if gridTool == nil then
+			log("[BRBattleLauncher] physical grid sync skipped: grid tool missing map=" .. self:ReadString(targetMapName, ""))
+			return
+		end
+		gridTool:SyncGeneratedGrid(true, false, "launch grid")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void MovePlayerToBattleStart(Entity playerEntity, string targetMapName, Vector2 spawnPosition, number spawnIndex)
+		-- Moves a player to the battle map using the native player map-position transfer.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		local safeMapName = self:ReadString(targetMapName, "")
+		local slotIndex = self:GetStartCornerSlotIndex(spawnIndex)
+		if safeMapName == "" then
+			return
+		end
+
+		playerEntity.PlayerComponent.RespawnPosition = Vector3(spawnPosition.x, spawnPosition.y, 0)
+		playerEntity.PlayerComponent:MoveToMapPosition(safeMapName, spawnPosition)
+		log("[BRBattleLauncher] start map position user=" .. userId .. " slot=" .. tostring(slotIndex) .. " map=" .. safeMapName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void TeleportPlayerToMapPosition(Entity playerEntity, string targetMapName, Vector2 targetPosition, string reason)
+		-- TeleportService moves the entity itself to the target map/position; PlayerComponent travel is kept as fallback.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeMapName == "" then
+			return
+		end
+
+		if _TeleportService ~= nil then
+			_TeleportService:TeleportToMapPosition(playerEntity, Vector3(targetPosition.x, targetPosition.y, 0), safeMapName)
+			log("[BRBattleLauncher] teleport service reason=" .. self:ReadString(reason, "") .. " user=" .. self:ReadString(playerEntity.PlayerComponent.UserId, "") .. " map=" .. safeMapName .. " pos=(" .. tostring(targetPosition.x) .. "," .. tostring(targetPosition.y) .. ")")
+			return
+		end
+
+		playerEntity.PlayerComponent:MoveToMapPosition(safeMapName, targetPosition)
+		log("[BRBattleLauncher] player move fallback reason=" .. self:ReadString(reason, "") .. " user=" .. self:ReadString(playerEntity.PlayerComponent.UserId, "") .. " map=" .. safeMapName .. " pos=(" .. tostring(targetPosition.x) .. "," .. tostring(targetPosition.y) .. ")")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyPlayerWorldPositionByUserId(string userId, Vector2 spawnPosition, string phase)
+		-- Re-resolves the current player entity before applying a delayed battle start position.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+
+		local currentPlayerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if currentPlayerEntity == nil then
+			log("[BRBattleLauncher] force start position skipped phase=" .. self:ReadString(phase, "") .. " user=" .. safeUserId .. " reason=entity nil")
+			return
+		end
+		self:ApplyPlayerWorldPosition(currentPlayerEntity, spawnPosition, phase)
+		self:ApplyLocalPlayerWorldPosition(spawnPosition, self:ReadString(phase, ""), safeUserId)
+	end
+
+	@ExecSpace("Client")
+	method void ApplyLocalPlayerWorldPosition(Vector2 spawnPosition, string phase)
+		-- Mirrors the server-side battle start teleport on the owning client so local movement authority does not pull it back.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+
+		local appliedBy = ""
+		if localPlayer.MovementComponent ~= nil then
+			localPlayer.MovementComponent:Stop()
+			localPlayer.MovementComponent:SetWorldPosition(spawnPosition)
+			appliedBy = appliedBy .. "Movement"
+		end
+
+		if localPlayer.RigidbodyComponent ~= nil then
+			localPlayer.RigidbodyComponent.IgnoreMoveBoundary = true
+			localPlayer.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			localPlayer.RigidbodyComponent:SetWorldPosition(spawnPosition)
+			localPlayer.RigidbodyComponent:PositionReset()
+			appliedBy = appliedBy .. "+Rigidbody"
+		elseif localPlayer.KinematicbodyComponent ~= nil then
+			localPlayer.KinematicbodyComponent:SetWorldPosition(spawnPosition)
+			appliedBy = appliedBy .. "+Kinematicbody"
+		elseif localPlayer.SideviewbodyComponent ~= nil then
+			localPlayer.SideviewbodyComponent:SetWorldPosition(spawnPosition)
+			appliedBy = appliedBy .. "+Sideviewbody"
+		end
+
+		if localPlayer.PlayerComponent ~= nil then
+			localPlayer.PlayerComponent:SetWorldPosition(Vector3(spawnPosition.x, spawnPosition.y, 0))
+			appliedBy = appliedBy .. "+Player"
+		end
+
+		local currentPosition = Vector3(0, 0, 0)
+		if localPlayer.TransformComponent ~= nil then
+			currentPosition = localPlayer.TransformComponent.WorldPosition
+		end
+		log("[BRBattleLauncher] local start position phase=" .. self:ReadString(phase, "") .. " map=" .. self:ReadString(localPlayer.CurrentMapName, "") .. " target=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ") current=(" .. tostring(currentPosition.x) .. "," .. tostring(currentPosition.y) .. ") by=" .. appliedBy)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyPlayerWorldPosition(Entity playerEntity, Vector2 spawnPosition, string phase)
+		-- Applies the assigned start position to the real movement/body component, not only the map-transfer request.
+		if playerEntity == nil then
+			return
+		end
+
+		local appliedBy = ""
+		if playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent:Stop()
+			playerEntity.MovementComponent:SetWorldPosition(spawnPosition)
+			appliedBy = appliedBy .. "Movement"
+		end
+
+		if playerEntity.RigidbodyComponent ~= nil then
+			playerEntity.RigidbodyComponent.IgnoreMoveBoundary = true
+			playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			playerEntity.RigidbodyComponent:SetWorldPosition(spawnPosition)
+			playerEntity.RigidbodyComponent:PositionReset()
+			appliedBy = appliedBy .. "+Rigidbody"
+		elseif playerEntity.KinematicbodyComponent ~= nil then
+			playerEntity.KinematicbodyComponent:SetWorldPosition(spawnPosition)
+			appliedBy = appliedBy .. "+Kinematicbody"
+		elseif playerEntity.SideviewbodyComponent ~= nil then
+			playerEntity.SideviewbodyComponent:SetWorldPosition(spawnPosition)
+			appliedBy = appliedBy .. "+Sideviewbody"
+		end
+
+		if playerEntity.PlayerComponent ~= nil then
+			playerEntity.PlayerComponent:SetWorldPosition(Vector3(spawnPosition.x, spawnPosition.y, 0))
+			appliedBy = appliedBy .. "+Player"
+		end
+
+		local userId = ""
+		if playerEntity.PlayerComponent ~= nil then
+			userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		end
+		local mapName = ""
+		if playerEntity.CurrentMapName ~= nil then
+			mapName = self:ReadString(playerEntity.CurrentMapName, "")
+		end
+
+		local currentPosition = Vector3(0, 0, 0)
+		if playerEntity.TransformComponent ~= nil then
+			currentPosition = playerEntity.TransformComponent.WorldPosition
+		end
+		log("[BRBattleLauncher] force start position phase=" .. self:ReadString(phase, "") .. " user=" .. tostring(userId) .. " map=" .. mapName .. " target=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ") current=(" .. tostring(currentPosition.x) .. "," .. tostring(currentPosition.y) .. ") by=" .. appliedBy)
+	end
+
+	@ExecSpace("ServerOnly")
 	method number ReturnPlayersToLobby(any matchRoom, any owner)
+		-- Returns match players to the configured lobby gather position.
 		local movedCount = 0
 		if matchRoom == nil or matchRoom.Players == nil then
 			return movedCount
 		end
 		
-		local lobbyMapName = owner:ReadString(owner.LobbyMapName, "StartMap")
+		local lobbyMapName = "StartMap"
+		local centerX = 0
+		local centerY = 3
+		if owner ~= nil then
+			lobbyMapName = self:ReadString(owner.LobbyMapName, lobbyMapName)
+			centerX = self:ReadNumber(owner.GatherCenterX, centerX)
+			centerY = self:ReadNumber(owner.GatherCenterY, centerY)
+		end
 		for index, player in ipairs(matchRoom.Players) do
 			local playerEntity = _UserService:GetUserEntityByUserId(player.UserId)
 			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
-				playerEntity.PlayerComponent:MoveToMapPosition(lobbyMapName, Vector2(owner:ReadNumber(owner.GatherCenterX, 0), owner:ReadNumber(owner.GatherCenterY, 3)))
+				self:TeleportPlayerToMapPosition(playerEntity, lobbyMapName, Vector2(centerX, centerY), "return-lobby")
 				player.State = "Returned"
 				movedCount = movedCount + 1
 			end
 		end
+		if movedCount > 0 then
+			self:StopBattleTimer()
+			self:StopMagneticZone()
+			self:ClearPortalConnections(matchRoom)
+			self:ClearSupplies(matchRoom, lobbyMapName)
+		end
 		return movedCount
 	end
 
-	method Vector2 GetSpawnPosition(any matchRoom, number index, number total, any owner)
-		local safeTotal = math.max(1, math.floor(total))
-		local columns = math.floor(owner:ReadNumber(owner.GatherColumns, 8))
-		if columns <= 0 then
-			columns = math.ceil(math.sqrt(safeTotal))
+	@ExecSpace("ServerOnly")
+	method void PrepareSupplies(any matchRoom, any roomGraph, string targetMapName)
+		-- Prepares room-child supply prefabs before players enter the battle map.
+		if _BRSupplySystem == nil then
+			log("[BRBattleLauncher] supply skipped: supply system missing")
+			return
 		end
-		columns = math.max(1, math.min(columns, safeTotal))
-		
-		local row = math.floor((index - 1) / columns)
-		local column = (index - 1) % columns
-		local rows = math.ceil(safeTotal / columns)
-		local spacingX = math.max(0.1, owner:ReadNumber(owner.GatherSpacingX, 1.5))
-		local spacingY = math.max(0, owner:ReadNumber(owner.GatherSpacingY, 0.8))
-		local centerX = owner:ReadNumber(owner.GatherCenterX, 0)
-		local centerY = owner:ReadNumber(owner.GatherCenterY, 3)
-		local x = centerX + (column - ((columns - 1) * 0.5)) * spacingX
-		local y = centerY + (((rows - 1) * 0.5) - row) * spacingY
+		_BRSupplySystem:PrepareSuppliesForMatch(matchRoom, roomGraph, self:ReadString(targetMapName, ""))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ClearSupplies(any matchRoom, string fallbackMapName)
+		-- Clears supply prefabs when a battle ends or players return to lobby.
+		if _BRSupplySystem == nil then
+			return
+		end
+
+		local targetMapName = ""
+		if matchRoom ~= nil then
+			targetMapName = self:ReadString(matchRoom.TargetMapName, "")
+		end
+		if targetMapName == "" then
+			targetMapName = self:ReadString(fallbackMapName, "")
+		end
+		_BRSupplySystem:ClearSuppliesForMap(targetMapName)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartBattleTimer(any matchRoom, any owner, string targetMapName)
+		-- Starts the synchronized boss timer for the launched battle.
+		if _BRBattleTimerSystem == nil then
+			log("[BRBattleLauncher] timer skipped: timer system missing")
+			return
+		end
+		_BRBattleTimerSystem:StartTimer(self:GetBattleTimerSeconds(owner), self:ReadString(targetMapName, ""), self:GetBattleTimerLabel(owner))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StopBattleTimer()
+		-- Stops the synchronized boss timer when the battle returns to lobby.
+		if _BRBattleTimerSystem ~= nil then
+			_BRBattleTimerSystem:StopTimer()
+		end
+	end
+
+	method number GetBattleTimerSeconds(any owner)
+		-- Reads the battle timer duration from owner override or launcher default.
+		local value = self.BattleTimerSeconds
+		if owner ~= nil and owner.BattleTimerSeconds ~= nil then
+			value = owner.BattleTimerSeconds
+		end
+		return math.max(1, math.floor(self:ReadNumber(value, 1800)))
+	end
+
+	method string GetBattleTimerLabel(any owner)
+		-- Reads the battle timer label from owner override or launcher default.
+		local value = self.BattleTimerLabel
+		if owner ~= nil and owner.BattleTimerLabel ~= nil then
+			value = owner.BattleTimerLabel
+		end
+		return self:ReadString(value, "BOSS")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartMagneticZone(any matchRoom, any owner, string targetMapName)
+		-- Starts the synchronized magnetic-zone shrink system for the launched battle.
+		if self:IsMagneticZoneEnabled(owner) ~= true then
+			return
+		end
+		if _BRMagneticZoneSystem == nil then
+			log("[BRBattleLauncher] magnetic zone skipped: system missing")
+			return
+		end
+		_BRMagneticZoneSystem:StartZone(
+			self:ReadString(targetMapName, ""),
+			self:GetMagneticZoneShrinkIntervalSeconds(owner),
+			self:GetMagneticZoneWarningSeconds(owner),
+			self:GetMagneticZoneForbiddenSeconds(owner),
+			self:GetMagneticZoneShrinkAmount(owner)
+		)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StopMagneticZone()
+		-- Stops the magnetic-zone shrink system when the battle returns to lobby.
+		if _BRMagneticZoneSystem ~= nil then
+			_BRMagneticZoneSystem:StopZone()
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ClearPortalConnections(any matchRoom)
+		-- Clears custom portal links for the match map.
+		if _BRPortalConnectionSystem == nil or matchRoom == nil then
+			return
+		end
+
+		local targetMapName = self:ReadString(matchRoom.TargetMapName, "")
+		if targetMapName == "" then
+			return
+		end
+		_BRPortalConnectionSystem:ClearMap(targetMapName)
+	end
+
+	method boolean IsMagneticZoneEnabled(any owner)
+		-- Reads the magnetic-zone enabled flag from owner override or launcher default.
+		local value = self.EnableMagneticZone
+		if owner ~= nil and owner.EnableMagneticZone ~= nil then
+			value = owner.EnableMagneticZone
+		end
+		return value == true
+	end
+
+	method number GetMagneticZoneShrinkIntervalSeconds(any owner)
+		-- Reads the magnetic-zone shrink interval from owner override or launcher default.
+		local value = self.MagneticZoneShrinkIntervalSeconds
+		if owner ~= nil and owner.MagneticZoneShrinkIntervalSeconds ~= nil then
+			value = owner.MagneticZoneShrinkIntervalSeconds
+		end
+		return math.max(1, self:ReadNumber(value, 30))
+	end
+
+	method number GetMagneticZoneWarningSeconds(any owner)
+		-- Reads the magnetic-zone warning duration from owner override or launcher default.
+		local value = self.MagneticZoneWarningSeconds
+		if owner ~= nil and owner.MagneticZoneWarningSeconds ~= nil then
+			value = owner.MagneticZoneWarningSeconds
+		end
+		return math.max(0.5, self:ReadNumber(value, 5))
+	end
+
+	method number GetMagneticZoneForbiddenSeconds(any owner)
+		-- Reads the magnetic-zone forbidden time budget from owner override or launcher default.
+		local value = self.MagneticZoneForbiddenSeconds
+		if owner ~= nil and owner.MagneticZoneForbiddenSeconds ~= nil then
+			value = owner.MagneticZoneForbiddenSeconds
+		end
+		return math.max(1, self:ReadNumber(value, 20))
+	end
+
+	method number GetMagneticZoneShrinkAmount(any owner)
+		-- Reads the magnetic-zone face shrink amount from owner override or launcher default.
+		local value = self.MagneticZoneShrinkAmount
+		if owner ~= nil and owner.MagneticZoneShrinkAmount ~= nil then
+			value = owner.MagneticZoneShrinkAmount
+		end
+		return math.max(0.1, self:ReadNumber(value, 2))
+	end
+
+	method Vector2 GetSpawnPosition(any matchRoom, number index, number total, any owner)
+		-- Returns one of the four fixed-corner battle start positions.
+		local cornerSlot = self:GetStartCornerSlotIndex(index)
+		local targetMapName = self:ResolveTargetMapForRoom(matchRoom, owner)
+		local roomName = self:GetStartCornerRoomName(cornerSlot)
+		local roomCenter = self:GetPhysicalRoomCenter(targetMapName, roomName)
+		if roomCenter == nil then
+			roomCenter = self:GetFallbackStartCornerCenter(matchRoom, cornerSlot, owner)
+		end
+
+		local roomHeight = self:GetStartRoomHeight(targetMapName)
+		local offset = self:GetStartCornerOffset(cornerSlot, roomHeight)
+		local rawPosition = Vector2(roomCenter.x + offset.x, roomCenter.y + offset.y)
+		return self:GetFootholdAlignedSpawnPosition(targetMapName, rawPosition, roomHeight)
+	end
+
+	method Vector2 GetFootholdAlignedSpawnPosition(string targetMapName, Vector2 rawPosition, number roomHeight)
+		-- Aligns the start position to the real MapleTile foothold under that X coordinate when one exists.
+		local safeMapName = self:ReadString(targetMapName, "RoomTestMap")
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. safeMapName)
+		if mapEntity == nil or mapEntity.FootholdComponent == nil then
+			return rawPosition
+		end
+
+		local searchDistance = math.max(8, self:ReadNumber(roomHeight, 10) * 2 + 5)
+		local rayStart = Vector2(rawPosition.x, rawPosition.y + searchDistance * 0.5)
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDistance)
+		if foothold == nil then
+			return rawPosition
+		end
+
+		local footholdY = foothold:GetYByX(rawPosition.x)
+		local alignedPosition = Vector2(rawPosition.x, footholdY + self:GetStartCornerFloorOffsetY())
+		log("[BRBattleLauncher] start foothold aligned map=" .. safeMapName .. " raw=(" .. tostring(rawPosition.x) .. "," .. tostring(rawPosition.y) .. ") aligned=(" .. tostring(alignedPosition.x) .. "," .. tostring(alignedPosition.y) .. ") foothold=" .. tostring(foothold.Id))
+		return alignedPosition
+	end
+
+	method number GetStartCornerSlotIndex(number index)
+		-- Converts any player index into the fixed 1-4 corner start slot range.
+		local value = math.max(1, math.floor(self:ReadNumber(index, 1)))
+		return ((value - 1) % 4) + 1
+	end
+
+	method string GetStartCornerRoomName(number cornerSlot)
+		-- Returns the physical fixed-corner room name for a start slot.
+		local slot = self:GetStartCornerSlotIndex(cornerSlot)
+		if slot == 1 then
+			return "CornerNW"
+		elseif slot == 2 then
+			return "CornerNE"
+		elseif slot == 3 then
+			return "CornerSW"
+		elseif slot == 4 then
+			return "CornerSE"
+		end
+		return "CornerNW"
+	end
+
+	method any GetPhysicalRoomCenter(string targetMapName, string roomName)
+		-- Reads the center position from an authored physical room entity when it exists.
+		local safeMapName = self:ReadString(targetMapName, "RoomTestMap")
+		local safeRoomName = self:ReadString(roomName, "")
+		if safeRoomName == "" then
+			return nil
+		end
+
+		local room = _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/EditorGeneratedGrid/" .. safeRoomName)
+		if room == nil then
+			room = _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/" .. safeRoomName)
+		end
+		if room == nil or room.TransformComponent == nil then
+			return nil
+		end
+
+		local position = room.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method Vector2 GetFallbackStartCornerCenter(any matchRoom, number cornerSlot, any owner)
+		-- Computes the corner room center from the grid editor settings when room entities are not present.
+		local targetMapName = self:ResolveTargetMapForRoom(matchRoom, owner)
+		local gridTool = self:GetGridMapEditorTool(targetMapName)
+		if gridTool ~= nil then
+			return gridTool:GetFixedCornerCenter(self:GetStartCornerSlotIndex(cornerSlot))
+		end
+
+		local columns = self:GetStartGridColumns(matchRoom, owner)
+		local rows = self:GetStartGridRows(matchRoom, owner)
+		local row = 1
+		local column = 1
+		local slot = self:GetStartCornerSlotIndex(cornerSlot)
+		if slot == 2 then
+			column = columns
+		elseif slot == 3 then
+			row = rows
+		elseif slot == 4 then
+			row = rows
+			column = columns
+		end
+
+		local spacingX = self:GetStartRoomWidth(targetMapName) + self:GetStartGapX(targetMapName)
+		local spacingY = self:GetStartRoomHeight(targetMapName) + self:GetStartGapY(targetMapName)
+		local middleX = (columns - 1) * 0.5
+		local middleY = (rows - 1) * 0.5
+		local x = self:GetStartOriginX(targetMapName) + (column - 1 - middleX) * spacingX
+		local y = self:GetStartOriginY(targetMapName) + (middleY - (row - 1)) * spacingY
 		return Vector2(x, y)
 	end
 
-	method boolean DestroyDynamicMap(string mapName)
-		if mapName == nil or mapName == "" then
-			return true
+	method Vector2 GetStartCornerOffset(number cornerSlot, number roomHeight)
+		-- Places players slightly inside the room and just above its bottom foothold.
+		local slot = self:GetStartCornerSlotIndex(cornerSlot)
+		local x = self:GetStartCornerSideInsetX()
+		if slot == 2 or slot == 4 then
+			x = -x
 		end
-		
-		local result = _DynamicMapService:DestroyDynamicMap(mapName)
-		return result == DynamicMapResultCode.Success or result == DynamicMapResultCode.DynamicMapNotFound
+		local y = -(self:ReadNumber(roomHeight, self:GetStartRoomHeight("")) * 0.5) + self:GetStartCornerFloorOffsetY()
+		return Vector2(x, y)
 	end
 
+	method any GetGridMapEditorTool(string targetMapName)
+		-- Resolves the grid editor component that owns room size and spacing settings.
+		local safeMapName = self:ReadString(targetMapName, "RoomTestMap")
+		local toolEntity = _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/GridMapEditorTool")
+		if toolEntity == nil then
+			return nil
+		end
+
+		---@type BRGridMapEditorTool
+		local gridTool = toolEntity:GetComponent("script.BRGridMapEditorTool")
+		return gridTool
+	end
+
+	method number GetStartGridColumns(any matchRoom, any owner)
+		-- Reads the logical graph column count used for corner fallback placement.
+		if matchRoom ~= nil and matchRoom.RoomGraph ~= nil and matchRoom.RoomGraph.Columns ~= nil then
+			return math.max(1, math.floor(self:ReadNumber(matchRoom.RoomGraph.Columns, 3)))
+		end
+		if owner ~= nil and owner.RoomGraphColumns ~= nil then
+			return math.max(1, math.floor(self:ReadNumber(owner.RoomGraphColumns, 3)))
+		end
+		return 3
+	end
+
+	method number GetStartGridRows(any matchRoom, any owner)
+		-- Reads the logical graph row count used for corner fallback placement.
+		if matchRoom ~= nil and matchRoom.RoomGraph ~= nil and matchRoom.RoomGraph.Rows ~= nil then
+			return math.max(1, math.floor(self:ReadNumber(matchRoom.RoomGraph.Rows, 3)))
+		end
+		if owner ~= nil and owner.RoomGraphRows ~= nil then
+			return math.max(1, math.floor(self:ReadNumber(owner.RoomGraphRows, 3)))
+		end
+		return 3
+	end
+
+	method number GetStartRoomWidth(string targetMapName)
+		-- Reads the generated room width from the editor tool or launcher fallback.
+		local gridTool = self:GetGridMapEditorTool(targetMapName)
+		if gridTool ~= nil then
+			return gridTool:GetRoomWidth()
+		end
+		return math.max(1, self:ReadNumber(self.FallbackStartRoomWidth, 20))
+	end
+
+	method number GetStartRoomHeight(string targetMapName)
+		-- Reads the generated room height from the editor tool or launcher fallback.
+		local gridTool = self:GetGridMapEditorTool(targetMapName)
+		if gridTool ~= nil then
+			return gridTool:GetRoomHeight()
+		end
+		return math.max(1, self:ReadNumber(self.FallbackStartRoomHeight, 10))
+	end
+
+	method number GetStartGapX(string targetMapName)
+		-- Reads generated room horizontal spacing from the editor tool or launcher fallback.
+		local gridTool = self:GetGridMapEditorTool(targetMapName)
+		if gridTool ~= nil then
+			return gridTool:GetGapX()
+		end
+		return math.max(0, self:ReadNumber(self.FallbackStartGapX, 3))
+	end
+
+	method number GetStartGapY(string targetMapName)
+		-- Reads generated room vertical spacing from the editor tool or launcher fallback.
+		local gridTool = self:GetGridMapEditorTool(targetMapName)
+		if gridTool ~= nil then
+			return gridTool:GetGapY()
+		end
+		return math.max(0, self:ReadNumber(self.FallbackStartGapY, 3))
+	end
+
+	method number GetStartOriginX(string targetMapName)
+		-- Reads generated grid origin X from the editor tool or launcher fallback.
+		local gridTool = self:GetGridMapEditorTool(targetMapName)
+		if gridTool ~= nil then
+			return gridTool:GetOriginX()
+		end
+		return self:ReadNumber(self.FallbackStartOriginX, 0)
+	end
+
+	method number GetStartOriginY(string targetMapName)
+		-- Reads generated grid origin Y from the editor tool or launcher fallback.
+		local gridTool = self:GetGridMapEditorTool(targetMapName)
+		if gridTool ~= nil then
+			return gridTool:GetOriginY()
+		end
+		return self:ReadNumber(self.FallbackStartOriginY, 3)
+	end
+
+	method number GetStartCornerSideInsetX()
+		-- Returns the horizontal inward offset for corner starts.
+		return math.max(0, self:ReadNumber(self.StartCornerSideInsetX, 1.5))
+	end
+
+	method number GetStartCornerFloorOffsetY()
+		-- Returns the vertical offset above the room bottom foothold for corner starts.
+		return math.max(0, self:ReadNumber(self.StartCornerFloorOffsetY, 0.25))
+	end
+
+	@ExecSpace("ServerOnly")
 	method void SetGatherName(string userId, number index, number total)
+		-- Updates the temporary name tag used while players are gathered for battle.
 		local playerEntity = _UserService:GetUserEntityByUserId(userId)
 		if playerEntity == nil or playerEntity.NameTagComponent == nil then
 			return
@@ -132,13 +728,22 @@ script BRBattleLauncher extends Logic
 	end
 
 	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with a fallback.
 		if value == nil or value == "" then
 			return fallback
 		end
 		return value
 	end
 
+	method string GetPlayerUserId(Entity playerEntity)
+		if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+			return self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		end
+		return ""
+	end
+
 	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with a fallback.
 		local numberValue = tonumber(value)
 		if numberValue == nil then
 			return fallback

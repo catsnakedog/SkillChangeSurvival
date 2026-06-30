@@ -1,0 +1,1204 @@
+@Component
+script BRGridMapEditorTool extends Component
+
+	property number Columns = 3
+
+	property number Rows = 3
+
+	property number MapPartCount = 9
+
+	property number RoomWidth = 10
+
+	property number RoomHeight = 10
+
+	property number GapX = 3
+
+	property number GapY = 3
+
+	property number OriginX = 0
+
+	property number OriginY = 3
+
+	property Entity RoomTemplate = ""
+
+	property string SupplyChildName = "SupplyBox"
+
+	property number SupplyOffsetX = 0
+
+	property number SupplyOffsetY = 0
+
+	property number SupplyOffsetZ = -0.003
+
+	method void OnBeginPlay()
+		-- Logs the current grid authoring settings when the tool entity loads.
+		self:Log("ready grid=" .. tostring(self:GetColumns()) .. "x" .. tostring(self:GetRows()) .. " parts=" .. tostring(self:GetMapPartCount()) .. " fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. " pool=" .. tostring(self:GetPoolPartCount()) .. " room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. ") gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. ") number=" .. self:GetPartRangeText())
+	end
+
+	@InspectorButton("Generate Grid Preview")
+	method void GenerateGridPreview()
+		-- Reuses existing rooms and creates only missing rooms.
+		self:SyncGeneratedGrid(true, false, "generated")
+	end
+
+	@InspectorButton("Sync Grid Preview")
+	method void SyncGridPreview()
+		-- Reuses existing rooms, creates missing rooms, and reapplies outer spacing only.
+		self:SyncGeneratedGrid(true, false, "synced")
+	end
+
+	@InspectorButton("Apply Grid Layout")
+	method void ApplyGridLayout()
+		-- Reapplies outer spacing and room shape without touching existing room children.
+		self:SyncGeneratedGrid(false, false, "layout")
+	end
+
+	@InspectorButton("Clear Grid Preview")
+	method void ClearGridPreview()
+		-- Deletes generated room children below the generated root entity.
+		local root = self:GetGeneratedRoot()
+		if root == nil then
+			self:Log("clear skipped: root missing")
+			return
+		end
+
+		local children = root.Children:ToTable()
+		local count = 0
+		for index, child in ipairs(children) do
+			if child ~= nil and child.Name ~= self:GetRoomTemplateName() then
+				child:Destroy()
+				count = count + 1
+			end
+		end
+
+		self:Log("cleared " .. tostring(count) .. " rooms")
+	end
+
+	@InspectorButton("Disable Out Of Range Rooms")
+	method void DisableOutOfRangeRooms()
+		-- Preserves but hides generated rooms outside the current row and column count.
+		local root = self:GetGeneratedRoot()
+		if root == nil then
+			self:Log("out-of-range disable skipped: root missing")
+			return
+		end
+
+		local hidden = self:SetOutOfRangeRoomsActive(root, false)
+		self:Log("out-of-range disabled rooms=" .. tostring(hidden) .. " grid=" .. tostring(self:GetColumns()) .. "x" .. tostring(self:GetRows()) .. " parts=" .. tostring(self:GetMapPartCount()))
+	end
+
+	@InspectorButton("Refresh Direction Portals")
+	method void RefreshGeneratedRoomPortals()
+		-- Adds missing portal marker children without moving existing markers.
+		local root = self:GetGeneratedRoot()
+		if root == nil then
+			self:Log("portal marker refresh skipped: root missing")
+			return
+		end
+
+		local roomCount = 0
+		for partSlot = 1, self:GetMapPartCount() do
+			local room = root:GetChildByName(self:GetRoomNameByNumber(partSlot), false)
+			if room ~= nil then
+				self:EnsureMissingRoomPortals(room)
+				roomCount = roomCount + 1
+			end
+		end
+
+		self:Log("portal markers ensured rooms=" .. tostring(roomCount) .. " parts=" .. tostring(self:GetMapPartCount()))
+	end
+
+	@InspectorButton("Repair Auto Portal Positions")
+	method void RepairAutoPortalPositionsFromTemplate()
+		-- Copies template portal positions only over markers that still match the old auto edge layout.
+		local root = self:GetGeneratedRoot()
+		if root == nil then
+			self:Log("portal position repair skipped: root missing")
+			return
+		end
+
+		local repairedCount = 0
+		local checkedCount = 0
+		for partSlot = 1, self:GetMapPartCount() do
+			local room = root:GetChildByName(self:GetRoomNameByNumber(partSlot), false)
+			if room ~= nil then
+				checkedCount = checkedCount + 1
+				if self:RepairAutoDirectionPortalFromTemplate(room, self:GetNorthPortalChildName(), "North") == true then
+					repairedCount = repairedCount + 1
+				end
+				if self:RepairAutoDirectionPortalFromTemplate(room, self:GetEastPortalChildName(), "East") == true then
+					repairedCount = repairedCount + 1
+				end
+				if self:RepairAutoDirectionPortalFromTemplate(room, self:GetSouthPortalChildName(), "South") == true then
+					repairedCount = repairedCount + 1
+				end
+				if self:RepairAutoDirectionPortalFromTemplate(room, self:GetWestPortalChildName(), "West") == true then
+					repairedCount = repairedCount + 1
+				end
+			end
+		end
+
+		self:Log("portal positions repaired rooms=" .. tostring(checkedCount) .. " portals=" .. tostring(repairedCount))
+	end
+
+	@InspectorButton("Refresh Supply Boxes")
+	method void RefreshGeneratedRoomSupplies()
+		-- Adds missing supply box children without moving existing boxes.
+		local root = self:GetGeneratedRoot()
+		if root == nil then
+			self:Log("supply box refresh skipped: root missing")
+			return
+		end
+
+		local roomCount = 0
+		for partSlot = 1, self:GetMapPartCount() do
+			local room = root:GetChildByName(self:GetRoomNameByNumber(partSlot), false)
+			if room ~= nil then
+				if self:EnsureMissingRoomSupply(room) == true then
+					roomCount = roomCount + 1
+				end
+			end
+		end
+
+		self:Log("supply boxes ensured rooms=" .. tostring(roomCount) .. " child=" .. self:GetSupplyChildName())
+	end
+
+	@InspectorButton("Debug Grid Settings")
+	method void DebugGridSettings()
+		-- Logs the current grid dimensions and calculated world bounds.
+		local columns = self:GetColumns()
+		local rows = self:GetRows()
+		local roomWidth = self:GetRoomWidth()
+		local roomHeight = self:GetRoomHeight()
+		local totalWidth = columns * roomWidth + math.max(0, columns - 1) * self:GetGapX()
+		local totalHeight = rows * roomHeight + math.max(0, rows - 1) * self:GetGapY()
+		self:Log("settings grid=" .. tostring(columns) .. "x" .. tostring(rows) .. " parts=" .. tostring(self:GetMapPartCount()) .. " fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. " pool=" .. tostring(self:GetPoolPartCount()) .. " room=(" .. tostring(roomWidth) .. "," .. tostring(roomHeight) .. ") total=(" .. tostring(totalWidth) .. "," .. tostring(totalHeight) .. ")")
+	end
+
+	method void SyncGeneratedGrid(boolean createMissing, boolean disableOutOfRange, string actionName)
+		-- Synchronizes generated rooms with current grid settings without destroying existing rooms.
+		local root = self:GetGeneratedRoot()
+		local template = self:GetRoomTemplate()
+		if root == nil then
+			self:Log("sync skipped: root missing")
+			return
+		end
+		if createMissing == true and template == nil then
+			self:Log("sync skipped: template missing")
+			return
+		end
+
+		if template ~= nil then
+			template:SetEnable(false)
+			template:SetVisible(false)
+		end
+
+		local columns = self:GetColumns()
+		local rows = self:GetRows()
+		local reusedCount = 0
+		local createdCount = 0
+		local updatedCount = 0
+		local missingCount = 0
+
+		for partSlot = 1, self:GetMapPartCount() do
+			local roomName = self:GetRoomNameByNumber(partSlot)
+			local room = root:GetChildByName(roomName, false)
+			local roomWasCreated = false
+			if room ~= nil then
+				reusedCount = reusedCount + 1
+			elseif createMissing == true then
+				room = self:CloneRoomFromTemplate(template, root, roomName)
+				if room ~= nil then
+					createdCount = createdCount + 1
+					roomWasCreated = true
+				else
+					missingCount = missingCount + 1
+				end
+			else
+				missingCount = missingCount + 1
+			end
+
+			if room ~= nil then
+				self:ApplyRoomTransform(room, partSlot, roomWasCreated)
+				if roomWasCreated == true then
+					self:ApplyRoomNumber(room, partSlot)
+				end
+				room:SetEnable(true)
+				room:SetVisible(true)
+				updatedCount = updatedCount + 1
+			end
+		end
+
+		local hiddenOutOfRange = 0
+		if disableOutOfRange == true then
+			hiddenOutOfRange = self:SetOutOfRangeRoomsActive(root, false)
+		end
+
+		local summary = "grid=" .. tostring(columns) .. "x" .. tostring(rows) .. ", parts=" .. tostring(self:GetMapPartCount()) .. ", fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. ", pool=" .. tostring(self:GetPoolPartCount()) .. ", number=" .. self:GetPartRangeText() .. ", room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. "), gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. "), reused=" .. tostring(reusedCount) .. ", created=" .. tostring(createdCount) .. ", missing=" .. tostring(missingCount)
+		self:Log(self:ReadString(actionName, "synced") .. " " .. summary .. ", hiddenOutOfRange=" .. tostring(hiddenOutOfRange))
+	end
+
+	method Entity CloneRoomFromTemplate(Entity template, Entity root, string roomName)
+		-- Clones one room from the hidden template and attaches it under the generated root.
+		if template == nil or root == nil then
+			return nil
+		end
+
+		local safeName = self:ReadString(roomName, "")
+		if safeName == "" then
+			return nil
+		end
+
+		local room = template:Clone(safeName)
+		if room ~= nil then
+			room:AttachTo(root)
+		end
+		return room
+	end
+
+	method number SetOutOfRangeRoomsActive(Entity root, boolean active)
+		-- Sets active state for generated rooms whose number is outside the current grid.
+		if root == nil then
+			return 0
+		end
+
+		local children = root.Children:ToTable()
+		local count = 0
+		for index, child in ipairs(children) do
+			if child ~= nil and child.Name ~= self:GetRoomTemplateName() and self:IsGeneratedRoomName(child.Name) == true then
+				local partSlot = self:GetGeneratedRoomNumberFromName(child.Name)
+				if self:IsRoomNumberInCurrentGrid(partSlot) == false then
+					child:SetEnable(active)
+					child:SetVisible(active)
+					count = count + 1
+				end
+			end
+		end
+		return count
+	end
+
+	method boolean IsGeneratedRoomName(string roomName)
+		-- Checks whether a child name matches the managed map-part naming pattern.
+		return self:GetGeneratedRoomNumberFromName(roomName) > 0
+	end
+
+	method number GetGeneratedRoomNumberFromName(string roomName)
+		-- Extracts the managed part slot from a generated room entity name.
+		return self:GetManagedPartSlotFromName(roomName)
+	end
+
+	method number GetManagedPartSlotFromName(string roomName)
+		-- Converts fixed corner names and pooled room names into a managed part slot.
+		local name = self:ReadString(roomName, "")
+		local fixedCornerIndex = self:GetFixedCornerIndexFromName(name)
+		if fixedCornerIndex > 0 then
+			return fixedCornerIndex
+		end
+
+		local poolIndex = self:GetPoolIndexFromName(name)
+		if poolIndex <= 0 or poolIndex > self:GetPoolPartCount() then
+			return 0
+		end
+		return self:GetFixedCornerCount() + poolIndex
+	end
+
+	method boolean IsRoomNumberInCurrentGrid(number roomNumber)
+		-- Returns whether a generated part slot belongs to the current managed part range.
+		local value = math.floor(self:ReadNumber(roomNumber, 0))
+		return value >= 1 and value <= self:GetMapPartCount()
+	end
+
+	method void ApplyRoomTransform(Entity room, number partSlot, boolean initializeChildren)
+		-- Positions and sizes one generated room at its fixed corner or pool slot.
+		if room == nil or room.TransformComponent == nil then
+			return
+		end
+
+		local center = self:GetPartCenter(partSlot)
+		room.TransformComponent.Position = Vector3(center.x, center.y, self:GetRoomZ())
+		self:ApplyRoomShape(room)
+		if initializeChildren == true then
+			self:ApplyRoomPortals(room)
+			self:ApplyRoomSupply(room)
+		end
+	end
+
+	method void ApplyRoomShape(Entity room)
+		-- Updates visual bounds and foothold width for the current room dimensions.
+		if room == nil then
+			return
+		end
+
+		local halfWidth = self:GetRoomWidth() * 0.5
+		local halfHeight = self:GetRoomHeight() * 0.5
+
+		if room.PolygonRendererComponent ~= nil then
+			room.PolygonRendererComponent.Color = Color(0.08, 0.16, 0.2, 0.25)
+			room.PolygonRendererComponent.SortingLayer = "MapLayer0"
+			room.PolygonRendererComponent.IgnoreMapLayerCheck = true
+			room.PolygonRendererComponent.OrderInLayer = 2
+			room.PolygonRendererComponent.Points:Clear()
+			room.PolygonRendererComponent.Points:Add(Vector2(-halfWidth, -halfHeight))
+			room.PolygonRendererComponent.Points:Add(Vector2(halfWidth, -halfHeight))
+			room.PolygonRendererComponent.Points:Add(Vector2(halfWidth, halfHeight))
+			room.PolygonRendererComponent.Points:Add(Vector2(-halfWidth, halfHeight))
+		end
+
+		if room.CustomFootholdComponent ~= nil then
+			room.CustomFootholdComponent.edgeLists:Clear()
+			room.CustomFootholdComponent.edgeLists:Add({
+				Vector2(-halfWidth, -halfHeight),
+				Vector2(halfWidth, -halfHeight)
+			})
+		end
+	end
+
+	method void ApplyRoomNumber(Entity room, number partSlot)
+		-- Applies hierarchy numbering and visible label text for one room.
+		if room == nil then
+			return
+		end
+
+		local label = room:GetChildByName(self:GetLabelChildName(), false)
+		if label == nil then
+			label = self:CloneTemplateLabel(room)
+		end
+
+		if label == nil then
+			self:Log("number label missing: room=" .. room.Name .. " label=" .. self:GetLabelChildName())
+			return
+		end
+
+		self:ApplyLabelTransform(label)
+		self:SetLabelText(label, self:GetLabelText(partSlot))
+		label:SetEnable(true)
+		label:SetVisible(true)
+	end
+
+	method void ApplyRoomPortals(Entity room)
+		-- Updates all directional portal marker children for one generated room.
+		if room == nil then
+			return
+		end
+
+		self:ApplyDirectionPortal(room, self:GetNorthPortalChildName(), "North")
+		self:ApplyDirectionPortal(room, self:GetEastPortalChildName(), "East")
+		self:ApplyDirectionPortal(room, self:GetSouthPortalChildName(), "South")
+		self:ApplyDirectionPortal(room, self:GetWestPortalChildName(), "West")
+	end
+
+	method void EnsureMissingRoomPortals(Entity room)
+		-- Creates only missing directional portal marker children for one generated room.
+		if room == nil then
+			return
+		end
+
+		self:EnsureMissingDirectionPortal(room, self:GetNorthPortalChildName(), "North")
+		self:EnsureMissingDirectionPortal(room, self:GetEastPortalChildName(), "East")
+		self:EnsureMissingDirectionPortal(room, self:GetSouthPortalChildName(), "South")
+		self:EnsureMissingDirectionPortal(room, self:GetWestPortalChildName(), "West")
+	end
+
+	method void ApplyRoomSupply(Entity room)
+		-- Ensures the optional supply child from the room template exists in this room.
+		if room == nil then
+			return
+		end
+
+		local supplyName = self:GetSupplyChildName()
+		if supplyName == "" then
+			return
+		end
+
+		local template = self:GetRoomTemplate()
+		if template == nil then
+			return
+		end
+
+		local templateSupply = template:GetChildByName(supplyName, false)
+		if templateSupply == nil then
+			return
+		end
+
+		local supply = room:GetChildByName(supplyName, false)
+		if supply == nil then
+			supply = self:CloneTemplateChild(room, supplyName)
+		end
+		if supply == nil then
+			self:Log("supply missing: room=" .. room.Name .. " supply=" .. supplyName)
+			return
+		end
+
+		self:ApplySupplyTransform(supply)
+		supply:SetEnable(templateSupply.Enable == true)
+		supply:SetVisible(templateSupply.Visible == true)
+	end
+
+	method void ApplySupplyTransform(Entity supply)
+		-- Places the optional supply child relative to the room center.
+		if supply == nil or supply.TransformComponent == nil then
+			return
+		end
+		supply.TransformComponent.Position = Vector3(self:GetSupplyOffsetX(), self:GetSupplyOffsetY(), self:GetSupplyOffsetZ())
+	end
+
+	method boolean EnsureMissingRoomSupply(Entity room)
+		-- Creates one missing supply box child while preserving existing box placement.
+		if room == nil then
+			return false
+		end
+
+		local supplyName = self:GetSupplyChildName()
+		if supplyName == "" then
+			return false
+		end
+
+		local supply = room:GetChildByName(supplyName, false)
+		if supply ~= nil then
+			return true
+		end
+
+		supply = self:CloneTemplateChild(room, supplyName)
+		if supply == nil then
+			self:Log("supply missing: room=" .. room.Name .. " supply=" .. supplyName)
+			return false
+		end
+
+		self:ApplySupplyTransform(supply)
+		local template = self:GetRoomTemplate()
+		if template ~= nil then
+			local templateSupply = template:GetChildByName(supplyName, false)
+			if templateSupply ~= nil then
+				supply:SetEnable(templateSupply.Enable == true)
+				supply:SetVisible(templateSupply.Visible == true)
+			end
+		end
+		return true
+	end
+
+	method void ApplyDirectionPortal(Entity room, string portalName, string direction)
+		-- Finds or clones one directional portal child and places it on the matching room edge.
+		if room == nil then
+			return
+		end
+
+		local safeName = self:ReadString(portalName, "")
+		if safeName == "" then
+			return
+		end
+
+		local portal = room:GetChildByName(safeName, false)
+		local portalWasMissing = portal == nil
+		if portal == nil then
+			portal = self:CloneTemplateChild(room, safeName)
+		end
+
+		if portal == nil then
+			self:Log("portal missing: room=" .. room.Name .. " portal=" .. safeName)
+			return
+		end
+
+		if portalWasMissing == true then
+			self:ApplyTemplatePortalTransform(portal, safeName, direction)
+		end
+		self:ApplyPortalShape(portal, direction)
+		self:ApplyPortalCollider(portal, direction)
+		if portalWasMissing == true then
+			local templateEnabled = self:IsTemplatePortalEnabled(safeName)
+			portal:SetEnable(templateEnabled)
+			portal:SetVisible(templateEnabled)
+		else
+			portal:SetVisible(portal.Enable == true)
+		end
+	end
+
+	method void EnsureMissingDirectionPortal(Entity room, string portalName, string direction)
+		-- Initializes one missing directional portal child while preserving existing portal markers.
+		if room == nil then
+			return
+		end
+
+		local safeName = self:ReadString(portalName, "")
+		if safeName == "" then
+			return
+		end
+
+		local portal = room:GetChildByName(safeName, false)
+		if portal ~= nil then
+			return
+		end
+
+		portal = self:CloneTemplateChild(room, safeName)
+		if portal == nil then
+			self:Log("portal missing: room=" .. room.Name .. " portal=" .. safeName)
+			return
+		end
+
+		self:ApplyTemplatePortalTransform(portal, safeName, direction)
+		self:ApplyPortalShape(portal, direction)
+		self:ApplyPortalCollider(portal, direction)
+
+		local templateEnabled = self:IsTemplatePortalEnabled(safeName)
+		portal:SetEnable(templateEnabled)
+		portal:SetVisible(templateEnabled)
+	end
+
+	method boolean RepairAutoDirectionPortalFromTemplate(Entity room, string portalName, string direction)
+		-- Repairs one portal only if it still sits at the generated edge formula position.
+		if room == nil then
+			return false
+		end
+
+		local safeName = self:ReadString(portalName, "")
+		if safeName == "" then
+			return false
+		end
+
+		local portal = room:GetChildByName(safeName, false)
+		if portal == nil or portal.TransformComponent == nil then
+			return false
+		end
+		if self:IsPortalAtDefaultAutoPosition(portal, direction) ~= true then
+			return false
+		end
+
+		return self:ApplyTemplatePortalTransform(portal, safeName, direction)
+	end
+
+	method boolean ApplyTemplatePortalTransform(Entity portal, string portalName, string direction)
+		-- Copies the room template marker transform so generated rooms keep authored portal positions.
+		if portal == nil or portal.TransformComponent == nil then
+			return false
+		end
+
+		local template = self:GetRoomTemplate()
+		local safeName = self:ReadString(portalName, "")
+		if template ~= nil and safeName ~= "" then
+			local templatePortal = template:GetChildByName(safeName, false)
+			if templatePortal ~= nil and templatePortal.TransformComponent ~= nil then
+				local position = templatePortal.TransformComponent.Position
+				portal.TransformComponent.Position = Vector3(position.x, position.y, position.z)
+				return true
+			end
+		end
+
+		self:ApplyPortalTransform(portal, direction)
+		return false
+	end
+
+	method boolean IsPortalAtDefaultAutoPosition(Entity portal, string direction)
+		-- Checks whether a portal still matches the old generated edge position.
+		if portal == nil or portal.TransformComponent == nil then
+			return false
+		end
+
+		local current = portal.TransformComponent.Position
+		local expected = self:GetDefaultPortalLocalPosition(direction)
+		local tolerance = self:GetPortalRepairTolerance()
+		return math.abs(current.x - expected.x) <= tolerance
+			and math.abs(current.y - expected.y) <= tolerance
+			and math.abs(current.z - expected.z) <= tolerance
+	end
+
+	method Vector3 GetDefaultPortalLocalPosition(string direction)
+		-- Returns the legacy auto edge position used before template marker preservation.
+		local halfWidth = self:GetRoomWidth() * 0.5
+		local halfHeight = self:GetRoomHeight() * 0.5
+		local inset = self:GetPortalInset()
+		local x = 0
+		local y = 0
+
+		if direction == "North" then
+			y = halfHeight - inset
+		elseif direction == "South" then
+			y = -halfHeight + inset
+		elseif direction == "East" then
+			x = halfWidth - inset
+		elseif direction == "West" then
+			x = -halfWidth + inset
+		end
+
+		return Vector3(x, y, self:GetPortalOffsetZ())
+	end
+
+	method void ApplyPortalTransform(Entity portal, string direction)
+		-- Places one portal along the current room bounds.
+		if portal == nil or portal.TransformComponent == nil then
+			return
+		end
+
+		local halfWidth = self:GetRoomWidth() * 0.5
+		local halfHeight = self:GetRoomHeight() * 0.5
+		local inset = self:GetPortalInset()
+		local x = 0
+		local y = 0
+
+		if direction == "North" then
+			y = halfHeight - inset
+		elseif direction == "South" then
+			y = -halfHeight + inset
+		elseif direction == "East" then
+			x = halfWidth - inset
+		elseif direction == "West" then
+			x = -halfWidth + inset
+		end
+
+		portal.TransformComponent.Position = Vector3(x, y, self:GetPortalOffsetZ())
+	end
+
+	method void ApplyPortalShape(Entity portal, string direction)
+		-- Updates the visible polygon rectangle for one portal.
+		if portal == nil or portal.PolygonRendererComponent == nil then
+			return
+		end
+
+		local boxSize = self:GetPortalBoxSize(direction)
+		local halfWidth = boxSize.x * 0.5
+		local halfHeight = boxSize.y * 0.5
+
+		portal.PolygonRendererComponent.Points:Clear()
+		portal.PolygonRendererComponent.Points:Add(Vector2(-halfWidth, -halfHeight))
+		portal.PolygonRendererComponent.Points:Add(Vector2(halfWidth, -halfHeight))
+		portal.PolygonRendererComponent.Points:Add(Vector2(halfWidth, halfHeight))
+		portal.PolygonRendererComponent.Points:Add(Vector2(-halfWidth, halfHeight))
+		portal.PolygonRendererComponent.SortingLayer = "MapLayer0"
+		portal.PolygonRendererComponent.IgnoreMapLayerCheck = true
+		portal.PolygonRendererComponent.OrderInLayer = 32
+		portal.PolygonRendererComponent.Color = self:GetPortalColor(direction)
+	end
+
+	method void ApplyPortalCollider(Entity portal, string direction)
+		-- Keeps the native portal trigger box aligned with the visible marker.
+		if portal == nil or portal.PortalComponent == nil then
+			return
+		end
+
+		portal.PortalComponent.BoxOffset = Vector2(0, 0)
+		portal.PortalComponent.BoxSize = self:GetPortalBoxSize(direction)
+	end
+
+	method Entity CloneTemplateLabel(Entity room)
+		-- Creates a room label from the template when room cloning did not include children.
+		return self:CloneTemplateChild(room, self:GetLabelChildName())
+	end
+
+	method Entity CloneTemplateChild(Entity room, string childName)
+		-- Clones a named child from the room template under the given room.
+		if room == nil then
+			return nil
+		end
+
+		local template = self:GetRoomTemplate()
+		if template == nil then
+			return nil
+		end
+
+		local safeName = self:ReadString(childName, "")
+		if safeName == "" then
+			return nil
+		end
+
+		local sourceChild = template:GetChildByName(safeName, false)
+		if sourceChild == nil then
+			return nil
+		end
+
+		local child = sourceChild:Clone(safeName)
+		if child ~= nil then
+			child:AttachTo(room)
+		end
+		return child
+	end
+
+	method void ApplyLabelTransform(Entity label)
+		-- Keeps the room label centered relative to the generated room.
+		if label == nil or label.TransformComponent == nil then
+			return
+		end
+
+		label.TransformComponent.Position = Vector3(self:GetLabelOffsetX(), self:GetLabelOffsetY(), self:GetLabelOffsetZ())
+		self:ApplyLabelBounds(label)
+	end
+
+	method void ApplyLabelBounds(Entity label)
+		-- Updates label text bounds to match the current room size.
+		if label == nil or label.TextRendererComponent == nil then
+			return
+		end
+
+		label.TextRendererComponent.RectSize = Vector2(self:GetRoomWidth(), math.max(1, self:GetRoomHeight() * 0.4))
+		label.TextRendererComponent.SortingLayer = "MapLayer0"
+		label.TextRendererComponent.IgnoreMapLayerCheck = true
+		label.TextRendererComponent.OrderInLayer = 30
+		label.TextRendererComponent.FontColor = Color(1, 1, 1, 1)
+		label.TextRendererComponent.FontSize = 24
+		label.TextRendererComponent.OutlineWidth = 0.18
+		label.TextRendererComponent.OutlineColor = Color(0, 0, 0, 1)
+		label.TextRendererComponent.Underlay = true
+		label.TextRendererComponent.UnderlayColor = Color(0, 0, 0, 0.65)
+		label.TextRendererComponent.UnderlayOffsetX = 0.06
+		label.TextRendererComponent.UnderlayOffsetY = -0.06
+	end
+
+	method void SetLabelText(Entity label, string text)
+		-- Writes label text to whichever world/UI text component the template provides.
+		if label == nil then
+			return
+		end
+
+		if label.TextRendererComponent ~= nil then
+			label.TextRendererComponent.Text = self:ReadString(text, "")
+			return
+		end
+
+		if label.TextComponent ~= nil then
+			label.TextComponent.Text = self:ReadString(text, "")
+		end
+	end
+
+	method Vector2 GetCellCenter(number row, number column)
+		-- Returns the centered world position for a row and column.
+		local columns = self:GetColumns()
+		local rows = self:GetRows()
+		local spacingX = self:GetRoomWidth() + self:GetGapX()
+		local spacingY = self:GetRoomHeight() + self:GetGapY()
+		local middleX = (columns - 1) * 0.5
+		local middleY = (rows - 1) * 0.5
+		local x = self:GetOriginX() + (column - 1 - middleX) * spacingX
+		local y = self:GetOriginY() + (middleY - (row - 1)) * spacingY
+		return Vector2(x, y)
+	end
+
+	method Vector2 GetPartCenter(number partSlot)
+		-- Returns the editor position for a fixed corner part or pooled part.
+		local fixedCornerIndex = self:GetFixedCornerIndex(partSlot)
+		if fixedCornerIndex > 0 then
+			return self:GetFixedCornerCenter(fixedCornerIndex)
+		end
+		return self:GetPoolPartCenter(partSlot)
+	end
+
+	method number GetFixedCornerIndex(number partSlot)
+		-- Converts the first four managed part slots into corner slot indexes.
+		local slotIndex = math.floor(self:ReadNumber(partSlot, 0))
+		if slotIndex >= 1 and slotIndex <= self:GetFixedCornerCount() then
+			return slotIndex
+		end
+		return 0
+	end
+
+	method Vector2 GetFixedCornerCenter(number fixedCornerIndex)
+		-- Maps fixed corner slots to NW, NE, SW, SE logical grid corners.
+		local index = math.floor(self:ReadNumber(fixedCornerIndex, 1))
+		if index == 2 then
+			return self:GetCellCenter(1, self:GetColumns())
+		elseif index == 3 then
+			return self:GetCellCenter(self:GetRows(), 1)
+		elseif index == 4 then
+			return self:GetCellCenter(self:GetRows(), self:GetColumns())
+		end
+		return self:GetCellCenter(1, 1)
+	end
+
+	method Vector2 GetPoolPartCenter(number partSlot)
+		-- Places non-corner pooled map parts below the logical grid preview.
+		local poolIndex = math.max(1, math.floor(self:ReadNumber(partSlot, self:GetFixedCornerCount() + 1)) - self:GetFixedCornerCount())
+		local columns = self:GetPoolLayoutColumns()
+		local poolRow = math.floor((poolIndex - 1) / columns) + 1
+		local poolColumn = ((poolIndex - 1) % columns) + 1
+		local spacingX = self:GetRoomWidth() + self:GetGapX()
+		local spacingY = self:GetRoomHeight() + self:GetGapY()
+		local middleX = (columns - 1) * 0.5
+		local logicalMiddleY = (self:GetRows() - 1) * 0.5
+		local x = self:GetOriginX() + (poolColumn - 1 - middleX) * spacingX
+		local y = self:GetOriginY() - (logicalMiddleY + poolRow) * spacingY
+		return Vector2(x, y)
+	end
+
+	method Entity GetGeneratedRoot()
+		-- Resolves the generated root entity in the current map.
+		return _EntityService:GetEntityByPath(self:ResolveMapChildPath("EditorGeneratedGrid"))
+	end
+
+	method Entity GetRoomTemplate()
+		-- Resolves the hidden room template entity in the current map.
+		if self.RoomTemplate ~= nil and isvalid(self.RoomTemplate) then
+			return self.RoomTemplate
+		end
+		return _EntityService:GetEntityByPath(self:ResolveMapChildPath("GridRoomTemplate"))
+	end
+
+	method string GetRoomTemplateName()
+		-- Returns only the final path segment of the template path.
+		return "GridRoomTemplate"
+	end
+
+	method string ResolveMapChildPath(string relativePath)
+		-- Converts a relative map child path into a global entity path.
+		local value = self:ReadString(relativePath, "")
+		if value == "" then
+			return ""
+		end
+		if string.sub(value, 1, 1) == "/" then
+			return value
+		end
+		return "/maps/" .. self:GetMapName() .. "/" .. value
+	end
+
+	method string GetMapName()
+		-- Returns the owning map name with RoomTestMap as an authoring fallback.
+		if self.Entity ~= nil and self.Entity.CurrentMapName ~= nil and self.Entity.CurrentMapName ~= "" then
+			return self.Entity.CurrentMapName
+		end
+		return "RoomTestMap"
+	end
+
+	method string GetRoomName(number row, number column)
+		-- Builds the stable numbered room entity name for a grid coordinate.
+		return self:GetPoolRoomName(self:GetRoomNumber(row, column))
+	end
+
+	method string GetRoomNameByNumber(number partSlot)
+		-- Builds the stable entity name for a managed map part slot.
+		return self:GetPartName(partSlot)
+	end
+
+	method string GetPartName(number partSlot)
+		-- Uses fixed corner names first, then pooled rooms numbered from one.
+		local slot = math.floor(self:ReadNumber(partSlot, 0))
+		local fixedCornerIndex = self:GetFixedCornerIndex(slot)
+		if fixedCornerIndex > 0 then
+			return self:GetFixedCornerName(fixedCornerIndex)
+		end
+		return self:GetPoolRoomName(slot - self:GetFixedCornerCount())
+	end
+
+	method string GetFixedCornerName(number fixedCornerIndex)
+		-- Returns the explicit name for one reserved corner map part.
+		local index = math.floor(self:ReadNumber(fixedCornerIndex, 0))
+		if index == 1 then
+			return "CornerNW"
+		elseif index == 2 then
+			return "CornerNE"
+		elseif index == 3 then
+			return "CornerSW"
+		elseif index == 4 then
+			return "CornerSE"
+		end
+		return ""
+	end
+
+	method number GetFixedCornerIndexFromName(string roomName)
+		-- Converts an explicit corner entity name back into its reserved slot.
+		local name = self:ReadString(roomName, "")
+		if name == "CornerNW" then
+			return 1
+		elseif name == "CornerNE" then
+			return 2
+		elseif name == "CornerSW" then
+			return 3
+		elseif name == "CornerSE" then
+			return 4
+		end
+		return 0
+	end
+
+	method string GetPoolRoomName(number poolIndex)
+		-- Builds a pooled room entity name where the pool starts at Room_001.
+		local index = math.max(1, math.floor(self:ReadNumber(poolIndex, 1)))
+		return "Room_" .. self:FormatRoomNumber(index)
+	end
+
+	method number GetPoolIndexFromName(string roomName)
+		-- Extracts a pooled room index from a Room_### entity name.
+		local name = self:ReadString(roomName, "")
+		local prefix = "Room_"
+		if name == "" or string.sub(name, 1, string.len(prefix)) ~= prefix then
+			return 0
+		end
+
+		local numberText = string.sub(name, string.len(prefix) + 1)
+		local numberValue = tonumber(numberText)
+		if numberValue == nil then
+			return 0
+		end
+		return math.floor(numberValue)
+	end
+
+	method number GetRoomNumber(number row, number column)
+		-- Returns the row-major room number for a grid coordinate.
+		local safeRow = math.max(1, math.floor(self:ReadNumber(row, 1)))
+		local safeColumn = math.max(1, math.floor(self:ReadNumber(column, 1)))
+		return self:GetNumberStart() + (safeRow - 1) * self:GetColumns() + (safeColumn - 1)
+	end
+
+	method string GetLabelText(number partSlot)
+		-- Builds the visible text shown inside a generated room.
+		local fixedCornerIndex = self:GetFixedCornerIndex(partSlot)
+		if fixedCornerIndex == 1 then
+			return "Corner NW"
+		elseif fixedCornerIndex == 2 then
+			return "Corner NE"
+		elseif fixedCornerIndex == 3 then
+			return "Corner SW"
+		elseif fixedCornerIndex == 4 then
+			return "Corner SE"
+		end
+		return "Room " .. self:FormatRoomNumber(partSlot - self:GetFixedCornerCount())
+	end
+
+	method string GetNumberRangeText(number rows, number columns)
+		-- Returns a compact first-to-last numbering summary.
+		local firstNumber = self:GetNumberStart()
+		local lastNumber = firstNumber + math.max(0, math.floor(rows) * math.floor(columns) - 1)
+		return self:FormatRoomNumber(firstNumber) .. "-" .. self:FormatRoomNumber(lastNumber)
+	end
+
+	method string GetPartRangeText()
+		-- Returns the current managed map-part numbering summary.
+		local poolCount = self:GetPoolPartCount()
+		if poolCount <= 0 then
+			return "corners=CornerNW-CornerSE pool=none"
+		end
+		return "corners=CornerNW-CornerSE pool=Room_001-Room_" .. self:FormatRoomNumber(poolCount)
+	end
+
+	method string FormatRoomNumber(number roomNumber)
+		-- Formats a room number with optional zero padding.
+		local value = math.floor(self:ReadNumber(roomNumber, self:GetNumberStart()))
+		local digits = self:GetNumberDigits()
+		if digits <= 0 then
+			return tostring(value)
+		end
+
+		local format = "%0" .. tostring(digits) .. "d"
+		return string.format(format, value)
+	end
+
+	method number GetColumns()
+		-- Returns a clamped integer column count.
+		return math.max(1, math.floor(self:ReadNumber(self.Columns, 3)))
+	end
+
+	method number GetRows()
+		-- Returns a clamped integer row count.
+		return math.max(1, math.floor(self:ReadNumber(self.Rows, 3)))
+	end
+
+	method number GetMapPartCount()
+		-- Returns the total managed physical map part count.
+		local defaultCount = self:GetRows() * self:GetColumns()
+		return math.max(self:GetFixedCornerCount(), math.floor(self:ReadNumber(self.MapPartCount, defaultCount)))
+	end
+
+	method number GetFixedCornerCount()
+		-- Returns the number of reserved fixed corner physical parts.
+		return 4
+	end
+
+	method number GetPoolPartCount()
+		-- Returns the number of non-corner physical parts available as a pool.
+		return math.max(0, self:GetMapPartCount() - self:GetFixedCornerCount())
+	end
+
+	method number GetPoolLayoutColumns()
+		-- Uses the current grid width as the visual column count for pooled parts.
+		return self:GetColumns()
+	end
+
+	method number GetRoomWidth()
+		-- Returns the room width in world units.
+		return math.max(1, self:ReadNumber(self.RoomWidth, 10))
+	end
+
+	method number GetRoomHeight()
+		-- Returns the room height in world units.
+		return math.max(1, self:ReadNumber(self.RoomHeight, 10))
+	end
+
+	method number GetGapX()
+		-- Returns horizontal gap in world units.
+		return math.max(0, self:ReadNumber(self.GapX, 3))
+	end
+
+	method number GetGapY()
+		-- Returns vertical gap in world units.
+		return math.max(0, self:ReadNumber(self.GapY, 3))
+	end
+
+	method number GetOriginX()
+		-- Returns grid origin X in world units.
+		return self:ReadNumber(self.OriginX, 0)
+	end
+
+	method number GetOriginY()
+		-- Returns grid origin Y in world units.
+		return self:ReadNumber(self.OriginY, 3)
+	end
+
+	method number GetRoomZ()
+		-- Returns room render Z.
+		return 999.997
+	end
+
+	method number GetNumberStart()
+		-- Returns the first room number.
+		return 1
+	end
+
+	method number GetLastRoomNumber()
+		-- Returns the final managed physical map part number.
+		return self:GetNumberStart() + self:GetMapPartCount() - 1
+	end
+
+	method number GetNumberDigits()
+		-- Returns the zero-padding width for room numbers.
+		return 3
+	end
+
+	method string GetLabelChildName()
+		-- Returns the template child name used as the visible room label.
+		return "RoomNumberLabel"
+	end
+
+	method number GetLabelOffsetX()
+		-- Returns label local X offset.
+		return 0
+	end
+
+	method number GetLabelOffsetY()
+		-- Returns label local Y offset.
+		return 0
+	end
+
+	method number GetLabelOffsetZ()
+		-- Returns label local Z offset.
+		return -0.001
+	end
+
+	method string GetNorthPortalChildName()
+		-- Returns the north portal child name.
+		return "PortalNorth"
+	end
+
+	method string GetEastPortalChildName()
+		-- Returns the east portal child name.
+		return "PortalEast"
+	end
+
+	method string GetSouthPortalChildName()
+		-- Returns the south portal child name.
+		return "PortalSouth"
+	end
+
+	method string GetWestPortalChildName()
+		-- Returns the west portal child name.
+		return "PortalWest"
+	end
+
+	method string GetSupplyChildName()
+		-- Returns the optional supply child name.
+		return self:ReadString(self.SupplyChildName, "SupplyBox")
+	end
+
+	method number GetSupplyOffsetX()
+		-- Returns the local X offset for optional supply children.
+		return self:ReadNumber(self.SupplyOffsetX, 0)
+	end
+
+	method number GetSupplyOffsetY()
+		-- Returns the local Y offset for optional supply children.
+		return self:ReadNumber(self.SupplyOffsetY, 0)
+	end
+
+	method number GetSupplyOffsetZ()
+		-- Returns the local Z offset for optional supply children.
+		return self:ReadNumber(self.SupplyOffsetZ, -0.003)
+	end
+
+	method number GetPortalWidth()
+		-- Returns the long edge length for a directional portal.
+		return 2.4
+	end
+
+	method number GetPortalThickness()
+		-- Returns the short edge thickness for a directional portal.
+		return 0.45
+	end
+
+	method number GetPortalInset()
+		-- Returns how far each portal is inset from the room edge.
+		local maxInset = math.min(self:GetRoomWidth(), self:GetRoomHeight()) * 0.5
+		return math.min(maxInset, 0.35)
+	end
+
+	method number GetPortalOffsetZ()
+		-- Returns the portal local Z offset.
+		return -0.002
+	end
+
+	method number GetPortalRepairTolerance()
+		-- Returns local-position tolerance for detecting old auto-generated portal markers.
+		return 0.03
+	end
+
+	method Vector2 GetPortalBoxSize(string direction)
+		-- Returns the rectangular portal size for a direction.
+		local width = self:GetPortalWidth()
+		local thickness = self:GetPortalThickness()
+		if direction == "East" or direction == "West" then
+			return Vector2(thickness, width)
+		end
+		return Vector2(width, thickness)
+	end
+
+	method Color GetPortalColor(string direction)
+		-- Returns the preview color for a directional portal marker.
+		if direction == "North" then
+			return Color(0.25, 0.72, 1, 0.85)
+		elseif direction == "East" then
+			return Color(1, 0.82, 0.25, 0.85)
+		elseif direction == "South" then
+			return Color(0.35, 1, 0.48, 0.85)
+		elseif direction == "West" then
+			return Color(1, 0.38, 0.48, 0.85)
+		end
+		return Color(1, 1, 1, 0.85)
+	end
+
+	method boolean IsTemplatePortalEnabled(string portalName)
+		-- Reads the template portal's authoring availability.
+		local template = self:GetRoomTemplate()
+		if template == nil then
+			return true
+		end
+
+		local portal = template:GetChildByName(self:ReadString(portalName, ""), false)
+		if portal == nil then
+			return false
+		end
+		return portal.Enable == true
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string property with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a number property with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a generator log.
+		log("[BRGridMapEditorTool] " .. self:ReadString(message, ""))
+	end
+
+end

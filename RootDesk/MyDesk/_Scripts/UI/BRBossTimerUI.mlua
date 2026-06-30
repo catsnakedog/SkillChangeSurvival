@@ -1,0 +1,163 @@
+@Component
+script BRBossTimerUI extends Component
+
+	property Entity timerPanel = "eb210fb0-3a90-4160-9b46-6e6a58803ffe"
+
+	property TextComponent timeText = "659b5b3c-87f1-4eb5-9eb5-688d42b45e6e"
+
+	property TextComponent labelText = "ec79dbd8-cb4e-4c11-8447-12af4a9ea564"
+
+	property SpriteGUIRendererComponent warningBar = "5823c591-44a7-44e4-b088-90d28e133308"
+
+	property number RefreshSeconds = 0.1
+
+	property boolean VerboseLog = true
+
+	property number refreshTimerId = 0
+
+	property boolean lastVisible = false
+
+	property number lastDisplaySeconds = -1
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		-- Starts the local UI refresh loop.
+		self:SetPanelActive(false)
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshTimer() end, self:GetRefreshSeconds())
+		self:Log("ready")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		-- Clears the local UI refresh loop.
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshTimer()
+		-- Pulls the synchronized timer state and updates the HUD.
+		local visible = self:ShouldShowTimer()
+		self:SetPanelActive(visible)
+		if visible ~= true then
+			return
+		end
+
+		local remaining = math.max(0, math.ceil(self:ReadNumber(_BRBattleTimerSystem.RemainingSeconds, 0)))
+		if remaining ~= self.lastDisplaySeconds then
+			self.lastDisplaySeconds = remaining
+			self:ApplyTimerText(remaining)
+			self:ApplyTimerStyle(remaining, self:ReadNumber(_BRBattleTimerSystem.DurationSeconds, 0))
+		end
+	end
+
+	method boolean ShouldShowTimer()
+		-- Checks whether the timer should be visible for the local player.
+		if _BRBattleTimerSystem == nil then
+			return false
+		end
+		if _BRBattleTimerSystem.TimerVisible ~= true then
+			return false
+		end
+
+		local timerMapName = self:ReadString(_BRBattleTimerSystem.TimerMapName, "")
+		if timerMapName == "" then
+			return true
+		end
+
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return false
+		end
+		return self:ReadString(localPlayer.CurrentMapName, "") == timerMapName
+	end
+
+	method void ApplyTimerText(number remaining)
+		-- Writes label and formatted time text.
+		if self.timeText ~= nil then
+			self.timeText.Text = self:FormatSeconds(remaining)
+		end
+		if self.labelText ~= nil then
+			self.labelText.Text = self:ReadString(_BRBattleTimerSystem.TimerLabel, "BOSS")
+		end
+	end
+
+	method void ApplyTimerStyle(number remaining, number duration)
+		-- Applies Maple-style warning colors as the countdown gets low.
+		local color = Color(1, 1, 1, 1)
+		local warningColor = Color(0.85, 0.2, 0.16, 1)
+		local showWarningBar = false
+
+		if remaining <= 60 then
+			color = Color(1, 0.22, 0.18, 1)
+			warningColor = Color(1, 0.06, 0.02, 1)
+			showWarningBar = true
+		elseif remaining <= 300 then
+			color = Color(1, 0.82, 0.28, 1)
+			warningColor = Color(1, 0.58, 0.18, 1)
+			showWarningBar = true
+		end
+
+		if self.timeText ~= nil then
+			self.timeText.FontColor = color
+		end
+		if self.warningBar ~= nil then
+			self.warningBar.Color = warningColor
+			if self.warningBar.Entity ~= nil then
+				self.warningBar.Entity.Enable = showWarningBar
+			end
+		end
+	end
+
+	method void SetPanelActive(boolean visible)
+		-- Toggles the timer panel tree.
+		if self.timerPanel == nil then
+			return
+		end
+		self.timerPanel.Enable = visible
+		if visible ~= self.lastVisible then
+			self.lastVisible = visible
+			self:Log("visible=" .. tostring(visible))
+		end
+	end
+
+	method string FormatSeconds(number remaining)
+		-- Formats seconds as MM:SS.
+		local total = math.max(0, math.ceil(self:ReadNumber(remaining, 0)))
+		local minutes = math.floor(total / 60)
+		local seconds = total - minutes * 60
+		return string.format("%02d:%02d", minutes, seconds)
+	end
+
+	method number GetRefreshSeconds()
+		-- Returns the UI refresh interval.
+		return math.max(0.05, self:ReadNumber(self.RefreshSeconds, 0.1))
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a UI timer log when verbose logging is enabled.
+		if self.VerboseLog == true then
+			log("[BRBossTimerUI] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

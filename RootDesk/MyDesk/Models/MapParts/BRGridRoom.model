@@ -1,0 +1,716 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "model://brgridroom",
+  "ContentType": "x-mod/model",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.5.0.0",
+  "StudioVersion": "0.1.0.0",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "Version": 1,
+      "Name": "BRGridRoom",
+      "BaseModelId": null,
+      "Id": "brgridroom",
+      "Components": [
+        "MOD.Core.TransformComponent",
+        "MOD.Core.CustomFootholdComponent",
+        "MOD.Core.PolygonRendererComponent"
+      ],
+      "Properties": [],
+      "Values": [
+        {
+          "TargetType": "MOD.Core.TransformComponent",
+          "Name": "Position",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "MOD.Core.MODVector3, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+          },
+          "Value": {
+            "$type": "MOD.Core.MODVector3, MOD.Core",
+            "x": 0.0,
+            "y": 0.0,
+            "z": 999.997
+          }
+        },
+        {
+          "TargetType": "MOD.Core.PolygonRendererComponent",
+          "Name": "SortingLayer",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": "MapLayer0"
+        },
+        {
+          "TargetType": "MOD.Core.PolygonRendererComponent",
+          "Name": "IgnoreMapLayerCheck",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": true
+        },
+        {
+          "TargetType": "MOD.Core.PolygonRendererComponent",
+          "Name": "OrderInLayer",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": 2
+        },
+        {
+          "TargetType": "MOD.Core.CustomFootholdComponent",
+          "Name": "IsDynamicFoothold",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": true
+        },
+        {
+          "TargetType": "MOD.Core.CustomFootholdComponent",
+          "Name": "PhysicsInteractable",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": true
+        },
+        {
+          "TargetType": "MOD.Core.CustomFootholdComponent",
+          "Name": "FootholdWalkSpeedFactor",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": 1.0
+        },
+        {
+          "TargetType": "MOD.Core.CustomFootholdComponent",
+          "Name": "FootholdDrag",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": 1.0
+        },
+        {
+          "TargetType": "MOD.Core.CustomFootholdComponent",
+          "Name": "FootholdForce",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": 0.0
+        }
+      ],
+      "EventLinks": [],
+      "Children": [
+        {
+          "Id": "0e53a5ff-04a1-49ce-acbf-c0a05ae2b3fb",
+          "ParentId": "brgridroom",
+          "Name": "PortalNorth",
+          "Model": {
+            "Version": 1,
+            "Name": "PortalNorth",
+            "BaseModelId": null,
+            "Id": "0e53a5ff-04a1-49ce-acbf-c0a05ae2b3fb",
+            "Components": [
+              "MOD.Core.TransformComponent",
+              "MOD.Core.PolygonRendererComponent",
+              "MOD.Core.PortalComponent"
+            ],
+            "Properties": [],
+            "Values": [
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Visible",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Position",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector3, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector3, MOD.Core",
+                  "x": 0.0,
+                  "y": 4.65,
+                  "z": -0.002
+                }
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "SortingLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": "MapLayer0"
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "IgnoreMapLayerCheck",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "OrderInLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": 32
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "IsLegacy",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": false
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "BoxOffset",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector2, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector2, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "BoxSize",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector2, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector2, MOD.Core",
+                  "x": 2.4,
+                  "y": 0.45
+                }
+              }
+            ],
+            "EventLinks": [],
+            "Children": []
+          }
+        },
+        {
+          "Id": "a4527202-4d71-4613-bf20-7eb313b71b89",
+          "ParentId": "brgridroom",
+          "Name": "PortalEast",
+          "Model": {
+            "Version": 1,
+            "Name": "PortalEast",
+            "BaseModelId": null,
+            "Id": "a4527202-4d71-4613-bf20-7eb313b71b89",
+            "Components": [
+              "MOD.Core.TransformComponent",
+              "MOD.Core.PolygonRendererComponent",
+              "MOD.Core.PortalComponent"
+            ],
+            "Properties": [],
+            "Values": [
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Visible",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Position",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector3, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector3, MOD.Core",
+                  "x": 4.65,
+                  "y": 0.0,
+                  "z": -0.002
+                }
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "SortingLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": "MapLayer0"
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "IgnoreMapLayerCheck",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "OrderInLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": 32
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "IsLegacy",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": false
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "BoxOffset",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector2, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector2, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "BoxSize",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector2, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector2, MOD.Core",
+                  "x": 0.45,
+                  "y": 2.4
+                }
+              }
+            ],
+            "EventLinks": [],
+            "Children": []
+          }
+        },
+        {
+          "Id": "9ed41de0-5bc4-4322-aa5e-245c614345be",
+          "ParentId": "brgridroom",
+          "Name": "PortalSouth",
+          "Model": {
+            "Version": 1,
+            "Name": "PortalSouth",
+            "BaseModelId": null,
+            "Id": "9ed41de0-5bc4-4322-aa5e-245c614345be",
+            "Components": [
+              "MOD.Core.TransformComponent",
+              "MOD.Core.PolygonRendererComponent",
+              "MOD.Core.PortalComponent"
+            ],
+            "Properties": [],
+            "Values": [
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Visible",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Position",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector3, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector3, MOD.Core",
+                  "x": 0.0,
+                  "y": -4.65,
+                  "z": -0.002
+                }
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "SortingLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": "MapLayer0"
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "IgnoreMapLayerCheck",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "OrderInLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": 32
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "IsLegacy",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": false
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "BoxOffset",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector2, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector2, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "BoxSize",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector2, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector2, MOD.Core",
+                  "x": 2.4,
+                  "y": 0.45
+                }
+              }
+            ],
+            "EventLinks": [],
+            "Children": []
+          }
+        },
+        {
+          "Id": "f2b2fa80-507e-4257-81a2-b6b6ebcdccac",
+          "ParentId": "brgridroom",
+          "Name": "PortalWest",
+          "Model": {
+            "Version": 1,
+            "Name": "PortalWest",
+            "BaseModelId": null,
+            "Id": "f2b2fa80-507e-4257-81a2-b6b6ebcdccac",
+            "Components": [
+              "MOD.Core.TransformComponent",
+              "MOD.Core.PolygonRendererComponent",
+              "MOD.Core.PortalComponent"
+            ],
+            "Properties": [],
+            "Values": [
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Visible",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Position",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector3, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector3, MOD.Core",
+                  "x": -4.65,
+                  "y": 0.0,
+                  "z": -0.002
+                }
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "SortingLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": "MapLayer0"
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "IgnoreMapLayerCheck",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "OrderInLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": 32
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "IsLegacy",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": false
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "BoxOffset",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector2, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector2, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "BoxSize",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector2, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector2, MOD.Core",
+                  "x": 0.45,
+                  "y": 2.4
+                }
+              }
+            ],
+            "EventLinks": [],
+            "Children": []
+          }
+        },
+        {
+          "Id": "87c4f804-5800-438b-950b-7aeee7b55953",
+          "ParentId": "brgridroom",
+          "Name": "RoomNumberLabel",
+          "Model": {
+            "Version": 1,
+            "Name": "RoomNumberLabel",
+            "BaseModelId": null,
+            "Id": "87c4f804-5800-438b-950b-7aeee7b55953",
+            "Components": [
+              "MOD.Core.TransformComponent",
+              "MOD.Core.TextRendererComponent"
+            ],
+            "Properties": [],
+            "Values": [
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Visible",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Position",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector3, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector3, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": -0.001
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "Text",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": "Room 000"
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "Font",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": "Default"
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "FontSize",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": 24.0
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "RectSize",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector2, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector2, MOD.Core",
+                  "x": 10.0,
+                  "y": 4.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "SortingLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": "MapLayer0"
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "IgnoreMapLayerCheck",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "OrderInLayer",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": 30
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "Wrapping",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": false
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "BestFit",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": false
+              }
+            ],
+            "EventLinks": [],
+            "Children": []
+          }
+        }
+      ]
+    }
+  }
+}

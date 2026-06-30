@@ -1,0 +1,1832 @@
+@Logic
+script BRRoomGraphGenerator extends Logic
+
+	property number Columns = 3
+
+	property number Rows = 3
+
+	property number MapPartCount = 9
+
+	property number NumberStart = 1
+
+	property number NumberDigits = 3
+
+	property string RoomNamePrefix = "Room_"
+
+	property boolean EnableFillMissingRooms = true
+
+	property number ExtraConnectionChancePercent = 0
+
+	property boolean UseCustomPortalConnectionSystem = true
+
+	property number MiniMapPlayerRefreshSeconds = 0.25
+
+	property boolean VerboseLog = true
+
+	property number miniMapPlayerTimer = 0
+
+	@Sync
+	property number LastRoomCount = 0
+
+	@Sync
+	property number LastConnectionCount = 0
+
+	@Sync
+	property string LastGraphSummary = ""
+
+	@Sync
+	property string LastGraphDiagram = ""
+
+	@Sync
+	property string LastMiniMapMapName = ""
+
+	@Sync
+	property number LastMiniMapRows = 0
+
+	@Sync
+	property number LastMiniMapColumns = 0
+
+	@Sync
+	property string LastMiniMapRooms = ""
+
+	@Sync
+	property string LastMiniMapConnections = ""
+
+	@Sync
+	property string LastMiniMapAssignments = ""
+
+	@Sync
+	property string LastMiniMapPlayerCounts = ""
+
+	@Sync
+	property number LastMiniMapPlayerVersion = 0
+
+	@Sync
+	property number LastMiniMapVersion = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		-- Initializes runtime storage used by generated match graphs.
+		self:EnsureRuntime()
+		local columns = self:GetColumns(nil)
+		local rows = self:GetRows(nil)
+		self:Log("ready default=" .. tostring(columns) .. "x" .. tostring(rows) .. " parts=" .. tostring(self:GetMapPartCount(nil, rows, columns)) .. " fillMissing=" .. tostring(self.EnableFillMissingRooms))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnUpdate(number delta)
+		-- Refreshes the minimap player-count payload while a match graph is active.
+		local mapName = self:ReadString(self.LastMiniMapMapName, "")
+		if mapName == "" then
+			return
+		end
+
+		self.miniMapPlayerTimer = self:ReadNumber(self.miniMapPlayerTimer, 0) - math.max(0, self:ReadNumber(delta, 0))
+		if self.miniMapPlayerTimer > 0 then
+			return
+		end
+
+		self.miniMapPlayerTimer = self:GetMiniMapPlayerRefreshSeconds()
+		self:RefreshMiniMapPlayerCounts()
+	end
+
+	@ExecSpace("ServerOnly")
+	method any CreateGraphForMatch(any matchRoom, any owner)
+		-- Generates and stores a bidirectional logical room graph for one match.
+		self:EnsureRuntime()
+
+		local columns = self:GetColumns(owner)
+		local rows = self:GetRows(owner)
+		local mapPartCount = self:GetMapPartCount(owner, rows, columns)
+		local matchId = ""
+		local mapName = ""
+		if matchRoom ~= nil then
+			matchId = self:ReadString(matchRoom.MatchId, "")
+			mapName = self:ReadString(matchRoom.TargetMapName, self:ReadString(matchRoom.SourceMapName, "RoomTestMap"))
+		end
+		if matchId == "" then
+			matchId = _UtilLogic:NewGuid()
+		end
+		if mapName == "" then
+			mapName = "RoomTestMap"
+		end
+
+		local seed = self:CreateSeed(matchId, rows, columns, mapPartCount)
+		local randomState = { Value = seed }
+		local graph = self:CreateEmptyGraph(rows, columns, mapPartCount, matchId, mapName, seed)
+
+		self:ConnectCornerPaths(graph, randomState)
+		if self.EnableFillMissingRooms == true then
+			self:ConnectMissingRooms(graph, randomState)
+		end
+		self:ConnectExtraNeighborRooms(graph, randomState, self:GetExtraConnectionChance(owner))
+		if self:AssignPhysicalRooms(graph, randomState) == false then
+			self:FinalizeGraph(graph)
+			self:Log("assignment failed match=" .. matchId .. " map=" .. mapName .. " " .. graph.Summary)
+			return nil
+		end
+		self:FinalizeGraph(graph)
+
+		self._T.graphs[matchId] = graph
+		self._T.graphsByMap[mapName] = graph
+		if matchRoom ~= nil then
+			matchRoom.RoomGraph = graph
+		end
+
+		local installedPortalCount = self:InstallGraphPortals(graph)
+
+		self.LastRoomCount = #graph.Rooms
+		self.LastConnectionCount = graph.ConnectionCount
+		self.LastGraphSummary = graph.Summary
+		self.LastGraphDiagram = self:BuildGraphDiagram(graph)
+		self:PublishMiniMapData(graph)
+		self:Log("generated match=" .. matchId .. " map=" .. mapName .. " " .. graph.Summary .. " installedPortals=" .. tostring(installedPortalCount))
+		self:LogGraphDiagram(graph)
+		return graph
+	end
+
+	method any GetGraphByMatchId(string matchId)
+		-- Returns the previously generated graph for a match id.
+		self:EnsureRuntime()
+		return self._T.graphs[self:ReadString(matchId, "")]
+	end
+
+	method any GetLatestGraphForMap(string mapName)
+		-- Returns the latest graph generated for a fixed physical map.
+		self:EnsureRuntime()
+		return self._T.graphsByMap[self:ReadString(mapName, "")]
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Clear MiniMap Data")
+	method void ClearMiniMapData()
+		-- Clears the synchronized minimap payload when a match is no longer active.
+		self.LastMiniMapMapName = ""
+		self.LastMiniMapRows = 0
+		self.LastMiniMapColumns = 0
+		self.LastMiniMapRooms = ""
+		self.LastMiniMapConnections = ""
+		self.LastMiniMapAssignments = ""
+		self.LastMiniMapPlayerCounts = ""
+		self.LastMiniMapPlayerVersion = self.LastMiniMapPlayerVersion + 1
+		self.LastMiniMapVersion = self.LastMiniMapVersion + 1
+		self:Log("minimap cleared")
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Generate Room Graph")
+	method void DebugGenerateRoomGraph()
+		-- Generates and installs a local debug graph without requiring a queued match.
+		local matchRoom = {
+			MatchId = "DebugRoomGraph",
+			SourceMapName = "RoomTestMap",
+			TargetMapName = "RoomTestMap"
+		}
+		self:CreateGraphForMatch(matchRoom, nil)
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Reinstall Room Portals")
+	method void DebugReinstallRoomPortals()
+		-- Reinstalls portal links from the latest graph generated for RoomTestMap.
+		local graph = self:GetLatestGraphForMap("RoomTestMap")
+		if graph == nil then
+			self:Log("reinstall skipped: no graph for RoomTestMap")
+			return
+		end
+
+		local installedPortalCount = self:InstallGraphPortals(graph)
+		self:Log("reinstalled map=RoomTestMap installedPortals=" .. tostring(installedPortalCount))
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Print Last Graph Diagram")
+	method void DebugPrintLastGraphDiagram()
+		-- Prints the latest RoomTestMap graph diagram without generating a new graph.
+		local graph = self:GetLatestGraphForMap("RoomTestMap")
+		if graph == nil then
+			self:Log("diagram skipped: no graph for RoomTestMap")
+			return
+		end
+
+		self:LogGraphDiagram(graph)
+	end
+
+	method any CreateEmptyGraph(number rows, number columns, number mapPartCount, string matchId, string mapName, number seed)
+		-- Builds room records before any portal connection is carved.
+		local safeRows = math.max(1, math.floor(self:ReadNumber(rows, 3)))
+		local safeColumns = math.max(1, math.floor(self:ReadNumber(columns, 3)))
+		local safeMapPartCount = math.max(self:GetFixedCornerCount(), math.floor(self:ReadNumber(mapPartCount, safeRows * safeColumns)))
+		local graph = {
+			Version = 1,
+			MatchId = self:ReadString(matchId, ""),
+			MapName = self:ReadString(mapName, "RoomTestMap"),
+			Rows = safeRows,
+			Columns = safeColumns,
+			MapPartCount = safeMapPartCount,
+			FixedCornerCount = self:GetFixedCornerCount(),
+			PoolPartCount = math.max(0, safeMapPartCount - self:GetFixedCornerCount()),
+			Seed = seed,
+			Rooms = {},
+			RoomByKey = {},
+			Connections = {},
+			PortalLinks = {},
+			PortalLinkByKey = {},
+			PhysicalRooms = {},
+			PhysicalRoomByName = {},
+			AssignmentSuccess = false,
+			AssignmentCount = 0,
+			RoomCount = 0,
+			ConnectionCount = 0,
+			OpenPortalCount = 0,
+			Summary = ""
+		}
+
+		for row = 1, safeRows do
+			for column = 1, safeColumns do
+				local room = self:CreateRoomRecord(graph, row, column)
+				table.insert(graph.Rooms, room)
+				graph.RoomByKey[room.Key] = room
+			end
+		end
+		return graph
+	end
+
+	method any CreateRoomRecord(any graph, number row, number column)
+		-- Creates metadata for one logical room slot.
+		local roomNumber = self:GetRoomNumber(graph, row, column)
+		local fixedPhysicalRoomNumber = self:GetFixedCornerPhysicalRoomNumber(graph, row, column)
+		return {
+			Key = self:GetRoomKey(row, column),
+			Row = row,
+			Column = column,
+			Number = roomNumber,
+			Name = self:GetRoomName(roomNumber),
+			LogicalRoomName = self:GetRoomName(roomNumber),
+			Category = self:GetRoomCategory(graph, row, column),
+			FixedPhysicalRoomNumber = fixedPhysicalRoomNumber,
+			FixedPhysicalRoomName = self:GetFixedCornerPhysicalRoomName(fixedPhysicalRoomNumber),
+			Visited = false,
+			Degree = 0,
+			Links = {},
+			RequiredDirections = {},
+			RequiredDirectionText = "",
+			AssignedRoomKey = "",
+			AssignedRoomName = "",
+			AssignedRoomNumber = 0,
+			AssignedRoomText = "",
+			AssignedRoomCategory = "",
+			AssignedCapabilityText = ""
+		}
+	end
+
+	method void ConnectCornerPaths(any graph, any randomState)
+		-- Carves four primary paths from each corner toward the logical center.
+		local corners = {
+			{ Row = 1, Column = 1, Label = "NW" },
+			{ Row = 1, Column = graph.Columns, Label = "NE" },
+			{ Row = graph.Rows, Column = 1, Label = "SW" },
+			{ Row = graph.Rows, Column = graph.Columns, Label = "SE" }
+		}
+
+		for index, corner in ipairs(corners) do
+			local target = self:GetCenterTargetForCorner(graph, corner.Row, corner.Column)
+			self:CarvePathToTarget(graph, randomState, corner.Row, corner.Column, target.Row, target.Column, corner.Label)
+		end
+	end
+
+	method any GetCenterTargetForCorner(any graph, number startRow, number startColumn)
+		-- Returns the center cell closest to the given corner, supporting even-sized grids.
+		local lowRow = math.floor((graph.Rows + 1) * 0.5)
+		local highRow = math.ceil((graph.Rows + 1) * 0.5)
+		local lowColumn = math.floor((graph.Columns + 1) * 0.5)
+		local highColumn = math.ceil((graph.Columns + 1) * 0.5)
+		local targetRow = lowRow
+		local targetColumn = lowColumn
+
+		if startRow > graph.Rows * 0.5 then
+			targetRow = highRow
+		end
+		if startColumn > graph.Columns * 0.5 then
+			targetColumn = highColumn
+		end
+		return { Row = targetRow, Column = targetColumn }
+	end
+
+	method void CarvePathToTarget(any graph, any randomState, number startRow, number startColumn, number targetRow, number targetColumn, string label)
+		-- Walks one corner path toward its center target using distance-reducing steps.
+		local row = startRow
+		local column = startColumn
+		self:MarkVisited(graph, row, column)
+
+		local guard = graph.Rows + graph.Columns + 4
+		while (row ~= targetRow or column ~= targetColumn) and guard > 0 do
+			guard = guard - 1
+			local directions = {}
+			if row < targetRow then
+				table.insert(directions, "South")
+			elseif row > targetRow then
+				table.insert(directions, "North")
+			end
+			if column < targetColumn then
+				table.insert(directions, "East")
+			elseif column > targetColumn then
+				table.insert(directions, "West")
+			end
+
+			local direction = directions[1]
+			if #directions > 1 and self:NextRandom(randomState, 1, #directions) > 1 then
+				direction = directions[2]
+			end
+
+			local nextCell = self:GetNeighborCell(row, column, direction)
+			if self:ConnectRooms(graph, row, column, direction, "CornerPath:" .. self:ReadString(label, "")) == false then
+				return
+			end
+			row = nextCell.Row
+			column = nextCell.Column
+			self:MarkVisited(graph, row, column)
+		end
+	end
+
+	method void ConnectMissingRooms(any graph, any randomState)
+		-- Attaches rooms missed by corner paths to an already connected surrounding room.
+		local guard = math.max(1, #graph.Rooms * 4)
+		while self:GetVisitedCount(graph) < #graph.Rooms and guard > 0 do
+			guard = guard - 1
+			local progress = false
+			for index, room in ipairs(graph.Rooms) do
+				if room.Visited == false then
+					local direction = self:FindVisitedNeighborDirection(graph, randomState, room)
+					if direction ~= "" and self:ConnectRooms(graph, room.Row, room.Column, direction, "FillMissing") == true then
+						self:MarkVisited(graph, room.Row, room.Column)
+						progress = true
+					end
+				end
+			end
+			if progress == false then
+				self:ForceConnectOneMissingRoom(graph, randomState)
+			end
+		end
+	end
+
+	method string FindVisitedNeighborDirection(any graph, any randomState, any room)
+		-- Finds a shuffled neighboring direction that already belongs to the carved graph.
+		local directions = self:GetShuffledDirections(randomState)
+		for index, direction in ipairs(directions) do
+			local neighbor = self:GetNeighborRoom(graph, room.Row, room.Column, direction)
+			if neighbor ~= nil and neighbor.Visited == true and room.Links[direction] == nil then
+				return direction
+			end
+		end
+		return ""
+	end
+
+	method void ForceConnectOneMissingRoom(any graph, any randomState)
+		-- Provides a fallback connection if the normal fill pass stalls unexpectedly.
+		for index, room in ipairs(graph.Rooms) do
+			if room.Visited == false then
+				local directions = self:GetShuffledDirections(randomState)
+				for directionIndex, direction in ipairs(directions) do
+					local neighbor = self:GetNeighborRoom(graph, room.Row, room.Column, direction)
+					if neighbor ~= nil and room.Links[direction] == nil then
+						self:ConnectRooms(graph, room.Row, room.Column, direction, "FillFallback")
+						self:MarkVisited(graph, room.Row, room.Column)
+						return
+					end
+				end
+			end
+		end
+	end
+
+	method void ConnectExtraNeighborRooms(any graph, any randomState, number chancePercent)
+		-- Optionally opens extra surrounding passages after every room is reachable.
+		local chance = math.max(0, math.min(100, math.floor(self:ReadNumber(chancePercent, 0))))
+		if chance <= 0 then
+			return
+		end
+
+		for index, room in ipairs(graph.Rooms) do
+			local directions = self:GetShuffledDirections(randomState)
+			for directionIndex, direction in ipairs(directions) do
+				if room.Links[direction] == nil and self:GetNeighborRoom(graph, room.Row, room.Column, direction) ~= nil then
+					if self:NextRandom(randomState, 1, 100) <= chance then
+						self:ConnectRooms(graph, room.Row, room.Column, direction, "ExtraNeighbor")
+					end
+				end
+			end
+		end
+	end
+
+	method boolean ConnectRooms(any graph, number row, number column, string direction, string reason)
+		-- Connects two adjacent logical rooms with matching bidirectional portal directions.
+		local fromRoom = self:GetRoom(graph, row, column)
+		local toRoom = self:GetNeighborRoom(graph, row, column, direction)
+		if fromRoom == nil or toRoom == nil then
+			return false
+		end
+
+		local opposite = self:GetOppositeDirection(direction)
+		if opposite == "" then
+			return false
+		end
+
+		if fromRoom.Links[direction] ~= nil then
+			self:MarkVisited(graph, fromRoom.Row, fromRoom.Column)
+			self:MarkVisited(graph, toRoom.Row, toRoom.Column)
+			return true
+		end
+
+		fromRoom.Links[direction] = toRoom.Key
+		toRoom.Links[opposite] = fromRoom.Key
+		fromRoom.Degree = fromRoom.Degree + 1
+		toRoom.Degree = toRoom.Degree + 1
+		self:MarkVisited(graph, fromRoom.Row, fromRoom.Column)
+		self:MarkVisited(graph, toRoom.Row, toRoom.Column)
+
+		table.insert(graph.Connections, {
+			FromKey = fromRoom.Key,
+			FromRoomName = fromRoom.Name,
+			FromDirection = direction,
+			ToKey = toRoom.Key,
+			ToRoomName = toRoom.Name,
+			ToDirection = opposite,
+			Reason = self:ReadString(reason, "")
+		})
+		graph.ConnectionCount = graph.ConnectionCount + 1
+		graph.OpenPortalCount = graph.ConnectionCount * 2
+		return true
+	end
+
+	method boolean AssignPhysicalRooms(any graph, any randomState)
+		-- Assigns each logical room to one unique physical room with at least the required directions.
+		self:BuildRequiredDirections(graph)
+		graph.PhysicalRooms = self:BuildPhysicalRoomCandidates(graph)
+		graph.PhysicalRoomByName = self:BuildPhysicalRoomLookup(graph.PhysicalRooms)
+		self:Log("assignment candidates=" .. tostring(#graph.PhysicalRooms) .. " logicalRooms=" .. tostring(#graph.Rooms))
+		for index, room in ipairs(graph.Rooms) do
+			room.Candidates = self:BuildRoomCandidates(room, graph.PhysicalRooms)
+			if #room.Candidates <= 0 then
+				self:Log("assignment no candidate logical=" .. room.LogicalRoomName .. " required=" .. room.RequiredDirectionText)
+				graph.AssignmentSuccess = false
+				return false
+			end
+		end
+		self:Log("assignment room candidates ready")
+
+		local orderedRooms = self:BuildAssignmentOrder(graph)
+		local assignedByPhysicalName = {}
+		for index, room in ipairs(orderedRooms) do
+			local candidate = self:FindUnusedCandidate(room, assignedByPhysicalName)
+			if candidate == nil then
+				graph.AssignmentSuccess = false
+				self:Log("assignment matching failed logical=" .. room.LogicalRoomName .. " required=" .. room.RequiredDirectionText)
+				return false
+			end
+			assignedByPhysicalName[candidate.Name] = room
+		end
+		self:Log("assignment selected physical rooms=" .. tostring(#orderedRooms))
+
+		self:ApplyMatchingAssignments(graph, assignedByPhysicalName)
+		graph.AssignmentSuccess = true
+		graph.AssignmentCount = #graph.Rooms
+		self:BuildAssignedPortalLinks(graph)
+		return true
+	end
+
+	method void BuildRequiredDirections(any graph)
+		-- Derives the minimum required portal directions from each logical room's graph links.
+		for index, room in ipairs(graph.Rooms) do
+			room.RequiredDirections = {}
+			for directionIndex, direction in ipairs(self:GetOrderedDirections()) do
+				if room.Links[direction] ~= nil then
+					table.insert(room.RequiredDirections, direction)
+				end
+			end
+			room.RequiredDirectionText = self:JoinDirections(room.RequiredDirections)
+		end
+	end
+
+	method any BuildPhysicalRoomCandidates(any graph)
+		-- Builds the fixed physical room pool from actual room portal children when available.
+		local runtimeCandidates = self:BuildPhysicalRoomCandidatesFromMap(graph)
+		if self:IsPhysicalCandidateSetUsable(graph, runtimeCandidates) == true then
+			return runtimeCandidates
+		end
+		if runtimeCandidates ~= nil and #runtimeCandidates > 0 then
+			self:Log("physical candidates fallback: incomplete generated set count=" .. tostring(#runtimeCandidates))
+		end
+		return self:BuildPhysicalRoomCandidatesByGrid(graph)
+	end
+
+	method boolean IsPhysicalCandidateSetUsable(any graph, any candidates)
+		-- Accepts runtime candidates only when the required fixed corners are present.
+		if graph == nil or candidates == nil then
+			return false
+		end
+		if #candidates < #graph.Rooms then
+			return false
+		end
+
+		local fixedCorners = {}
+		for index, candidate in ipairs(candidates) do
+			local fixedCornerIndex = math.floor(self:ReadNumber(candidate.FixedCornerIndex, 0))
+			if fixedCornerIndex > 0 then
+				fixedCorners[fixedCornerIndex] = true
+			end
+		end
+		for fixedCornerIndex = 1, self:GetFixedCornerCount() do
+			if fixedCorners[fixedCornerIndex] ~= true then
+				return false
+			end
+		end
+		return true
+	end
+
+	method any BuildPhysicalRoomCandidatesByGrid(any graph)
+		-- Fallback candidate builder used when the physical map is not loaded yet.
+		local candidates = {}
+		local mapPartCount = math.max(self:GetFixedCornerCount(), math.floor(self:ReadNumber(graph.MapPartCount, graph.Rows * graph.Columns)))
+		for partSlot = 1, mapPartCount do
+			local candidate = self:CreatePhysicalRoomCandidate(graph, partSlot)
+			self:AddFallbackPhysicalCapabilities(graph, candidate)
+			candidate.CapabilityText = self:JoinDirections(candidate.CapabilityDirections)
+			table.insert(candidates, candidate)
+		end
+		return candidates
+	end
+
+	method any BuildPhysicalRoomCandidatesFromMap(any graph)
+		-- Builds candidates by reading each physical room's enabled portal children.
+		local root = self:GetPhysicalRoomRoot(graph.MapName)
+		if root == nil then
+			return {}
+		end
+
+		local candidates = {}
+		local seenByName = {}
+		self:CollectPhysicalRoomCandidatesFromChildren(graph, root, candidates, seenByName)
+
+		local mapPartCount = math.max(self:GetFixedCornerCount(), math.floor(self:ReadNumber(graph.MapPartCount, graph.Rows * graph.Columns)))
+		for partSlot = 1, mapPartCount do
+			local roomName = self:GetPhysicalPartName(partSlot)
+			if seenByName[roomName] ~= true then
+				local room = self:GetPhysicalRoom(graph.MapName, root, roomName)
+				if room ~= nil then
+					self:AddPhysicalRoomCandidateFromEntity(graph, candidates, seenByName, room, partSlot)
+				end
+			end
+		end
+
+		self:Log("physical candidates from map=" .. self:ReadString(graph.MapName, "") .. " count=" .. tostring(#candidates))
+		return candidates
+	end
+
+	method void CollectPhysicalRoomCandidatesFromChildren(any graph, Entity root, any candidates, any seenByName)
+		-- Scans generated room children so map parts beyond the configured fallback count are still detected.
+		if root == nil or root.Children == nil then
+			return
+		end
+
+		local children = root.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil then
+				local partSlot = self:GetGeneratedRoomNumberFromName(child.Name)
+				if partSlot > 0 then
+					self:AddPhysicalRoomCandidateFromEntity(graph, candidates, seenByName, child, partSlot)
+				end
+			end
+		end
+	end
+
+	method void AddPhysicalRoomCandidateFromEntity(any graph, any candidates, any seenByName, Entity room, number partSlot)
+		-- Adds one physical room candidate using authored portal availability.
+		if room == nil then
+			return
+		end
+
+		local candidate = self:CreatePhysicalRoomCandidate(graph, partSlot)
+		if seenByName[candidate.Name] == true then
+			return
+		end
+
+		self:AddPhysicalCapability(candidate, "North", self:IsRoomPortalAvailable(room, "North"))
+		self:AddPhysicalCapability(candidate, "East", self:IsRoomPortalAvailable(room, "East"))
+		self:AddPhysicalCapability(candidate, "South", self:IsRoomPortalAvailable(room, "South"))
+		self:AddPhysicalCapability(candidate, "West", self:IsRoomPortalAvailable(room, "West"))
+		candidate.CapabilityText = self:JoinDirections(candidate.CapabilityDirections)
+		table.insert(candidates, candidate)
+		seenByName[candidate.Name] = true
+	end
+
+	method any CreatePhysicalRoomCandidate(any graph, number roomNumber)
+		-- Creates the common metadata for one physical map part candidate.
+		local safePartSlot = math.max(1, math.floor(self:ReadNumber(roomNumber, 1)))
+		local fixedCornerIndex = self:GetFixedCornerIndexByNumber(graph, safePartSlot)
+		local poolIndex = math.max(1, safePartSlot - self:GetFixedCornerCount())
+		local displayText = self:FormatRoomNumber(poolIndex)
+		local candidateNumber = poolIndex
+		if fixedCornerIndex > 0 then
+			displayText = self:GetFixedCornerShortName(fixedCornerIndex)
+			candidateNumber = fixedCornerIndex
+		end
+		return {
+			Key = self:GetPhysicalRoomKey(safePartSlot),
+			Row = 0,
+			Column = 0,
+			Number = candidateNumber,
+			Name = self:GetPhysicalPartName(safePartSlot),
+			Category = self:GetPhysicalRoomCategoryByNumber(graph, safePartSlot),
+			FixedCornerIndex = fixedCornerIndex,
+			DisplayText = displayText,
+			Capabilities = {},
+			CapabilityDirections = {},
+			CapabilityText = ""
+		}
+	end
+
+	method void AddFallbackPhysicalCapabilities(any graph, any candidate)
+		-- Provides default capabilities when physical room entities are not loaded yet.
+		local fixedCornerIndex = math.floor(self:ReadNumber(candidate.FixedCornerIndex, 0))
+		if fixedCornerIndex == 1 then
+			self:AddPhysicalCapability(candidate, "North", false)
+			self:AddPhysicalCapability(candidate, "East", true)
+			self:AddPhysicalCapability(candidate, "South", true)
+			self:AddPhysicalCapability(candidate, "West", false)
+		elseif fixedCornerIndex == 2 then
+			self:AddPhysicalCapability(candidate, "North", false)
+			self:AddPhysicalCapability(candidate, "East", false)
+			self:AddPhysicalCapability(candidate, "South", true)
+			self:AddPhysicalCapability(candidate, "West", true)
+		elseif fixedCornerIndex == 3 then
+			self:AddPhysicalCapability(candidate, "North", true)
+			self:AddPhysicalCapability(candidate, "East", true)
+			self:AddPhysicalCapability(candidate, "South", false)
+			self:AddPhysicalCapability(candidate, "West", false)
+		elseif fixedCornerIndex == 4 then
+			self:AddPhysicalCapability(candidate, "North", true)
+			self:AddPhysicalCapability(candidate, "East", false)
+			self:AddPhysicalCapability(candidate, "South", false)
+			self:AddPhysicalCapability(candidate, "West", true)
+		else
+			self:AddPhysicalCapability(candidate, "North", true)
+			self:AddPhysicalCapability(candidate, "East", true)
+			self:AddPhysicalCapability(candidate, "South", true)
+			self:AddPhysicalCapability(candidate, "West", true)
+		end
+	end
+
+	method any BuildPhysicalRoomLookup(any physicalRooms)
+		-- Indexes physical room candidates by their entity name.
+		local lookup = {}
+		for index, candidate in ipairs(physicalRooms) do
+			lookup[candidate.Name] = candidate
+		end
+		return lookup
+	end
+
+	method void AddPhysicalCapability(any candidate, string direction, boolean enabled)
+		-- Adds one available physical portal direction to a room candidate.
+		if enabled ~= true then
+			candidate.Capabilities[direction] = false
+			return
+		end
+		candidate.Capabilities[direction] = true
+		table.insert(candidate.CapabilityDirections, direction)
+	end
+
+	method any BuildAssignmentOrder(any graph)
+		-- Orders logical rooms so the most constrained rooms are assigned first.
+		local orderedRooms = {}
+		for index, room in ipairs(graph.Rooms) do
+			table.insert(orderedRooms, room)
+		end
+		table.sort(orderedRooms, function(left, right)
+			local leftFixed = self:IsFixedCornerLogicalRoom(left)
+			local rightFixed = self:IsFixedCornerLogicalRoom(right)
+			if leftFixed ~= rightFixed then
+				return leftFixed == true
+			end
+			local leftCandidates = #left.Candidates
+			local rightCandidates = #right.Candidates
+			if leftCandidates ~= rightCandidates then
+				return leftCandidates < rightCandidates
+			end
+			local leftRequired = #left.RequiredDirections
+			local rightRequired = #right.RequiredDirections
+			if leftRequired ~= rightRequired then
+				return leftRequired > rightRequired
+			end
+			if left.Degree ~= right.Degree then
+				return left.Degree > right.Degree
+			end
+			return left.Number < right.Number
+		end)
+		return orderedRooms
+	end
+
+	method any BuildRoomCandidates(any room, any physicalRooms)
+		-- Returns all unused-capable physical room candidates for one logical room.
+		local candidates = {}
+		for index, candidate in ipairs(physicalRooms) do
+			if self:CanLogicalRoomUsePhysicalRoom(room, candidate) == true and self:CanPhysicalRoomCover(room, candidate) == true then
+				table.insert(candidates, candidate)
+			end
+		end
+		table.sort(candidates, function(left, right)
+			local leftExtra = #left.CapabilityDirections - #room.RequiredDirections
+			local rightExtra = #right.CapabilityDirections - #room.RequiredDirections
+			if leftExtra ~= rightExtra then
+				return leftExtra < rightExtra
+			end
+			return left.Number < right.Number
+		end)
+		return candidates
+	end
+
+	method boolean CanLogicalRoomUsePhysicalRoom(any room, any candidate)
+		-- Enforces fixed-corner rooms and keeps the remaining parts as the general pool.
+		if self:IsFixedCornerLogicalRoom(room) == true then
+			return self:ReadString(candidate.Name, "") == self:ReadString(room.FixedPhysicalRoomName, "")
+		end
+		return math.floor(self:ReadNumber(candidate.FixedCornerIndex, 0)) <= 0
+	end
+
+	method boolean IsFixedCornerLogicalRoom(any room)
+		-- Returns whether this logical room is bound to one of the four reserved physical corners.
+		if room == nil then
+			return false
+		end
+		return self:ReadString(room.FixedPhysicalRoomName, "") ~= ""
+	end
+
+	method any FindUnusedCandidate(any room, any assignedByPhysicalName)
+		-- Picks the first unused physical room candidate for this logical room.
+		for index, candidate in ipairs(room.Candidates) do
+			if assignedByPhysicalName[candidate.Name] == nil then
+				return candidate
+			end
+		end
+		return nil
+	end
+
+	method boolean CanPhysicalRoomCover(any room, any candidate)
+		-- Checks that a physical room has every direction required by a logical room.
+		for index, direction in ipairs(room.RequiredDirections) do
+			if candidate.Capabilities[direction] ~= true then
+				return false
+			end
+		end
+		return true
+	end
+
+	method boolean TryAssignMatching(any room, any assignedByPhysicalName, any visitedCandidates, any randomState)
+		-- Finds an augmenting match so every physical room is used at most once.
+		local candidates = self:ShuffleCandidates(room.Candidates, randomState)
+		for candidateIndex, candidate in ipairs(candidates) do
+			if visitedCandidates[candidate.Name] ~= true then
+				visitedCandidates[candidate.Name] = true
+				local assignedRoom = assignedByPhysicalName[candidate.Name]
+				if assignedRoom == nil or self:TryAssignMatching(assignedRoom, assignedByPhysicalName, visitedCandidates, randomState) == true then
+					assignedByPhysicalName[candidate.Name] = room
+					return true
+				end
+			end
+		end
+		return false
+	end
+
+	method void ApplyMatchingAssignments(any graph, any assignedByPhysicalName)
+		-- Writes the final bipartite matching result back to logical room records.
+		for index, room in ipairs(graph.Rooms) do
+			self:ClearPhysicalAssignment(room)
+		end
+		for physicalName, room in pairs(assignedByPhysicalName) do
+			local candidate = graph.PhysicalRoomByName[physicalName]
+			if candidate ~= nil then
+				self:ApplyPhysicalAssignment(room, candidate)
+			end
+		end
+	end
+
+	method any ShuffleCandidates(any candidates, any randomState)
+		-- Returns a shuffled copy of candidates for deterministic match-specific variation.
+		local result = {}
+		for index, candidate in ipairs(candidates) do
+			table.insert(result, candidate)
+		end
+		for index = #result, 2, -1 do
+			local swapIndex = self:NextRandom(randomState, 1, index)
+			local temp = result[index]
+			result[index] = result[swapIndex]
+			result[swapIndex] = temp
+		end
+		return result
+	end
+
+	method void ApplyPhysicalAssignment(any room, any candidate)
+		-- Stores the selected physical room on a logical room record.
+		room.AssignedRoomKey = candidate.Key
+		room.AssignedRoomName = candidate.Name
+		room.AssignedRoomNumber = candidate.Number
+		room.AssignedRoomText = self:ReadString(candidate.DisplayText, "")
+		room.AssignedRoomCategory = candidate.Category
+		room.AssignedCapabilityText = candidate.CapabilityText
+	end
+
+	method void ClearPhysicalAssignment(any room)
+		-- Clears a tentative physical room assignment during backtracking.
+		room.AssignedRoomKey = ""
+		room.AssignedRoomName = ""
+		room.AssignedRoomNumber = 0
+		room.AssignedRoomText = ""
+		room.AssignedRoomCategory = ""
+		room.AssignedCapabilityText = ""
+	end
+
+	method void BuildAssignedPortalLinks(any graph)
+		-- Builds direct physical portal lookup entries from assigned graph connections.
+		graph.PortalLinks = {}
+		graph.PortalLinkByKey = {}
+		for index, connection in ipairs(graph.Connections) do
+			local fromRoom = graph.RoomByKey[connection.FromKey]
+			local toRoom = graph.RoomByKey[connection.ToKey]
+			if fromRoom ~= nil and toRoom ~= nil then
+				connection.FromAssignedRoomName = fromRoom.AssignedRoomName
+				connection.ToAssignedRoomName = toRoom.AssignedRoomName
+				self:AddAssignedPortalLink(graph, fromRoom, connection.FromDirection, toRoom, connection.ToDirection)
+				self:AddAssignedPortalLink(graph, toRoom, connection.ToDirection, fromRoom, connection.FromDirection)
+			end
+		end
+	end
+
+	method void AddAssignedPortalLink(any graph, any fromRoom, string fromDirection, any toRoom, string toDirection)
+		-- Adds one directed physical portal link for fast runtime lookup.
+		if fromRoom.AssignedRoomName == "" or toRoom.AssignedRoomName == "" then
+			return
+		end
+		local key = fromRoom.AssignedRoomName .. ":" .. fromDirection
+		local link = {
+			Key = key,
+			LogicalFromKey = fromRoom.Key,
+			LogicalToKey = toRoom.Key,
+			FromRoomName = fromRoom.AssignedRoomName,
+			FromDirection = fromDirection,
+			ToRoomName = toRoom.AssignedRoomName,
+			ToDirection = toDirection
+		}
+		table.insert(graph.PortalLinks, link)
+		graph.PortalLinkByKey[key] = link
+	end
+
+	method number InstallGraphPortals(any graph)
+		-- Applies the assigned graph links to native PortalComponent references.
+		if graph == nil then
+			return 0
+		end
+
+		local root = self:GetPhysicalRoomRoot(graph.MapName)
+		if root == nil then
+			self:Log("portal install skipped: room root missing map=" .. self:ReadString(graph.MapName, ""))
+			return 0
+		end
+
+		self:SetAllGraphRoomPortalsRuntimeOpen(graph, root, false)
+
+		local useCustomPortalSystem = self.UseCustomPortalConnectionSystem == true and _BRPortalConnectionSystem ~= nil
+		local installedCount = 0
+		local missingCount = 0
+		for index, link in ipairs(graph.PortalLinks) do
+			local fromPortal = self:GetPhysicalPortal(graph.MapName, root, link.FromRoomName, link.FromDirection)
+			local toPortal = self:GetPhysicalPortal(graph.MapName, root, link.ToRoomName, link.ToDirection)
+			if fromPortal ~= nil and toPortal ~= nil then
+				if self:SetPortalRuntimeLink(fromPortal, toPortal, link.FromDirection, true, useCustomPortalSystem) == true then
+					installedCount = installedCount + 1
+				else
+					missingCount = missingCount + 1
+				end
+			else
+				missingCount = missingCount + 1
+			end
+		end
+
+		if useCustomPortalSystem == true then
+			_BRPortalConnectionSystem:InstallGraph(graph)
+		elseif self.UseCustomPortalConnectionSystem == true then
+			self:Log("custom portal system missing; native portal links used")
+		end
+
+		self:Log("portal links installed map=" .. self:ReadString(graph.MapName, "") .. " active=" .. tostring(installedCount) .. " missing=" .. tostring(missingCount) .. " custom=" .. tostring(useCustomPortalSystem))
+		return installedCount
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PublishMiniMapData(any graph)
+		-- Serializes graph cells and portal links into small synchronized strings for the HUD.
+		if graph == nil then
+			return
+		end
+
+		self.LastMiniMapMapName = self:ReadString(graph.MapName, "")
+		self.LastMiniMapRows = self:ReadNumber(graph.Rows, 0)
+		self.LastMiniMapColumns = self:ReadNumber(graph.Columns, 0)
+		self.LastMiniMapRooms = self:BuildMiniMapRoomText(graph)
+		self.LastMiniMapConnections = self:BuildMiniMapConnectionText(graph)
+		self.LastMiniMapAssignments = self:BuildMiniMapAssignmentText(graph)
+		self.LastMiniMapPlayerCounts = self:BuildMiniMapPlayerCountText(graph)
+		self.LastMiniMapPlayerVersion = self.LastMiniMapPlayerVersion + 1
+		self.LastMiniMapVersion = self.LastMiniMapVersion + 1
+		self:Log("minimap published map=" .. self.LastMiniMapMapName
+			.. " grid=" .. tostring(self.LastMiniMapColumns) .. "x" .. tostring(self.LastMiniMapRows)
+			.. " rooms=" .. tostring(self:CountDelimitedRecords(self.LastMiniMapRooms))
+			.. " links=" .. tostring(self:CountDelimitedRecords(self.LastMiniMapConnections)))
+	end
+
+	method string BuildMiniMapRoomText(any graph)
+		-- Builds a semicolon-delimited list of visible logical room coordinates.
+		if graph == nil or graph.Rooms == nil then
+			return ""
+		end
+
+		local result = ""
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				if result ~= "" then
+					result = result .. ";"
+				end
+				result = result .. tostring(room.Row) .. "," .. tostring(room.Column)
+			end
+		end
+		return result
+	end
+
+	method string BuildMiniMapAssignmentText(any graph)
+		-- Builds row,column,physicalRoom records so clients can color logical cells by their assigned map part.
+		if graph == nil or graph.Rooms == nil then
+			return ""
+		end
+
+		local result = ""
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				local assignedName = self:ReadString(room.AssignedRoomName, "")
+				if assignedName ~= "" then
+					if result ~= "" then
+						result = result .. ";"
+					end
+					result = result .. tostring(room.Row) .. "," .. tostring(room.Column) .. "," .. assignedName
+				end
+			end
+		end
+		return result
+	end
+
+	method string BuildMiniMapConnectionText(any graph)
+		-- Builds a semicolon-delimited list of east/south portal connections without duplicates.
+		if graph == nil or graph.Rooms == nil then
+			return ""
+		end
+
+		local result = ""
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				if room.Links["East"] ~= nil then
+					result = self:AppendMiniMapConnection(result, room.Row, room.Column, "E")
+				end
+				if room.Links["South"] ~= nil then
+					result = self:AppendMiniMapConnection(result, room.Row, room.Column, "S")
+				end
+			end
+		end
+		return result
+	end
+
+	method string AppendMiniMapConnection(string currentText, number row, number column, string directionKey)
+		-- Appends one minimap connection record to a semicolon-delimited string.
+		local result = self:ReadString(currentText, "")
+		if result ~= "" then
+			result = result .. ";"
+		end
+		return result .. tostring(row) .. "," .. tostring(column) .. "," .. self:ReadString(directionKey, "")
+	end
+
+	method number CountDelimitedRecords(string text)
+		-- Counts semicolon-delimited records for compact logging.
+		local value = self:ReadString(text, "")
+		if value == "" then
+			return 0
+		end
+
+		local count = 1
+		for index = 1, string.len(value) do
+			if string.sub(value, index, index) == ";" then
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RefreshMiniMapPlayerCounts()
+		-- Rebuilds the synchronized logical-cell player-count payload.
+		local mapName = self:ReadString(self.LastMiniMapMapName, "")
+		if mapName == "" then
+			return
+		end
+
+		local graph = self:GetLatestGraphForMap(mapName)
+		if graph == nil then
+			return
+		end
+
+		local playerCounts = self:BuildMiniMapPlayerCountText(graph)
+		if playerCounts ~= self.LastMiniMapPlayerCounts then
+			self.LastMiniMapPlayerCounts = playerCounts
+			self.LastMiniMapPlayerVersion = self.LastMiniMapPlayerVersion + 1
+		end
+	end
+
+	method string BuildMiniMapPlayerCountText(any graph)
+		-- Builds row,column,count records for living players currently inside assigned rooms.
+		if graph == nil then
+			return ""
+		end
+
+		local mapName = self:ReadString(graph.MapName, "")
+		if mapName == "" then
+			return ""
+		end
+
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users == nil then
+			return ""
+		end
+
+		local counts = {}
+		for index, playerEntity in ipairs(users) do
+			if self:IsCountableMiniMapPlayer(playerEntity) == true then
+				local room = self:GetLogicalRoomForPosition(graph, self:GetEntityPosition2(playerEntity))
+				if room ~= nil then
+					local key = self:GetRoomKey(room.Row, room.Column)
+					counts[key] = self:ReadNumber(counts[key], 0) + 1
+				end
+			end
+		end
+
+		local result = ""
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				local count = math.floor(self:ReadNumber(counts[self:GetRoomKey(room.Row, room.Column)], 0))
+				if count > 0 then
+					if result ~= "" then
+						result = result .. ";"
+					end
+					result = result .. tostring(room.Row) .. "," .. tostring(room.Column) .. "," .. tostring(count)
+				end
+			end
+		end
+		return result
+	end
+
+	method boolean IsCountableMiniMapPlayer(Entity playerEntity)
+		-- Counts only living player entities for the battle minimap.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
+		end
+		if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+		return true
+	end
+
+	method any GetLogicalRoomForPosition(any graph, Vector2 position)
+		-- Finds the logical room assigned to the physical room containing a world position.
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local root = self:GetPhysicalRoomRoot(graph.MapName)
+		local halfSize = self:GetRoomHalfSize(graph.MapName)
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				local roomName = self:ReadString(room.AssignedRoomName, "")
+				if roomName ~= "" then
+					local center = self:GetPhysicalRoomCenter(graph.MapName, root, roomName)
+					if center ~= nil and self:IsPositionInsidePhysicalRoom(position, center, halfSize) == true then
+						return room
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	method any GetPhysicalRoomCenter(string mapName, Entity root, string roomName)
+		-- Reads the world center of one assigned physical room.
+		local room = self:GetPhysicalRoom(mapName, root, roomName)
+		if room == nil or room.TransformComponent == nil then
+			return nil
+		end
+
+		local position = room.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method boolean IsPositionInsidePhysicalRoom(Vector2 position, Vector2 center, Vector2 halfSize)
+		-- Checks if a position belongs to a room rectangle with a small tolerance.
+		if position == nil or center == nil or halfSize == nil then
+			return false
+		end
+
+		local margin = 0.05
+		return position.x >= center.x - halfSize.x - margin
+			and position.x <= center.x + halfSize.x + margin
+			and position.y >= center.y - halfSize.y - margin
+			and position.y <= center.y + halfSize.y + margin
+	end
+
+	method Vector2 GetRoomHalfSize(string mapName)
+		-- Reads room half extents from the grid editor tool when available.
+		local width = 10
+		local height = 10
+		local gridTool = self:GetGridMapEditorTool(mapName)
+		if gridTool ~= nil then
+			width = gridTool:GetRoomWidth()
+			height = gridTool:GetRoomHeight()
+		end
+		return Vector2(math.max(0.5, width * 0.5), math.max(0.5, height * 0.5))
+	end
+
+	method any GetGridMapEditorTool(string mapName)
+		-- Resolves the grid editor tool for room-size based minimap counting.
+		local toolEntity = _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/GridMapEditorTool")
+		if toolEntity == nil then
+			return nil
+		end
+
+		---@type BRGridMapEditorTool
+		local gridTool = toolEntity:GetComponent("script.BRGridMapEditorTool")
+		return gridTool
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		-- Reads an entity's world position as a 2D vector.
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method void SetAllGraphRoomPortalsRuntimeOpen(any graph, Entity root, boolean open)
+		-- Sets runtime open state for every known physical room portal.
+		if graph == nil or root == nil then
+			return
+		end
+
+		for index, candidate in ipairs(graph.PhysicalRooms) do
+			local room = self:GetPhysicalRoom(graph.MapName, root, candidate.Name)
+			if room ~= nil then
+				local directions = self:GetOrderedDirections()
+				for directionIndex, direction in ipairs(directions) do
+					local portal = self:GetRoomPortal(room, direction)
+					if portal ~= nil then
+						self:SetPortalRuntimeLink(portal, nil, direction, open, false)
+					end
+				end
+			end
+		end
+	end
+
+	method boolean SetPortalRuntimeLink(Entity portal, Entity destinationPortal, string direction, boolean open, boolean customControlled)
+		-- Opens or closes one native portal without changing its authoring availability.
+		if portal == nil then
+			return false
+		end
+		if portal.Enable ~= true then
+			return false
+		end
+
+		if portal.PortalComponent ~= nil then
+			portal.PortalComponent.BoxOffset = Vector2(0, 0)
+			portal.PortalComponent.BoxSize = self:GetPortalBoxSize(direction)
+			portal.PortalComponent.Enable = open == true and customControlled ~= true
+			if open == true and destinationPortal ~= nil and customControlled ~= true then
+				portal.PortalComponent.PortalEntityRef = EntityRef(destinationPortal)
+			end
+		elseif open == true then
+			self:Log("portal component missing: " .. portal.Path)
+			return false
+		end
+
+		if portal.PolygonRendererComponent ~= nil then
+			portal.PolygonRendererComponent.Enable = open == true
+		end
+		portal:SetVisible(open == true)
+		return true
+	end
+
+	method Entity GetPhysicalRoomRoot(string mapName)
+		-- Resolves the generated-room container for a fixed physical map.
+		local safeMapName = self:ReadString(mapName, "RoomTestMap")
+		local root = _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/EditorGeneratedGrid")
+		if root ~= nil then
+			return root
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. safeMapName)
+	end
+
+	method Entity GetPhysicalRoom(string mapName, Entity root, string roomName)
+		-- Resolves a generated physical room even if runtime child traversal is unavailable.
+		local safeRoomName = self:ReadString(roomName, "")
+		if safeRoomName == "" then
+			return nil
+		end
+
+		if root ~= nil then
+			local room = root:GetChildByName(safeRoomName, false)
+			if room ~= nil then
+				return room
+			end
+		end
+
+		local safeMapName = self:ReadString(mapName, "RoomTestMap")
+		local generatedPath = "/maps/" .. safeMapName .. "/EditorGeneratedGrid/" .. safeRoomName
+		local room = _EntityService:GetEntityByPath(generatedPath)
+		if room ~= nil then
+			return room
+		end
+
+		return _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/" .. safeRoomName)
+	end
+
+	method Entity GetPhysicalPortal(string mapName, Entity root, string roomName, string direction)
+		-- Resolves one physical room portal by room name and direction.
+		local room = self:GetPhysicalRoom(mapName, root, roomName)
+		if room == nil then
+			return nil
+		end
+		return self:GetRoomPortal(room, direction)
+	end
+
+	method Entity GetRoomPortal(Entity room, string direction)
+		-- Resolves one directional portal child below a room.
+		if room == nil then
+			return nil
+		end
+		return room:GetChildByName(self:GetPortalChildName(direction), false)
+	end
+
+	method boolean IsRoomPortalAvailable(Entity room, string direction)
+		-- Returns whether the physical room exposes this direction as an authoring capability.
+		local portal = self:GetRoomPortal(room, direction)
+		return portal ~= nil and portal.Enable == true
+	end
+
+	method string GetPortalChildName(string direction)
+		-- Converts a direction into the standardized portal child name.
+		if direction == "North" then
+			return "PortalNorth"
+		elseif direction == "East" then
+			return "PortalEast"
+		elseif direction == "South" then
+			return "PortalSouth"
+		elseif direction == "West" then
+			return "PortalWest"
+		end
+		return ""
+	end
+
+	method Vector2 GetPortalBoxSize(string direction)
+		-- Returns the native PortalComponent box size for a direction.
+		if direction == "East" or direction == "West" then
+			return Vector2(0.45, 2.4)
+		end
+		return Vector2(2.4, 0.45)
+	end
+
+	method void LogGraphDiagram(any graph)
+		-- Logs a compact ASCII diagram of the generated logical graph.
+		if graph == nil then
+			return
+		end
+
+		self:Log("diagram begin L>P logical-to-physical room assignment")
+		local lines = self:BuildGraphDiagramLines(graph)
+		for index, line in ipairs(lines) do
+			self:Log("diagram " .. line)
+		end
+		self:Log("diagram end")
+	end
+
+	method string BuildGraphDiagram(any graph)
+		-- Builds a multi-line ASCII graph diagram for inspector/debug storage.
+		local lines = self:BuildGraphDiagramLines(graph)
+		local result = ""
+		for index, line in ipairs(lines) do
+			if index > 1 then
+				result = result .. "\n"
+			end
+			result = result .. line
+		end
+		return result
+	end
+
+	method any BuildGraphDiagramLines(any graph)
+		-- Builds the diagram lines without logging them.
+		local lines = {}
+		if graph == nil then
+			return lines
+		end
+
+		table.insert(lines, "match=" .. self:ReadString(graph.MatchId, "") .. " map=" .. self:ReadString(graph.MapName, "") .. " " .. self:ReadString(graph.Summary, ""))
+		for row = 1, graph.Rows do
+			local roomLine = ""
+			local southLine = ""
+			for column = 1, graph.Columns do
+				local room = self:GetRoom(graph, row, column)
+				roomLine = roomLine .. self:GetDiagramCellText(room)
+				if column < graph.Columns then
+					if room ~= nil and room.Links["East"] ~= nil then
+						roomLine = roomLine .. "---"
+					else
+						roomLine = roomLine .. "   "
+					end
+				end
+
+				if row < graph.Rows then
+					if room ~= nil and room.Links["South"] ~= nil then
+						southLine = southLine .. "    |    "
+					else
+						southLine = southLine .. "         "
+					end
+					if column < graph.Columns then
+						southLine = southLine .. "   "
+					end
+				end
+			end
+
+			table.insert(lines, roomLine)
+			if row < graph.Rows then
+				table.insert(lines, southLine)
+			end
+		end
+		return lines
+	end
+
+	method string GetDiagramCellText(any room)
+		-- Formats one room cell as [logical>physical].
+		if room == nil then
+			return "[       ]"
+		end
+
+		local text = self:FormatRoomNumber(room.Number)
+		local assignedText = self:ReadString(room.AssignedRoomText, "")
+		if assignedText ~= "" then
+			text = text .. ">" .. assignedText
+		end
+		return "[" .. self:PadRight(text, 7) .. "]"
+	end
+
+	method string PadRight(string text, number width)
+		-- Pads a string with spaces until it reaches the requested width.
+		local value = self:ReadString(text, "")
+		local safeWidth = math.max(0, math.floor(self:ReadNumber(width, 0)))
+		while string.len(value) < safeWidth do
+			value = value .. " "
+		end
+		return value
+	end
+
+	method void FinalizeGraph(any graph)
+		-- Computes the final summary string used by logs and match records.
+		local visited = self:GetVisitedCount(graph)
+		graph.RoomCount = #graph.Rooms
+		graph.OpenPortalCount = graph.ConnectionCount * 2
+		if graph.AssignmentSuccess == true then
+			graph.AssignmentCount = self:GetAssignedRoomCount(graph)
+		end
+		graph.Summary = "rooms=" .. tostring(graph.RoomCount) .. " parts=" .. tostring(self:ReadNumber(graph.MapPartCount, 0)) .. " pool=" .. tostring(self:ReadNumber(graph.PoolPartCount, 0)) .. " visited=" .. tostring(visited) .. " connections=" .. tostring(graph.ConnectionCount) .. " portals=" .. tostring(graph.OpenPortalCount) .. " assigned=" .. tostring(graph.AssignmentCount) .. " seed=" .. tostring(graph.Seed)
+	end
+
+	method number GetAssignedRoomCount(any graph)
+		-- Counts logical rooms that have a unique physical room assignment.
+		local count = 0
+		for index, room in ipairs(graph.Rooms) do
+			if room.AssignedRoomName ~= nil and room.AssignedRoomName ~= "" then
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	method number GetVisitedCount(any graph)
+		-- Counts rooms included in the generated logical graph.
+		local count = 0
+		for index, room in ipairs(graph.Rooms) do
+			if room.Visited == true then
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	method void MarkVisited(any graph, number row, number column)
+		-- Marks one room as included in the generated graph.
+		local room = self:GetRoom(graph, row, column)
+		if room ~= nil then
+			room.Visited = true
+		end
+	end
+
+	method any GetRoom(any graph, number row, number column)
+		-- Looks up a room by logical grid coordinate.
+		if graph == nil or graph.RoomByKey == nil then
+			return nil
+		end
+		return graph.RoomByKey[self:GetRoomKey(row, column)]
+	end
+
+	method any GetNeighborRoom(any graph, number row, number column, string direction)
+		-- Returns the room next to a coordinate in the requested direction.
+		local cell = self:GetNeighborCell(row, column, direction)
+		if cell.Row < 1 or cell.Row > graph.Rows or cell.Column < 1 or cell.Column > graph.Columns then
+			return nil
+		end
+		return self:GetRoom(graph, cell.Row, cell.Column)
+	end
+
+	method any GetNeighborCell(number row, number column, string direction)
+		-- Converts a directional step into the neighboring logical coordinate.
+		if direction == "North" then
+			return { Row = row - 1, Column = column }
+		elseif direction == "South" then
+			return { Row = row + 1, Column = column }
+		elseif direction == "East" then
+			return { Row = row, Column = column + 1 }
+		elseif direction == "West" then
+			return { Row = row, Column = column - 1 }
+		end
+		return { Row = row, Column = column }
+	end
+
+	method any GetShuffledDirections(any randomState)
+		-- Returns the four cardinal directions in deterministic pseudo-random order.
+		local directions = self:GetOrderedDirections()
+		for index = #directions, 2, -1 do
+			local swapIndex = self:NextRandom(randomState, 1, index)
+			local temp = directions[index]
+			directions[index] = directions[swapIndex]
+			directions[swapIndex] = temp
+		end
+		return directions
+	end
+
+	method any GetOrderedDirections()
+		-- Returns directions in a stable north-east-south-west order.
+		return { "North", "East", "South", "West" }
+	end
+
+	method string JoinDirections(any directions)
+		-- Joins direction arrays into a compact text value for logs and debugging.
+		if directions == nil or #directions <= 0 then
+			return "None"
+		end
+		local result = ""
+		for index, direction in ipairs(directions) do
+			if index > 1 then
+				result = result .. ","
+			end
+			result = result .. direction
+		end
+		return result
+	end
+
+	method number GetMiniMapPlayerRefreshSeconds()
+		-- Returns how often the server publishes minimap player counts.
+		return math.max(0.05, self:ReadNumber(self.MiniMapPlayerRefreshSeconds, 0.25))
+	end
+
+	method string GetOppositeDirection(string direction)
+		-- Returns the matching reverse portal direction.
+		if direction == "North" then
+			return "South"
+		elseif direction == "South" then
+			return "North"
+		elseif direction == "East" then
+			return "West"
+		elseif direction == "West" then
+			return "East"
+		end
+		return ""
+	end
+
+	method string GetRoomCategory(any graph, number row, number column)
+		-- Classifies a room by fixed logical edge position.
+		local onNorthOrSouth = row == 1 or row == graph.Rows
+		local onEastOrWest = column == 1 or column == graph.Columns
+		if onNorthOrSouth == true and onEastOrWest == true then
+			return "Corner"
+		end
+		if onNorthOrSouth == true or onEastOrWest == true then
+			return "Edge"
+		end
+		return "Interior"
+	end
+
+	method number GetFixedCornerPhysicalRoomNumber(any graph, number row, number column)
+		-- Returns the reserved physical corner slot for each logical corner.
+		if graph == nil then
+			return 0
+		end
+		if row == 1 and column == 1 then
+			return 1
+		elseif row == 1 and column == graph.Columns then
+			return 2
+		elseif row == graph.Rows and column == 1 then
+			return 3
+		elseif row == graph.Rows and column == graph.Columns then
+			return 4
+		end
+		return 0
+	end
+
+	method string GetFixedCornerPhysicalRoomName(number fixedCornerIndex)
+		-- Formats the fixed physical corner room name if one exists.
+		return self:GetFixedCornerName(fixedCornerIndex)
+	end
+
+	method number GetFixedCornerIndexByNumber(any graph, number roomNumber)
+		-- Converts the first four physical part slots into reserved corner indexes.
+		local partSlot = math.floor(self:ReadNumber(roomNumber, 0))
+		if partSlot >= 1 and partSlot <= self:GetFixedCornerCount() then
+			return partSlot
+		end
+		return 0
+	end
+
+	method string GetPhysicalRoomCategoryByNumber(any graph, number roomNumber)
+		-- Classifies physical room parts as fixed corners or general pool parts.
+		if self:GetFixedCornerIndexByNumber(graph, roomNumber) > 0 then
+			return "FixedCorner"
+		end
+		return "Pool"
+	end
+
+	method string GetPhysicalRoomKey(number roomNumber)
+		-- Builds a stable key for physical room candidates.
+		local partSlot = math.max(1, math.floor(self:ReadNumber(roomNumber, 1)))
+		local fixedCornerIndex = self:GetFixedCornerIndexByNumber(nil, partSlot)
+		if fixedCornerIndex > 0 then
+			return "C:" .. self:GetFixedCornerShortName(fixedCornerIndex)
+		end
+		return "P:" .. self:FormatRoomNumber(partSlot - self:GetFixedCornerCount())
+	end
+
+	method boolean IsGeneratedRoomName(string roomName)
+		-- Checks whether a map child name follows the generated room naming convention.
+		return self:GetGeneratedRoomNumberFromName(roomName) > 0
+	end
+
+	method number GetGeneratedRoomNumberFromName(string roomName)
+		-- Extracts a physical part slot from a generated physical room name.
+		local name = self:ReadString(roomName, "")
+		local fixedCornerIndex = self:GetFixedCornerIndexFromName(name)
+		if fixedCornerIndex > 0 then
+			return fixedCornerIndex
+		end
+
+		local poolIndex = self:GetPoolIndexFromName(name)
+		if poolIndex > 0 then
+			return self:GetFixedCornerCount() + poolIndex
+		end
+		return 0
+	end
+
+	method number GetFixedCornerIndexFromName(string roomName)
+		-- Converts an explicit corner entity name back into its reserved slot.
+		local name = self:ReadString(roomName, "")
+		if name == "CornerNW" then
+			return 1
+		elseif name == "CornerNE" then
+			return 2
+		elseif name == "CornerSW" then
+			return 3
+		elseif name == "CornerSE" then
+			return 4
+		end
+		return 0
+	end
+
+	method number GetPoolIndexFromName(string roomName)
+		-- Extracts a pooled room index from a Room_### physical room name.
+		local name = self:ReadString(roomName, "")
+		local prefix = self:ReadString(self.RoomNamePrefix, "Room_")
+		if name == "" or prefix == "" then
+			return 0
+		end
+		if string.sub(name, 1, string.len(prefix)) ~= prefix then
+			return 0
+		end
+
+		local numberText = string.sub(name, string.len(prefix) + 1)
+		local numberValue = tonumber(numberText)
+		if numberValue == nil then
+			return 0
+		end
+		return math.floor(numberValue)
+	end
+
+	method string GetPhysicalPartName(number partSlot)
+		-- Builds the actual physical entity name for a fixed corner or pooled room.
+		local slot = math.max(1, math.floor(self:ReadNumber(partSlot, 1)))
+		local fixedCornerIndex = self:GetFixedCornerIndexByNumber(nil, slot)
+		if fixedCornerIndex > 0 then
+			return self:GetFixedCornerName(fixedCornerIndex)
+		end
+		return self:GetPoolRoomName(slot - self:GetFixedCornerCount())
+	end
+
+	method string GetFixedCornerName(number fixedCornerIndex)
+		-- Returns the explicit entity name for one reserved physical corner.
+		local index = math.floor(self:ReadNumber(fixedCornerIndex, 0))
+		if index == 1 then
+			return "CornerNW"
+		elseif index == 2 then
+			return "CornerNE"
+		elseif index == 3 then
+			return "CornerSW"
+		elseif index == 4 then
+			return "CornerSE"
+		end
+		return ""
+	end
+
+	method string GetFixedCornerShortName(number fixedCornerIndex)
+		-- Returns a compact corner label for graph diagrams.
+		local index = math.floor(self:ReadNumber(fixedCornerIndex, 0))
+		if index == 1 then
+			return "NW"
+		elseif index == 2 then
+			return "NE"
+		elseif index == 3 then
+			return "SW"
+		elseif index == 4 then
+			return "SE"
+		end
+		return ""
+	end
+
+	method string GetPoolRoomName(number poolIndex)
+		-- Builds a pooled physical room name where the pool starts at Room_001.
+		local index = math.max(1, math.floor(self:ReadNumber(poolIndex, 1)))
+		return self:ReadString(self.RoomNamePrefix, "Room_") .. self:FormatRoomNumber(index)
+	end
+
+	method string GetRoomKey(number row, number column)
+		-- Builds a stable coordinate key for internal graph lookup.
+		return tostring(math.floor(row)) .. ":" .. tostring(math.floor(column))
+	end
+
+	method number GetRoomNumber(any graph, number row, number column)
+		-- Converts a logical coordinate into the editor room number.
+		local safeRow = math.max(1, math.floor(self:ReadNumber(row, 1)))
+		local safeColumn = math.max(1, math.floor(self:ReadNumber(column, 1)))
+		return self:GetNumberStart() + (safeRow - 1) * graph.Columns + (safeColumn - 1)
+	end
+
+	method string GetRoomName(number roomNumber)
+		-- Formats the physical room entity name for a room number.
+		return self:ReadString(self.RoomNamePrefix, "Room_") .. self:FormatRoomNumber(roomNumber)
+	end
+
+	method string FormatRoomNumber(number roomNumber)
+		-- Formats a room number with optional zero padding.
+		local value = math.floor(self:ReadNumber(roomNumber, self:GetNumberStart()))
+		local digits = self:GetNumberDigits()
+		if digits <= 0 then
+			return tostring(value)
+		end
+		return string.format("%0" .. tostring(digits) .. "d", value)
+	end
+
+	method number CreateSeed(string seedText, number rows, number columns, number mapPartCount)
+		-- Creates a deterministic numeric seed from match id and grid size.
+		local text = self:ReadString(seedText, "RoomGraph")
+		local seed = 17 + math.floor(self:ReadNumber(rows, 1)) * 97 + math.floor(self:ReadNumber(columns, 1)) * 193 + math.floor(self:ReadNumber(mapPartCount, 0)) * 389
+		for index = 1, string.len(text) do
+			seed = (seed * 31 + string.byte(text, index)) % 2147483647
+		end
+		if seed <= 0 then
+			seed = 1
+		end
+		return seed
+	end
+
+	method number NextRandom(any randomState, number minValue, number maxValue)
+		-- Advances a deterministic linear congruential generator and returns an integer range.
+		if randomState == nil then
+			randomState = { Value = 1 }
+		end
+		local minInt = math.floor(self:ReadNumber(minValue, 1))
+		local maxInt = math.floor(self:ReadNumber(maxValue, minInt))
+		if maxInt < minInt then
+			local temp = minInt
+			minInt = maxInt
+			maxInt = temp
+		end
+		randomState.Value = (randomState.Value * 1103515245 + 12345) % 2147483647
+		local span = maxInt - minInt + 1
+		return minInt + (randomState.Value % span)
+	end
+
+	method number GetColumns(any owner)
+		-- Reads the graph column count from owner override or generator default.
+		local value = self.Columns
+		if owner ~= nil and owner.RoomGraphColumns ~= nil then
+			value = owner.RoomGraphColumns
+		end
+		return math.max(1, math.floor(self:ReadNumber(value, 3)))
+	end
+
+	method number GetRows(any owner)
+		-- Reads the graph row count from owner override or generator default.
+		local value = self.Rows
+		if owner ~= nil and owner.RoomGraphRows ~= nil then
+			value = owner.RoomGraphRows
+		end
+		return math.max(1, math.floor(self:ReadNumber(value, 3)))
+	end
+
+	method number GetMapPartCount(any owner, number rows, number columns)
+		-- Reads total physical map part count from owner override or generator default.
+		local value = self.MapPartCount
+		if owner ~= nil and owner.RoomGraphMapPartCount ~= nil then
+			value = owner.RoomGraphMapPartCount
+		end
+		local defaultCount = math.max(1, math.floor(self:ReadNumber(rows, 3))) * math.max(1, math.floor(self:ReadNumber(columns, 3)))
+		return math.max(self:GetFixedCornerCount(), math.floor(self:ReadNumber(value, defaultCount)))
+	end
+
+	method number GetFixedCornerCount()
+		-- Returns the number of physical map parts reserved for corners.
+		return 4
+	end
+
+	method number GetExtraConnectionChance(any owner)
+		-- Reads the optional extra link chance from owner override or generator default.
+		local value = self.ExtraConnectionChancePercent
+		if owner ~= nil and owner.RoomGraphExtraConnectionChancePercent ~= nil then
+			value = owner.RoomGraphExtraConnectionChancePercent
+		end
+		return math.max(0, math.min(100, math.floor(self:ReadNumber(value, 0))))
+	end
+
+	method number GetNumberStart()
+		-- Returns the first physical room number.
+		return math.floor(self:ReadNumber(self.NumberStart, 1))
+	end
+
+	method number GetNumberDigits()
+		-- Returns the room number zero-padding width.
+		return math.max(0, math.floor(self:ReadNumber(self.NumberDigits, 3)))
+	end
+
+	method void EnsureRuntime()
+		-- Initializes non-synced tables that keep graph state for the server session.
+		if self._T == nil then
+			self._T = {}
+		end
+		if self._T.graphs == nil then
+			self._T.graphs = {}
+		end
+		if self._T.graphsByMap == nil then
+			self._T.graphsByMap = {}
+		end
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a graph generator log when enabled.
+		if self.VerboseLog == true then
+			log("[BRRoomGraphGenerator] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

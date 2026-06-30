@@ -1,0 +1,476 @@
+@Logic
+script BRPortalConnectionSystem extends Logic
+
+	property boolean EnablePortalConnections = true
+
+	property number PollSeconds = 0.08
+
+	property number ActivationPadding = 0.18
+
+	property number ReuseCooldownSeconds = 0.85
+
+	property boolean BlockDeadPlayers = true
+
+	property boolean BlockDuringBattleLock = true
+
+	property boolean VerboseLog = true
+
+	@Sync
+	property string LastPortalInstallSummary = ""
+
+	@Sync
+	property string LastPortalUseSummary = ""
+
+	property number pollTimerId = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		-- Starts the server-side custom portal polling loop.
+		self:EnsureRuntime()
+		self:StartPolling()
+		self:Log("ready")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnEndPlay()
+		-- Clears the custom portal polling loop.
+		self:StopPolling()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void InstallGraph(any graph)
+		-- Registers the latest logical graph portal links for one fixed physical map.
+		if graph == nil then
+			return
+		end
+		self:EnsureRuntime()
+
+		local mapName = self:ReadString(graph.MapName, "")
+		if mapName == "" then
+			return
+		end
+
+		self._T.graphsByMap[mapName] = graph
+		local linkCount = 0
+		if graph.PortalLinks ~= nil then
+			linkCount = #graph.PortalLinks
+		end
+		self.LastPortalInstallSummary = "map=" .. mapName .. " links=" .. tostring(linkCount)
+		self:Log("installed " .. self.LastPortalInstallSummary)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ClearMap(string mapName)
+		-- Removes portal links for a map when a match ends.
+		self:EnsureRuntime()
+		local safeMapName = self:ReadString(mapName, "")
+		if safeMapName == "" then
+			return
+		end
+
+		self._T.graphsByMap[safeMapName] = nil
+		self._T.arrivalPortalKeyByUser = {}
+		self:Log("cleared map=" .. safeMapName)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartPolling()
+		-- Starts the repeated portal scan.
+		if self.EnablePortalConnections ~= true then
+			return
+		end
+		if self.pollTimerId ~= nil and self.pollTimerId > 0 then
+			return
+		end
+		self.pollTimerId = _TimerService:SetTimerRepeat(function() self:ScanPortals() end, self:GetPollSeconds(), 0.1)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StopPolling()
+		-- Stops the repeated portal scan.
+		if self.pollTimerId ~= nil and self.pollTimerId > 0 then
+			_TimerService:ClearTimer(self.pollTimerId)
+		end
+		self.pollTimerId = 0
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ScanPortals()
+		-- Checks every active match map for players standing on connected portals.
+		if self.EnablePortalConnections ~= true then
+			return
+		end
+		self:EnsureRuntime()
+
+		for mapName, graph in pairs(self._T.graphsByMap) do
+			self:ScanMapPortals(mapName, graph)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ScanMapPortals(string mapName, any graph)
+		-- Checks all players in one map against that map's portal links.
+		if graph == nil or graph.PortalLinks == nil then
+			return
+		end
+
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users == nil then
+			return
+		end
+
+		for index, playerEntity in ipairs(users) do
+			if self:CanPlayerUsePortal(mapName, playerEntity) == true then
+				local link = self:FindPortalLinkForPlayer(graph, playerEntity)
+				if link ~= nil then
+					self:UsePortalLink(mapName, graph, playerEntity, link)
+				end
+			end
+		end
+	end
+
+	method boolean CanPlayerUsePortal(string mapName, Entity playerEntity)
+		-- Applies death, cooldown, and battle-lock checks before portal use.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
+		end
+		if self.BlockDeadPlayers == true and (playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0) then
+			return false
+		end
+
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		if userId == "" then
+			return false
+		end
+
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.cooldownUntil[userId], 0) then
+			return false
+		end
+		if self:IsBattlePortalLocked(mapName, playerEntity) == true then
+			return false
+		end
+		return true
+	end
+
+	method any FindPortalLinkForPlayer(any graph, Entity playerEntity)
+		-- Returns the first active portal link touched by the player.
+		if graph == nil or graph.PortalLinks == nil then
+			return nil
+		end
+
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return nil
+		end
+
+		local playerPosition = self:GetEntityPosition2(playerEntity)
+		local root = self:GetPhysicalRoomRoot(graph.MapName)
+		if root == nil then
+			return nil
+		end
+
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		if self:IsWaitingForArrivalPortalExit(graph, root, userId, playerPosition) == true then
+			return nil
+		end
+
+		for index, link in ipairs(graph.PortalLinks) do
+			local fromPortal = self:GetPhysicalPortal(graph.MapName, root, link.FromRoomName, link.FromDirection)
+			if self:IsPlayerInsidePortal(playerPosition, fromPortal, link.FromDirection) == true then
+				return link
+			end
+		end
+		return nil
+	end
+
+	method void UsePortalLink(string mapName, any graph, Entity playerEntity, any link)
+		-- Moves a player from one logical portal endpoint to the paired endpoint.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil or link == nil then
+			return
+		end
+
+		local root = self:GetPhysicalRoomRoot(mapName)
+		if root == nil then
+			return
+		end
+
+		local destinationPortal = self:GetPhysicalPortal(mapName, root, link.ToRoomName, link.ToDirection)
+		if destinationPortal == nil then
+			self:Log("use skipped: destination missing map=" .. mapName .. " room=" .. self:ReadString(link.ToRoomName, "") .. " dir=" .. self:ReadString(link.ToDirection, ""))
+			return
+		end
+
+		local exitPosition = self:GetPortalExitPosition(destinationPortal)
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		self._T.cooldownUntil[userId] = self:Now() + self:GetReuseCooldownSeconds()
+		self._T.arrivalPortalKeyByUser[userId] = self:BuildPortalKey(link.ToRoomName, link.ToDirection)
+		self:SetPlayerWorldPosition(playerEntity, exitPosition)
+		self:ApplyLocalPortalPosition(exitPosition, "portal", userId)
+
+		self.LastPortalUseSummary = "user=" .. userId
+			.. " " .. self:ReadString(link.FromRoomName, "") .. ":" .. self:ReadString(link.FromDirection, "")
+			.. ">" .. self:ReadString(link.ToRoomName, "") .. ":" .. self:ReadString(link.ToDirection, "")
+			.. " pos=(" .. tostring(exitPosition.x) .. "," .. tostring(exitPosition.y) .. ")"
+		self:Log("used " .. self.LastPortalUseSummary)
+	end
+
+	@ExecSpace("Client")
+	method void ApplyLocalPortalPosition(Vector2 position, string reason)
+		-- Mirrors the server-side portal move on the owning client.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+
+		if localPlayer.MovementComponent ~= nil then
+			localPlayer.MovementComponent:Stop()
+			localPlayer.MovementComponent:SetWorldPosition(position)
+		end
+		if localPlayer.RigidbodyComponent ~= nil then
+			localPlayer.RigidbodyComponent.IgnoreMoveBoundary = true
+			localPlayer.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			localPlayer.RigidbodyComponent:SetWorldPosition(position)
+			localPlayer.RigidbodyComponent:PositionReset()
+		elseif localPlayer.KinematicbodyComponent ~= nil then
+			localPlayer.KinematicbodyComponent:SetWorldPosition(position)
+		elseif localPlayer.SideviewbodyComponent ~= nil then
+			localPlayer.SideviewbodyComponent:SetWorldPosition(position)
+		end
+		if localPlayer.PlayerComponent ~= nil then
+			localPlayer.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
+		end
+		log("[BRPortalConnection] local move reason=" .. self:ReadString(reason, "") .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+	end
+
+	method boolean IsBattlePortalLocked(string mapName, Entity playerEntity)
+		-- Checks optional battle logic for combat-time portal blocking.
+		if self.BlockDuringBattleLock ~= true then
+			return false
+		end
+
+		local battleLogic = self:GetBattleLogic(mapName)
+		if battleLogic == nil then
+			return false
+		end
+		return battleLogic:IsPortalUseBlocked(playerEntity)
+	end
+
+	method any GetBattleLogic(string mapName)
+		-- Resolves the map-scoped battle logic component when present.
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, ""))
+		if mapEntity == nil then
+			return nil
+		end
+
+		---@type BRBattleLogic
+		local battleLogic = mapEntity:GetComponent("script.BRBattleLogic")
+		return battleLogic
+	end
+
+	method boolean IsPlayerInsidePortal(Vector2 playerPosition, Entity portal, string direction)
+		-- Checks whether a player position overlaps one portal activation box.
+		if playerPosition == nil or portal == nil or portal.TransformComponent == nil then
+			return false
+		end
+		if portal.Visible ~= true then
+			return false
+		end
+
+		local portalPosition = self:GetEntityPosition2(portal)
+		local boxSize = self:GetPortalBoxSize(direction)
+		local halfWidth = boxSize.x * 0.5 + self:GetActivationPadding()
+		local halfHeight = boxSize.y * 0.5 + self:GetActivationPadding()
+		return math.abs(playerPosition.x - portalPosition.x) <= halfWidth
+			and math.abs(playerPosition.y - portalPosition.y) <= halfHeight
+	end
+
+	method Vector2 GetPortalExitPosition(Entity destinationPortal)
+		-- Uses the connected destination portal marker's world position as the exact arrival point.
+		return self:GetEntityPosition2(destinationPortal)
+	end
+
+	method void SetPlayerWorldPosition(Entity playerEntity, Vector2 position)
+		-- Applies the portal destination to all relevant movement/body components.
+		if playerEntity == nil then
+			return
+		end
+
+		if playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent:Stop()
+			playerEntity.MovementComponent:SetWorldPosition(position)
+		end
+		if playerEntity.RigidbodyComponent ~= nil then
+			playerEntity.RigidbodyComponent.IgnoreMoveBoundary = true
+			playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			playerEntity.RigidbodyComponent:SetWorldPosition(position)
+			playerEntity.RigidbodyComponent:PositionReset()
+		elseif playerEntity.KinematicbodyComponent ~= nil then
+			playerEntity.KinematicbodyComponent:SetWorldPosition(position)
+		elseif playerEntity.SideviewbodyComponent ~= nil then
+			playerEntity.SideviewbodyComponent:SetWorldPosition(position)
+		end
+		if playerEntity.PlayerComponent ~= nil then
+			playerEntity.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
+		end
+	end
+
+	method Entity GetPhysicalRoomRoot(string mapName)
+		-- Resolves the generated physical room container.
+		local safeMapName = self:ReadString(mapName, "RoomTestMap")
+		local root = _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/EditorGeneratedGrid")
+		if root ~= nil then
+			return root
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. safeMapName)
+	end
+
+	method Entity GetPhysicalPortal(string mapName, Entity root, string roomName, string direction)
+		-- Resolves one physical portal entity from a room name and direction.
+		local room = self:GetPhysicalRoom(mapName, root, roomName)
+		if room == nil then
+			return nil
+		end
+		return room:GetChildByName(self:GetPortalChildName(direction), false)
+	end
+
+	method Entity GetPhysicalRoom(string mapName, Entity root, string roomName)
+		-- Resolves a generated physical room entity.
+		local safeRoomName = self:ReadString(roomName, "")
+		if safeRoomName == "" then
+			return nil
+		end
+
+		if root ~= nil then
+			local room = root:GetChildByName(safeRoomName, false)
+			if room ~= nil then
+				return room
+			end
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/EditorGeneratedGrid/" .. safeRoomName)
+	end
+
+	method string GetPortalChildName(string direction)
+		-- Converts a graph direction into the standardized portal child name.
+		if direction == "North" then
+			return "PortalNorth"
+		elseif direction == "East" then
+			return "PortalEast"
+		elseif direction == "South" then
+			return "PortalSouth"
+		elseif direction == "West" then
+			return "PortalWest"
+		end
+		return ""
+	end
+
+	method boolean IsWaitingForArrivalPortalExit(any graph, Entity root, string userId, Vector2 playerPosition)
+		-- Blocks only the arrival portal until the player leaves its trigger box.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return false
+		end
+		local blockedKey = self:ReadString(self._T.arrivalPortalKeyByUser[safeUserId], "")
+		if blockedKey == "" then
+			return false
+		end
+
+		local blockedLink = nil
+		if graph ~= nil and graph.PortalLinkByKey ~= nil then
+			blockedLink = graph.PortalLinkByKey[blockedKey]
+		end
+		if blockedLink == nil then
+			self._T.arrivalPortalKeyByUser[safeUserId] = nil
+			return false
+		end
+
+		local blockedRoomName = self:ReadString(blockedLink["FromRoomName"], "")
+		local blockedDirection = self:ReadString(blockedLink["FromDirection"], "")
+		local blockedPortal = self:GetPhysicalPortal(graph.MapName, root, blockedRoomName, blockedDirection)
+		if self:IsPlayerInsidePortal(playerPosition, blockedPortal, blockedDirection) == true then
+			return true
+		end
+
+		self._T.arrivalPortalKeyByUser[safeUserId] = nil
+		return false
+	end
+
+	method string BuildPortalKey(string roomName, string direction)
+		-- Builds the directed portal key used by graph.PortalLinkByKey.
+		return self:ReadString(roomName, "") .. ":" .. self:ReadString(direction, "")
+	end
+
+	method Vector2 GetPortalBoxSize(string direction)
+		-- Returns the activation box size used by generated portal markers.
+		if direction == "East" or direction == "West" then
+			return Vector2(0.45, 2.4)
+		end
+		return Vector2(2.4, 0.45)
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		-- Reads an entity's world position as Vector2.
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method void EnsureRuntime()
+		-- Ensures runtime-only portal tables exist.
+		if self._T.graphsByMap == nil then
+			self._T.graphsByMap = {}
+		end
+		if self._T.cooldownUntil == nil then
+			self._T.cooldownUntil = {}
+		end
+		if self._T.arrivalPortalKeyByUser == nil then
+			self._T.arrivalPortalKeyByUser = {}
+		end
+	end
+
+	method number GetPollSeconds()
+		-- Returns the portal polling interval.
+		return math.max(0.033, self:ReadNumber(self.PollSeconds, 0.08))
+	end
+
+	method number GetActivationPadding()
+		-- Returns extra activation padding around portal boxes.
+		return math.max(0, self:ReadNumber(self.ActivationPadding, 0.18))
+	end
+
+	method number GetReuseCooldownSeconds()
+		-- Returns the per-player portal reuse cooldown.
+		return math.max(0.1, self:ReadNumber(self.ReuseCooldownSeconds, 0.85))
+	end
+
+	method number Now()
+		-- Returns the current server elapsed time.
+		return _UtilLogic.ServerElapsedSeconds
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a portal-system log when verbose logging is enabled.
+		if self.VerboseLog == true then
+			log("[BRPortalConnection] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

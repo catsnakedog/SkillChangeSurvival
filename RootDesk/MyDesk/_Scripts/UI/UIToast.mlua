@@ -36,22 +36,22 @@ script UIToast extends Logic
 		if self:ClearTweenTimer() == false then
 			canvasGroup.GroupAlpha = 0
 		end
-
+		
 		self.toastGroup.Enable = true
 		local time = 0
 		local preTime = _UtilLogic.ElapsedSeconds
-
+		
 		local tween = function()
 			local now = _UtilLogic.ElapsedSeconds
 			local delta = now - preTime
 			time = time + delta
 			preTime = now
-
+		
 			if time >= (self.duration + self.tweenDuration) then		
 				self:HideToast(canvasGroup, transform)
 				return
 			end
-
+		
 			local alpha = canvasGroup.GroupAlpha + delta / self.tweenDuration
 			if time > self.duration then
 				alpha = canvasGroup.GroupAlpha - delta / self.tweenDuration
@@ -60,7 +60,7 @@ script UIToast extends Logic
 			canvasGroup.GroupAlpha = alpha
 			transform.anchoredPosition = Vector2(0, -self.offset * _TweenLogic:Ease(0, 1, 1, EaseType.SineEaseIn, alpha))
 		end
-
+		
 		self.tweenEventId = _TimerService:SetTimerRepeat(tween, 1 / 60)
 	end
 

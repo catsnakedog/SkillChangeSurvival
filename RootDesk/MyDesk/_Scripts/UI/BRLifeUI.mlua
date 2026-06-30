@@ -1,0 +1,274 @@
+@Logic
+script BRLifeUI extends Logic
+
+	property string HudParentPath = "/ui/DefaultGroup"
+
+	property string TemplateTextPath = "/ui/BossTimerGroup/TimerPanel/LabelText"
+
+	property string FallbackTemplateTextPath = "/ui/BRMiniMapGroup/Panel/Summary"
+
+	property string LifeTextName = "BRLifeHudText"
+
+	property number RefreshSeconds = 0.1
+
+	property boolean VerboseLog = true
+
+	property number refreshTimerId = 0
+
+	property Entity lifeTextEntity = nil
+
+	property boolean lastVisible = false
+
+	property string lastDisplayText = ""
+
+	property string lastColorState = ""
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		-- Starts the local life HUD refresh loop.
+		self:EnsureLifeText()
+		self:SetLifeTextActive(false)
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds())
+		self:Log("ready")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		-- Clears the local life HUD refresh loop.
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method void Refresh()
+		-- Updates the local player's life and revive countdown text.
+		local lifeText = self:EnsureLifeText()
+		if lifeText == nil then
+			return
+		end
+
+		local entry = self:GetLocalLifeEntry()
+		local visible = entry ~= nil
+		self:SetLifeTextActive(visible)
+		if visible ~= true then
+			return
+		end
+
+		local displayText = self:GetDisplayText(entry)
+		local colorState = self:ReadString(entry.State, "ALIVE")
+		if displayText ~= self.lastDisplayText or colorState ~= self.lastColorState then
+			self.lastDisplayText = displayText
+			self.lastColorState = colorState
+			self:ApplyLifeText(displayText, colorState)
+			self:Log("text=" .. displayText)
+		end
+	end
+
+	method Entity EnsureLifeText()
+		-- Creates a lightweight HUD text entity from an existing UI text template.
+		if self.lifeTextEntity ~= nil then
+			return self.lifeTextEntity
+		end
+
+		local parent = _EntityService:GetEntityByPath(self:ReadString(self.HudParentPath, "/ui/DefaultGroup"))
+		if parent == nil then
+			return nil
+		end
+
+		local existing = parent:GetChildByName(self:ReadString(self.LifeTextName, "BRLifeHudText"), false)
+		if existing ~= nil then
+			self.lifeTextEntity = existing
+			self:ApplyLifeTextLayout(existing)
+			return existing
+		end
+
+		local template = _EntityService:GetEntityByPath(self:ReadString(self.TemplateTextPath, ""))
+		if template == nil then
+			template = _EntityService:GetEntityByPath(self:ReadString(self.FallbackTemplateTextPath, ""))
+		end
+		if template == nil then
+			return nil
+		end
+
+		local label = template:Clone(self:ReadString(self.LifeTextName, "BRLifeHudText"))
+		if label == nil then
+			return nil
+		end
+		label:AttachTo(parent)
+		self.lifeTextEntity = label
+		self:ApplyLifeTextLayout(label)
+		self:Log("created")
+		return label
+	end
+
+	method void ApplyLifeTextLayout(Entity label)
+		-- Places the life text in the upper-left HUD area.
+		if label == nil then
+			return
+		end
+
+		label.Enable = false
+		if label.UITransformComponent ~= nil then
+			label.UITransformComponent.AnchorsMin = Vector2(0, 1)
+			label.UITransformComponent.AnchorsMax = Vector2(0, 1)
+			label.UITransformComponent.Pivot = Vector2(0, 1)
+			label.UITransformComponent.RectSize = Vector2(360, 42)
+			label.UITransformComponent.anchoredPosition = Vector2(32, -86)
+		end
+		if label.SpriteGUIRendererComponent ~= nil then
+			label.SpriteGUIRendererComponent.Enable = false
+		end
+		if label.TextComponent ~= nil then
+			label.TextComponent.Text = ""
+			label.TextComponent.FontColor = Color(0.82, 1, 0.78, 1)
+		end
+	end
+
+	method any GetLocalLifeEntry()
+		-- Reads the local player's synchronized life record from the active map battle logic.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return nil
+		end
+
+		local mapName = self:ReadString(localPlayer.CurrentMapName, "")
+		if mapName == "" then
+			return nil
+		end
+
+		local battleLogic = self:GetBattleLogic(mapName)
+		if battleLogic == nil then
+			return nil
+		end
+
+		local lifeMapName = self:ReadString(battleLogic.LifeMapName, "")
+		if lifeMapName ~= "" and lifeMapName ~= mapName then
+			return nil
+		end
+
+		return self:ParseLifeEntry(self:ReadString(battleLogic.LifeSummary, ""), self:ReadString(localPlayer.PlayerComponent.UserId, ""))
+	end
+
+	method any GetBattleLogic(string mapName)
+		-- Finds the battle logic component attached to the current map.
+		local safeMapName = self:ReadString(mapName, "")
+		if safeMapName == "" then
+			return nil
+		end
+
+		local battleLogicEntity = _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/BattleLogic")
+		if battleLogicEntity == nil then
+			return nil
+		end
+
+		---@type BRBattleLogic
+		local battleLogic = battleLogicEntity:GetComponent("script.BRBattleLogic")
+		return battleLogic
+	end
+
+	method any ParseLifeEntry(string summary, string userId)
+		-- Parses the semicolon-delimited life summary for one user.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return nil
+		end
+
+		for record in string.gmatch(self:ReadString(summary, ""), "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			if self:ReadString(parts[1], "") == safeUserId then
+				return {
+					Lives = math.max(0, math.floor(self:ReadNumber(parts[2], 0))),
+					MaxLives = math.max(1, math.floor(self:ReadNumber(parts[3], 1))),
+					State = self:ReadString(parts[4], "ALIVE"),
+					Remaining = math.max(0, math.floor(self:ReadNumber(parts[5], 0)))
+				}
+			end
+		end
+		return nil
+	end
+
+	method any SplitCommaRecord(string record)
+		-- Splits one comma-delimited life record.
+		local parts = {}
+		for part in string.gmatch(self:ReadString(record, ""), "([^,]+)") do
+			table.insert(parts, part)
+		end
+		return parts
+	end
+
+	method string GetDisplayText(any entry)
+		-- Formats the compact HUD label for alive, revive, and out states.
+		if entry == nil then
+			return ""
+		end
+
+		local state = self:ReadString(entry.State, "ALIVE")
+		local livesText = tostring(math.max(0, math.floor(self:ReadNumber(entry.Lives, 0)))) .. "/" .. tostring(math.max(1, math.floor(self:ReadNumber(entry.MaxLives, 1))))
+		if state == "REVIVE" then
+			return "REVIVE IN " .. tostring(math.max(0, math.floor(self:ReadNumber(entry.Remaining, 0)))) .. "s  LIFE " .. livesText
+		elseif state == "OUT" then
+			return "OUT  LIFE " .. livesText
+		end
+		return "LIFE " .. livesText
+	end
+
+	method void ApplyLifeText(string text, string state)
+		-- Applies life text and state color.
+		if self.lifeTextEntity == nil or self.lifeTextEntity.TextComponent == nil then
+			return
+		end
+
+		self.lifeTextEntity.TextComponent.Text = self:ReadString(text, "")
+		if state == "REVIVE" then
+			self.lifeTextEntity.TextComponent.FontColor = Color(1, 0.72, 0.18, 1)
+		elseif state == "OUT" then
+			self.lifeTextEntity.TextComponent.FontColor = Color(1, 0.18, 0.12, 1)
+		else
+			self.lifeTextEntity.TextComponent.FontColor = Color(0.82, 1, 0.78, 1)
+		end
+	end
+
+	method void SetLifeTextActive(boolean visible)
+		-- Toggles the life HUD text entity.
+		if self.lifeTextEntity == nil then
+			return
+		end
+		self.lifeTextEntity.Enable = visible == true
+		if visible ~= self.lastVisible then
+			self.lastVisible = visible
+			self:Log("visible=" .. tostring(visible))
+		end
+	end
+
+	method number GetRefreshSeconds()
+		-- Returns the UI refresh interval.
+		return math.max(0.05, self:ReadNumber(self.RefreshSeconds, 0.1))
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a life HUD log when verbose logging is enabled.
+		if self.VerboseLog == true then
+			log("[BRLifeUI] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

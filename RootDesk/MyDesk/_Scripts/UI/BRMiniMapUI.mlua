@@ -1,0 +1,830 @@
+@Component
+script BRMiniMapUI extends Component
+
+	property Entity panel = "82370fc0-25b1-4892-9fd3-40018dd5637d"
+
+	property Entity gridRoot = "7e483d17-ee55-4872-9717-8b8cadceec8a"
+
+	property TextComponent titleText = "69531320-12bd-4954-a40a-71ab6326b302"
+
+	property TextComponent summaryText = "ca197f9a-0be0-4b8b-892f-88b3016e2181"
+
+	property number MaxRows = 3
+
+	property number MaxColumns = 3
+
+	property number RefreshSeconds = 0.2
+
+	property boolean ShowPlayerCounts = true
+
+	property boolean HideZeroPlayerCounts = true
+
+	property boolean AutoCreatePlayerCountLabels = true
+
+	property boolean VerboseLog = true
+
+	property number refreshTimerId = 0
+
+	property number lastVersion = -1
+
+	property boolean lastVisible = false
+
+	property string lastZoneStateKey = ""
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		-- Starts the local logical minimap refresh loop.
+		self:EnsurePlayerCountLabels()
+		self:HideAllPlayerCountLabels()
+		self:SetPanelActive(false)
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds())
+		self:Log("ready")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		-- Clears the local logical minimap refresh loop.
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method void Refresh()
+		-- Updates minimap visibility and redraws when synchronized graph data changes.
+		local visible = self:ShouldShow()
+		self:SetPanelActive(visible)
+		if visible ~= true then
+			return
+		end
+
+		local version = self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapVersion, 0)
+		local playerVersion = self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapPlayerVersion, 0)
+		local zoneStateKey = self:GetZoneStateKey() .. ":players:" .. tostring(playerVersion)
+		if version ~= self.lastVersion or zoneStateKey ~= self.lastZoneStateKey then
+			self.lastVersion = version
+			self.lastZoneStateKey = zoneStateKey
+			self:RenderMiniMap()
+		end
+	end
+
+	method boolean ShouldShow()
+		-- Checks whether the minimap should be visible for the local player's current map.
+		if _BRRoomGraphGenerator == nil then
+			return false
+		end
+
+		local mapName = self:ReadString(_BRRoomGraphGenerator.LastMiniMapMapName, "")
+		if mapName == "" then
+			return false
+		end
+
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return false
+		end
+		return self:ReadString(localPlayer.CurrentMapName, "") == mapName
+	end
+
+	method void RenderMiniMap()
+		-- Renders cells and portal links from the synchronized minimap payload.
+		if self.gridRoot == nil then
+			return
+		end
+
+		local rows = math.min(self:GetMaxRows(), math.max(1, math.floor(self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapRows, 0))))
+		local columns = math.min(self:GetMaxColumns(), math.max(1, math.floor(self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapColumns, 0))))
+		local roomSet = self:ParseRoomSet(self:ReadString(_BRRoomGraphGenerator.LastMiniMapRooms, ""))
+		local connections = self:ParseConnections(self:ReadString(_BRRoomGraphGenerator.LastMiniMapConnections, ""))
+		local assignments = self:ParseAssignments(self:ReadString(_BRRoomGraphGenerator.LastMiniMapAssignments, ""))
+		local playerCounts = self:ParsePlayerCounts(self:ReadString(_BRRoomGraphGenerator.LastMiniMapPlayerCounts, ""))
+
+		self:HideAllCellsAndLinks()
+		self:RenderCells(rows, columns, roomSet, assignments, playerCounts)
+		self:RenderConnections(rows, columns, connections, assignments)
+		self:UpdateLabels(rows, columns, #connections, self:GetTotalPlayerCount(playerCounts))
+		self:Log("render grid=" .. tostring(columns) .. "x" .. tostring(rows) .. " links=" .. tostring(#connections) .. " players=" .. tostring(self:GetTotalPlayerCount(playerCounts)) .. " zone=" .. self:GetZoneSummaryText())
+	end
+
+	method void RenderCells(number rows, number columns, any roomSet, any assignments, any playerCounts)
+		-- Shows every in-range grid cell and highlights cells that belong to the graph.
+		for row = 1, rows do
+			for column = 1, columns do
+				local child = self:GetGridChild(self:GetCellName(row, column))
+				local active = roomSet[self:GetRoomKey(row, column)] == true
+				if child ~= nil then
+					child.Enable = true
+					local zoneState = 0
+					if active == true then
+						zoneState = self:GetCellZoneState(row, column, assignments, rows, columns)
+					end
+					self:SetSpriteColor(child, active, false, zoneState)
+				end
+				self:SetCellPlayerCount(row, column, active, self:ReadNumber(playerCounts[self:GetRoomKey(row, column)], 0))
+			end
+		end
+	end
+
+	method void RenderConnections(number rows, number columns, any connections, any assignments)
+		-- Shows portal link segments that connect neighboring logical rooms.
+		for index, connection in ipairs(connections) do
+			local row = self:ReadNumber(connection.Row, 0)
+			local column = self:ReadNumber(connection.Column, 0)
+			local direction = self:ReadString(connection.Direction, "")
+			local linkName = self:GetLinkName(row, column, direction)
+			if linkName ~= "" then
+				local link = self:GetGridChild(linkName)
+				if link ~= nil and self:IsLinkInsideGrid(row, column, direction, rows, columns) == true then
+					link.Enable = true
+					local zoneState = self:GetConnectionZoneState(row, column, direction, assignments, rows, columns)
+					self:SetSpriteColor(link, true, true, zoneState)
+				end
+			end
+		end
+	end
+
+	method void HideAllCellsAndLinks()
+		-- Hides every static grid child before applying the latest graph state.
+		for row = 1, self:GetMaxRows() do
+			for column = 1, self:GetMaxColumns() do
+				self:SetGridChildActive(self:GetCellName(row, column), false)
+				self:SetPlayerCountLabelActive(row, column, false)
+				if column < self:GetMaxColumns() then
+					self:SetGridChildActive(self:GetHorizontalLinkName(row, column), false)
+				end
+				if row < self:GetMaxRows() then
+					self:SetGridChildActive(self:GetVerticalLinkName(row, column), false)
+				end
+			end
+		end
+	end
+
+	method any ParseRoomSet(string roomsText)
+		-- Parses row,column records into a lookup table.
+		local result = {}
+		local value = self:ReadString(roomsText, "")
+		for record in string.gmatch(value, "([^;]+)") do
+			local cell = self:ParseCellRecord(record)
+			local row = self:ReadNumber(cell.Row, 0)
+			local column = self:ReadNumber(cell.Column, 0)
+			if row > 0 and column > 0 then
+				result[self:GetRoomKey(row, column)] = true
+			end
+		end
+		return result
+	end
+
+	method any ParseConnections(string connectionsText)
+		-- Parses row,column,direction records into an ordered list.
+		local result = {}
+		local value = self:ReadString(connectionsText, "")
+		for record in string.gmatch(value, "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local row = math.floor(self:ReadNumber(parts[1], 0))
+			local column = math.floor(self:ReadNumber(parts[2], 0))
+			local direction = string.upper(self:ReadString(parts[3], ""))
+			if row > 0 and column > 0 and direction ~= "" then
+				table.insert(result, { Row = row, Column = column, Direction = direction })
+			end
+		end
+		return result
+	end
+
+	method any ParseAssignments(string assignmentsText)
+		-- Parses row,column,physicalRoom records into a logical-cell lookup.
+		local result = {}
+		local value = self:ReadString(assignmentsText, "")
+		for record in string.gmatch(value, "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local row = math.floor(self:ReadNumber(parts[1], 0))
+			local column = math.floor(self:ReadNumber(parts[2], 0))
+			local roomName = self:ReadString(parts[3], "")
+			if row > 0 and column > 0 and roomName ~= "" then
+				result[self:GetRoomKey(row, column)] = roomName
+			end
+		end
+		return result
+	end
+
+	method any ParsePlayerCounts(string countsText)
+		-- Parses row,column,count records into a logical-cell lookup.
+		local result = {}
+		local value = self:ReadString(countsText, "")
+		for record in string.gmatch(value, "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local row = math.floor(self:ReadNumber(parts[1], 0))
+			local column = math.floor(self:ReadNumber(parts[2], 0))
+			local count = math.max(0, math.floor(self:ReadNumber(parts[3], 0)))
+			if row > 0 and column > 0 and count > 0 then
+				result[self:GetRoomKey(row, column)] = count
+			end
+		end
+		return result
+	end
+
+	method any ParseCellRecord(string record)
+		-- Parses one row,column record and returns a coordinate table.
+		local parts = self:SplitCommaRecord(record)
+		local row = math.floor(self:ReadNumber(parts[1], 0))
+		local column = math.floor(self:ReadNumber(parts[2], 0))
+		return { Row = row, Column = column }
+	end
+
+	method any SplitCommaRecord(string record)
+		-- Splits one comma-delimited minimap record into ordered string parts.
+		local parts = {}
+		for part in string.gmatch(self:ReadString(record, ""), "([^,]+)") do
+			table.insert(parts, part)
+		end
+		return parts
+	end
+
+	method boolean IsLinkInsideGrid(number row, number column, string direction, number rows, number columns)
+		-- Checks whether a link segment belongs to the displayed grid bounds.
+		if direction == "E" then
+			return row >= 1 and row <= rows and column >= 1 and column < columns
+		elseif direction == "W" then
+			return row >= 1 and row <= rows and column > 1 and column <= columns
+		elseif direction == "S" then
+			return row >= 1 and row < rows and column >= 1 and column <= columns
+		elseif direction == "N" then
+			return row > 1 and row <= rows and column >= 1 and column <= columns
+		end
+		return false
+	end
+
+	method string GetLinkName(number row, number column, string direction)
+		-- Converts a directional portal record into a static UI child name.
+		local safeRow = math.floor(self:ReadNumber(row, 0))
+		local safeColumn = math.floor(self:ReadNumber(column, 0))
+		if direction == "E" then
+			return self:GetHorizontalLinkName(safeRow, safeColumn)
+		elseif direction == "W" then
+			return self:GetHorizontalLinkName(safeRow, safeColumn - 1)
+		elseif direction == "S" then
+			return self:GetVerticalLinkName(safeRow, safeColumn)
+		elseif direction == "N" then
+			return self:GetVerticalLinkName(safeRow - 1, safeColumn)
+		end
+		return ""
+	end
+
+	method string GetCellName(number row, number column)
+		-- Returns the static child name for one minimap cell.
+		return "Cell_" .. tostring(math.floor(row)) .. "_" .. tostring(math.floor(column))
+	end
+
+	method string GetCountLabelName(number row, number column)
+		-- Returns the preferred static child name for one minimap player-count label.
+		return "Count_" .. tostring(math.floor(row)) .. "_" .. tostring(math.floor(column))
+	end
+
+	method string GetHorizontalLinkName(number row, number column)
+		-- Returns the static child name for one horizontal minimap link.
+		return "LinkH_" .. tostring(math.floor(row)) .. "_" .. tostring(math.floor(column))
+	end
+
+	method string GetVerticalLinkName(number row, number column)
+		-- Returns the static child name for one vertical minimap link.
+		return "LinkV_" .. tostring(math.floor(row)) .. "_" .. tostring(math.floor(column))
+	end
+
+	method string GetRoomKey(number row, number column)
+		-- Returns a stable key for one logical room coordinate.
+		return tostring(math.floor(row)) .. ":" .. tostring(math.floor(column))
+	end
+
+	method Entity GetGridChild(string childName)
+		-- Finds one minimap grid child by name.
+		if self.gridRoot == nil then
+			return nil
+		end
+		return self.gridRoot:GetChildByName(self:ReadString(childName, ""), false)
+	end
+
+	method Entity GetPlayerCountLabelEntity(number row, number column)
+		-- Finds a player-count label, supporting a few stable naming variants.
+		local child = self:GetGridChild(self:GetCountLabelName(row, column))
+		if child ~= nil then
+			return child
+		end
+
+		child = self:GetGridChild("CellCount_" .. tostring(math.floor(row)) .. "_" .. tostring(math.floor(column)))
+		if child ~= nil then
+			return child
+		end
+
+		return self:GetGridChild("PlayerCount_" .. tostring(math.floor(row)) .. "_" .. tostring(math.floor(column)))
+	end
+
+	method void SetGridChildActive(string childName, boolean active)
+		-- Sets the active state for one static grid child if it exists.
+		local child = self:GetGridChild(childName)
+		if child ~= nil then
+			child.Enable = active == true
+		end
+	end
+
+	method void EnsurePlayerCountLabels()
+		-- Creates lightweight UI text labels over minimap cells when static labels are absent.
+		if self.ShowPlayerCounts ~= true or self.AutoCreatePlayerCountLabels ~= true then
+			return
+		end
+		if self.gridRoot == nil or self.summaryText == nil or self.summaryText.Entity == nil then
+			return
+		end
+
+		for row = 1, self:GetMaxRows() do
+			for column = 1, self:GetMaxColumns() do
+				local label = self:GetPlayerCountLabelEntity(row, column)
+				if label == nil then
+					label = self.summaryText.Entity:Clone(self:GetCountLabelName(row, column))
+					if label ~= nil then
+						label:AttachTo(self.gridRoot)
+					end
+				end
+				self:ApplyPlayerCountLabel(row, column, label)
+			end
+		end
+	end
+
+	method void ApplyPlayerCountLabel(number row, number column, Entity label)
+		-- Places and styles a minimap count label at the center of its matching cell.
+		if label == nil then
+			return
+		end
+
+		local cell = self:GetGridChild(self:GetCellName(row, column))
+		if cell ~= nil and cell.UITransformComponent ~= nil and label.UITransformComponent ~= nil then
+			label.UITransformComponent.AnchorsMin = cell.UITransformComponent.AnchorsMin
+			label.UITransformComponent.AnchorsMax = cell.UITransformComponent.AnchorsMax
+			label.UITransformComponent.Pivot = cell.UITransformComponent.Pivot
+			label.UITransformComponent.RectSize = cell.UITransformComponent.RectSize
+			label.UITransformComponent.anchoredPosition = cell.UITransformComponent.anchoredPosition
+			label.UITransformComponent.Position = cell.UITransformComponent.Position
+		end
+
+		if label.SpriteGUIRendererComponent ~= nil then
+			label.SpriteGUIRendererComponent.Enable = false
+		end
+		if label.TextComponent ~= nil then
+			label.TextComponent.Text = ""
+			label.TextComponent.FontColor = Color(1, 1, 1, 1)
+		end
+		label.Enable = false
+	end
+
+	method void SetCellPlayerCount(number row, number column, boolean active, number count)
+		-- Updates the player-count label displayed over one minimap cell.
+		if self.ShowPlayerCounts ~= true then
+			return
+		end
+
+		local label = self:GetPlayerCountLabelEntity(row, column)
+		if label == nil then
+			return
+		end
+
+		local safeCount = math.max(0, math.floor(self:ReadNumber(count, 0)))
+		if active ~= true or (self.HideZeroPlayerCounts == true and safeCount <= 0) then
+			label.Enable = false
+			if label.TextComponent ~= nil then
+				label.TextComponent.Text = ""
+			end
+			return
+		end
+
+		label.Enable = true
+		if label.TextComponent ~= nil then
+			label.TextComponent.Text = tostring(safeCount)
+			if safeCount >= 2 then
+				label.TextComponent.FontColor = Color(1, 0.86, 0.36, 1)
+			else
+				label.TextComponent.FontColor = Color(1, 1, 1, 1)
+			end
+		end
+	end
+
+	method void SetPlayerCountLabelActive(number row, number column, boolean active)
+		-- Toggles one minimap count label.
+		local label = self:GetPlayerCountLabelEntity(row, column)
+		if label ~= nil then
+			label.Enable = active == true
+			if active ~= true and label.TextComponent ~= nil then
+				label.TextComponent.Text = ""
+			end
+		end
+	end
+
+	method void HideAllPlayerCountLabels()
+		-- Hides every known minimap count label.
+		for row = 1, self:GetMaxRows() do
+			for column = 1, self:GetMaxColumns() do
+				self:SetPlayerCountLabelActive(row, column, false)
+			end
+		end
+	end
+
+	method number GetTotalPlayerCount(any playerCounts)
+		-- Sums the synchronized minimap player-count table.
+		local total = 0
+		if playerCounts == nil then
+			return 0
+		end
+		for key, count in pairs(playerCounts) do
+			total = total + math.max(0, math.floor(self:ReadNumber(count, 0)))
+		end
+		return total
+	end
+
+	method number GetCellZoneState(number row, number column, any assignments, number rows, number columns)
+		-- Returns 0=safe, 1=warning, 2=forbidden for one minimap cell.
+		if self:IsMagneticZoneActiveForMiniMap() ~= true then
+			return 0
+		end
+
+		if self:HasLogicalZoneBounds() == true then
+			if self:IsLogicalCellInsideSafe(row, column) ~= true then
+				return 2
+			end
+			if _BRMagneticZoneSystem.WarningActive == true and self:IsLogicalCellInsidePredictedSafe(row, column) ~= true then
+				return 1
+			end
+			return 0
+		end
+
+		local center = self:GetAssignedOrLogicalCellCenter(row, column, assignments, rows, columns)
+		if self:IsPointInsideSafe(center) ~= true then
+			return 2
+		end
+		if _BRMagneticZoneSystem.WarningActive == true and self:IsPointInsidePredictedSafe(center) ~= true then
+			return 1
+		end
+		return 0
+	end
+
+	method number GetConnectionZoneState(number row, number column, string direction, any assignments, number rows, number columns)
+		-- Returns the stronger zone state of the two cells connected by a minimap link.
+		local fromState = self:GetCellZoneState(row, column, assignments, rows, columns)
+		local neighbor = self:GetConnectionNeighbor(row, column, direction)
+		if neighbor == nil then
+			return fromState
+		end
+
+		local toRow = self:ReadNumber(neighbor.Row, 0)
+		local toColumn = self:ReadNumber(neighbor.Column, 0)
+		if toRow < 1 or toRow > rows or toColumn < 1 or toColumn > columns then
+			return fromState
+		end
+
+		local toState = self:GetCellZoneState(toRow, toColumn, assignments, rows, columns)
+		if toState > fromState then
+			return toState
+		end
+		return fromState
+	end
+
+	method any GetConnectionNeighbor(number row, number column, string direction)
+		-- Converts a link direction into the adjacent logical cell.
+		local safeDirection = string.upper(self:ReadString(direction, ""))
+		if safeDirection == "E" then
+			return { Row = row, Column = column + 1 }
+		elseif safeDirection == "W" then
+			return { Row = row, Column = column - 1 }
+		elseif safeDirection == "S" then
+			return { Row = row + 1, Column = column }
+		elseif safeDirection == "N" then
+			return { Row = row - 1, Column = column }
+		end
+		return nil
+	end
+
+	method boolean IsMagneticZoneActiveForMiniMap()
+		-- Checks whether the current minimap should apply magnetic-zone colors.
+		if _BRMagneticZoneSystem == nil then
+			return false
+		end
+		if _BRMagneticZoneSystem.ZoneRunning ~= true then
+			return false
+		end
+		local zoneMapName = self:ReadString(_BRMagneticZoneSystem.ZoneMapName, "")
+		local miniMapName = self:ReadString(_BRRoomGraphGenerator.LastMiniMapMapName, "")
+		if zoneMapName ~= "" and miniMapName ~= "" and zoneMapName ~= miniMapName then
+			return false
+		end
+		return true
+	end
+
+	method boolean HasLogicalZoneBounds()
+		-- Checks whether the magnetic zone exposes logical grid bounds.
+		if _BRMagneticZoneSystem == nil then
+			return false
+		end
+		return self:ReadNumber(_BRMagneticZoneSystem.ZoneRows, 0) > 0
+			and self:ReadNumber(_BRMagneticZoneSystem.ZoneColumns, 0) > 0
+	end
+
+	method boolean IsLogicalCellInsideSafe(number row, number column)
+		-- Checks whether one minimap cell is inside the current logical safe bounds.
+		local safeRow = math.floor(self:ReadNumber(row, 1))
+		local safeColumn = math.floor(self:ReadNumber(column, 1))
+		return safeRow >= self:ReadNumber(_BRMagneticZoneSystem.SafeMinRow, 1)
+			and safeRow <= self:ReadNumber(_BRMagneticZoneSystem.SafeMaxRow, 1)
+			and safeColumn >= self:ReadNumber(_BRMagneticZoneSystem.SafeMinColumn, 1)
+			and safeColumn <= self:ReadNumber(_BRMagneticZoneSystem.SafeMaxColumn, 1)
+	end
+
+	method boolean IsLogicalCellInsidePredictedSafe(number row, number column)
+		-- Checks whether one minimap cell remains safe after the warned face activates.
+		local minRow = self:ReadNumber(_BRMagneticZoneSystem.SafeMinRow, 1)
+		local maxRow = self:ReadNumber(_BRMagneticZoneSystem.SafeMaxRow, 1)
+		local minColumn = self:ReadNumber(_BRMagneticZoneSystem.SafeMinColumn, 1)
+		local maxColumn = self:ReadNumber(_BRMagneticZoneSystem.SafeMaxColumn, 1)
+		local amount = self:GetWarningLogicalShrinkCells()
+		local face = self:ReadString(_BRMagneticZoneSystem.WarningFace, "")
+
+		if face == "NORTH" then
+			minRow = minRow + amount
+		elseif face == "SOUTH" then
+			maxRow = maxRow - amount
+		elseif face == "WEST" then
+			minColumn = minColumn + amount
+		elseif face == "EAST" then
+			maxColumn = maxColumn - amount
+		end
+
+		local safeRow = math.floor(self:ReadNumber(row, 1))
+		local safeColumn = math.floor(self:ReadNumber(column, 1))
+		return safeRow >= minRow
+			and safeRow <= maxRow
+			and safeColumn >= minColumn
+			and safeColumn <= maxColumn
+	end
+
+	method Vector2 GetAssignedOrLogicalCellCenter(number row, number column, any assignments, number rows, number columns)
+		-- Resolves the physical room center assigned to a logical cell, falling back to logical grid coordinates.
+		local mapName = self:ReadString(_BRRoomGraphGenerator.LastMiniMapMapName, "")
+		local roomName = ""
+		if assignments ~= nil then
+			roomName = self:ReadString(assignments[self:GetRoomKey(row, column)], "")
+		end
+
+		local assignedCenter = self:GetAssignedRoomCenter(mapName, roomName)
+		if assignedCenter ~= nil then
+			return assignedCenter
+		end
+		return self:GetLogicalCellCenter(mapName, row, column, rows, columns)
+	end
+
+	method any GetAssignedRoomCenter(string mapName, string roomName)
+		-- Reads the world center of a physical room entity.
+		local room = self:GetPhysicalRoom(mapName, roomName)
+		if room == nil or room.TransformComponent == nil then
+			return nil
+		end
+		local position = room.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method Entity GetPhysicalRoom(string mapName, string roomName)
+		-- Finds an assigned physical room below the generated-room root.
+		local safeRoomName = self:ReadString(roomName, "")
+		if safeRoomName == "" then
+			return nil
+		end
+
+		local root = self:GetPhysicalRoomRoot(mapName)
+		if root ~= nil then
+			local room = root:GetChildByName(safeRoomName, false)
+			if room ~= nil then
+				return room
+			end
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/EditorGeneratedGrid/" .. safeRoomName)
+	end
+
+	method Entity GetPhysicalRoomRoot(string mapName)
+		-- Finds the generated room root for the minimap's map.
+		return _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/EditorGeneratedGrid")
+	end
+
+	method Vector2 GetLogicalCellCenter(string mapName, number row, number column, number rows, number columns)
+		-- Computes a logical cell center from the grid editor settings.
+		local gridTool = self:GetGridMapEditorTool(mapName)
+		if gridTool ~= nil then
+			return gridTool:GetCellCenter(row, column)
+		end
+
+		local spacingX = 13
+		local spacingY = 13
+		local originX = 0
+		local originY = 3
+		local middleX = (columns - 1) * 0.5
+		local middleY = (rows - 1) * 0.5
+		local x = originX + (column - 1 - middleX) * spacingX
+		local y = originY + (middleY - (row - 1)) * spacingY
+		return Vector2(x, y)
+	end
+
+	method any GetGridMapEditorTool(string mapName)
+		-- Resolves the grid editor component for logical-grid coordinate fallback.
+		local toolEntity = _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/GridMapEditorTool")
+		if toolEntity == nil then
+			return nil
+		end
+
+		---@type BRGridMapEditorTool
+		local gridTool = toolEntity:GetComponent("script.BRGridMapEditorTool")
+		return gridTool
+	end
+
+	method boolean IsPointInsideSafe(Vector2 point)
+		-- Checks whether a point is inside the current safe rectangle.
+		if point == nil then
+			return true
+		end
+		return point.x >= self:ReadNumber(_BRMagneticZoneSystem.SafeMinX, 0)
+			and point.x <= self:ReadNumber(_BRMagneticZoneSystem.SafeMaxX, 0)
+			and point.y >= self:ReadNumber(_BRMagneticZoneSystem.SafeMinY, 0)
+			and point.y <= self:ReadNumber(_BRMagneticZoneSystem.SafeMaxY, 0)
+	end
+
+	method boolean IsPointInsidePredictedSafe(Vector2 point)
+		-- Checks whether a point remains safe after the currently warned face activates.
+		if point == nil then
+			return true
+		end
+
+		local minX = self:ReadNumber(_BRMagneticZoneSystem.SafeMinX, 0)
+		local maxX = self:ReadNumber(_BRMagneticZoneSystem.SafeMaxX, 0)
+		local minY = self:ReadNumber(_BRMagneticZoneSystem.SafeMinY, 0)
+		local maxY = self:ReadNumber(_BRMagneticZoneSystem.SafeMaxY, 0)
+		local amount = self:GetWarningShrinkAmount()
+		local face = self:ReadString(_BRMagneticZoneSystem.WarningFace, "")
+
+		if face == "WEST" then
+			minX = minX + amount
+		elseif face == "EAST" then
+			maxX = maxX - amount
+		elseif face == "SOUTH" then
+			minY = minY + amount
+		elseif face == "NORTH" then
+			maxY = maxY - amount
+		end
+
+		return point.x >= minX and point.x <= maxX and point.y >= minY and point.y <= maxY
+	end
+
+	method number GetWarningShrinkAmount()
+		-- Reads the current synced shrink amount used to preview warning cells.
+		local amount = self:ReadNumber(_BRMagneticZoneSystem.CurrentShrinkAmount, 0)
+		if amount <= 0 then
+			amount = self:ReadNumber(_BRMagneticZoneSystem.ShrinkAmount, 2)
+		end
+		return math.max(0.1, amount)
+	end
+
+	method number GetWarningLogicalShrinkCells()
+		-- Reads the current synced logical shrink amount used to preview warning cells.
+		local amount = self:ReadNumber(_BRMagneticZoneSystem.CurrentLogicalShrinkCells, 0)
+		if amount <= 0 then
+			amount = self:ReadNumber(_BRMagneticZoneSystem.LogicalShrinkCells, 1)
+		end
+		return math.max(1, math.floor(amount))
+	end
+
+	method string GetZoneStateKey()
+		-- Builds a compact key that changes only when minimap zone coloring needs recomputing.
+		if _BRMagneticZoneSystem == nil or _BRMagneticZoneSystem.ZoneRunning ~= true then
+			return "zone:off"
+		end
+		return "zone:on:"
+			.. self:ReadString(_BRMagneticZoneSystem.ZoneMapName, "")
+			.. ":" .. tostring(_BRMagneticZoneSystem.WarningActive == true)
+			.. ":" .. self:ReadString(_BRMagneticZoneSystem.WarningFace, "")
+			.. ":" .. self:ReadString(_BRMagneticZoneSystem.ActiveFacesSummary, "")
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.ZoneRows)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.ZoneColumns)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.SafeMinRow)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.SafeMaxRow)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.SafeMinColumn)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.SafeMaxColumn)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.CurrentLogicalShrinkCells)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.SafeMinX)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.SafeMaxX)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.SafeMinY)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.SafeMaxY)
+			.. ":" .. self:FormatZoneNumber(_BRMagneticZoneSystem.CurrentShrinkAmount)
+	end
+
+	method string GetZoneSummaryText()
+		-- Returns a short text describing the minimap magnetic-zone overlay.
+		if _BRMagneticZoneSystem == nil or _BRMagneticZoneSystem.ZoneRunning ~= true then
+			return "SAFE"
+		end
+		if _BRMagneticZoneSystem.WarningActive == true then
+			return "WARN " .. self:ReadString(_BRMagneticZoneSystem.WarningFace, "-")
+		end
+		local active = self:ReadString(_BRMagneticZoneSystem.ActiveFacesSummary, "")
+		if active ~= "" then
+			return "ZONE " .. active
+		end
+		return "SAFE"
+	end
+
+	method string FormatZoneNumber(any value)
+		-- Formats a zone state number for stable refresh keys.
+		return string.format("%.2f", self:ReadNumber(value, 0))
+	end
+
+	method void SetSpriteColor(Entity entity, boolean active, boolean link, number zoneState)
+		-- Applies minimap colors to one cell or link sprite.
+		if entity == nil or entity.SpriteGUIRendererComponent == nil then
+			return
+		end
+
+		local state = math.floor(self:ReadNumber(zoneState, 0))
+		if state >= 2 then
+			if link == true then
+				entity.SpriteGUIRendererComponent.Color = Color(1, 0.22, 0.15, 1)
+			else
+				entity.SpriteGUIRendererComponent.Color = Color(0.92, 0.12, 0.16, 0.94)
+			end
+		elseif state == 1 then
+			if link == true then
+				entity.SpriteGUIRendererComponent.Color = Color(1, 0.76, 0.18, 1)
+			else
+				entity.SpriteGUIRendererComponent.Color = Color(1, 0.64, 0.12, 0.92)
+			end
+		elseif link == true then
+			entity.SpriteGUIRendererComponent.Color = Color(0.35, 0.95, 1, 0.95)
+		elseif active == true then
+			entity.SpriteGUIRendererComponent.Color = Color(0.24, 0.72, 1, 0.9)
+		else
+			entity.SpriteGUIRendererComponent.Color = Color(0.08, 0.13, 0.18, 0.55)
+		end
+	end
+
+	method void UpdateLabels(number rows, number columns, number linkCount, number playerCount)
+		-- Updates static minimap title and compact graph summary text.
+		if self.titleText ~= nil then
+			self.titleText.Text = "MINI MAP"
+		end
+		if self.summaryText ~= nil then
+			self.summaryText.Text = tostring(columns) .. "x" .. tostring(rows) .. " / P " .. tostring(math.floor(self:ReadNumber(playerCount, 0))) .. " / " .. tostring(linkCount) .. " LINKS / " .. self:GetZoneSummaryText()
+		end
+	end
+
+	method void SetPanelActive(boolean visible)
+		-- Toggles the minimap panel tree.
+		if self.panel == nil then
+			return
+		end
+		self.panel.Enable = visible == true
+		if visible ~= self.lastVisible then
+			self.lastVisible = visible
+			self:Log("visible=" .. tostring(visible))
+		end
+	end
+
+	method number GetRefreshSeconds()
+		-- Returns the UI refresh interval.
+		return math.max(0.05, self:ReadNumber(self.RefreshSeconds, 0.2))
+	end
+
+	method number GetMaxRows()
+		-- Returns the maximum static minimap rows supported by this UI.
+		return math.max(1, math.floor(self:ReadNumber(self.MaxRows, 3)))
+	end
+
+	method number GetMaxColumns()
+		-- Returns the maximum static minimap columns supported by this UI.
+		return math.max(1, math.floor(self:ReadNumber(self.MaxColumns, 3)))
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a minimap UI log when verbose logging is enabled.
+		if self.VerboseLog == true then
+			log("[BRMiniMapUI] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

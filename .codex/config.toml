@@ -1,0 +1,31 @@
+[mcp_servers.msw-maker-mcp]
+command = "cmd.exe"
+args = ["/c", "call", "C:\\Users\\user\\AppData\\Local\\Nexon\\MapleStory Worlds\\MakerMCP\\msw-maker-mcp.bat"]
+
+[mcp_servers.msw-maker-mcp.tools.maker_stop]
+approval_mode = "approve"
+
+[mcp_servers.msw-maker-mcp.tools.maker_get_current_map]
+approval_mode = "approve"
+
+[mcp_servers.msw-maker-mcp.tools.maker_refresh_workspace]
+approval_mode = "approve"
+
+[mcp_servers.msw-maker-mcp.tools.maker_logs]
+approval_mode = "approve"
+
+[mcp_servers.msw-maker-mcp.tools.maker_clear_logs]
+approval_mode = "approve"
+
+[mcp_servers.msw-maker-mcp.tools.maker_play]
+approval_mode = "approve"
+
+[mcp_servers.msw-maker-mcp.tools.maker_get_context_keys]
+approval_mode = "approve"
+
+[mcp_servers.msw-maker-mcp.tools.maker_execute_script]
+approval_mode = "approve"
+
+[mcp_servers.msw-mcp]
+url = "https://msw-mcp.nexon.com/mcp"
+http_headers = { "Authorization" = "Bearer 7a844d6f332d4580a56276f7ad2cfc1b" }

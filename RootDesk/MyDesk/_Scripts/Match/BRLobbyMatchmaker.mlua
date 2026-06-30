@@ -35,7 +35,13 @@ script BRLobbyMatchmaker extends Component
 
 	property string GatherMapName = "RoomTestMap"
 
-	property string DynamicMapPrefix = "gather_"
+	property number RoomGraphColumns = 3
+
+	property number RoomGraphRows = 3
+
+	property number RoomGraphMapPartCount = 9
+
+	property number RoomGraphExtraConnectionChancePercent = 0
 
 	property number GatherCenterX = 0
 
@@ -63,7 +69,7 @@ script BRLobbyMatchmaker extends Component
 	property string LastGatherId = ""
 
 	@Sync
-	property string LastDynamicMapName = ""
+	property string LastTargetMapName = ""
 
 	@Sync
 	property number ActiveMatchCount = 0
@@ -107,7 +113,7 @@ script BRLobbyMatchmaker extends Component
 		self.TotalQueueCount = 0
 		self.GatheredCount = 0
 		self.LastGatherId = ""
-		self.LastDynamicMapName = ""
+		self.LastTargetMapName = ""
 		self.ActiveMatchCount = 0
 		self.LastError = ""
 		self.CurrentWorldInstanceId = self:GetCurrentWorldInstanceId()
@@ -142,29 +148,18 @@ script BRLobbyMatchmaker extends Component
 	end
 
 	@ExecSpace("ServerOnly")
-	@InspectorButton("Clear Dynamic Matches")
-	method void ClearDynamicMatches()
+	@InspectorButton("Clear Active Matches")
+	method void ClearActiveMatches()
 		self:EnsureRuntimeStarted()
 		self:EnsureRoomQueue()
-		for index, room in ipairs(self._T.roomQueue.Rooms) do
-			_BRBattleLauncher:DestroyDynamicMap(room.DynamicMapName)
-		end
 		self._T.roomQueue = _BRMatchRoomQueue:CreateEmptyRoomQueue(self:Now())
 		
-		if self._T.dynamicMaps == nil then
-			self._T.dynamicMaps = {}
-		end
-		
-		for mapName, active in pairs(self._T.dynamicMaps) do
-			if active == true then
-				if _BRBattleLauncher:DestroyDynamicMap(mapName) == false then
-					log("[BRLobby] dynamic map destroy failed: " .. mapName)
-				end
-			end
+		if self._T.activeMaps == nil then
+			self._T.activeMaps = {}
 		end
 		
 		self._T.matches = {}
-		self._T.dynamicMaps = {}
+		self._T.activeMaps = {}
 		self.ActiveMatchCount = 0
 	end
 
@@ -177,7 +172,6 @@ script BRLobbyMatchmaker extends Component
 		for index = #self._T.roomQueue.Rooms, 1, -1 do
 			local room = self._T.roomQueue.Rooms[index]
 			if _BRMatchRoomQueue:IsFinishedState(room.State) == true then
-				_BRBattleLauncher:DestroyDynamicMap(room.DynamicMapName)
 				table.remove(self._T.roomQueue.Rooms, index)
 			end
 		end
@@ -512,11 +506,11 @@ script BRLobbyMatchmaker extends Component
 		_BRMatchRoomQueue:UpdateRoomState(self._T.roomQueue, matchRoom.MatchId, "Moving", now)
 		local launchResult = _BRBattleLauncher:StartMatchRoom(matchRoom, self)
 		if launchResult.Success == false then
-			self:FailMatchRoom(matchRoom, tickets, launchResult, "DynamicMapFailed")
+			self:FailMatchRoom(matchRoom, tickets, launchResult, "LaunchFailed")
 			return
 		end
 		
-		_BRMatchRoomQueue:SetRoomDynamicMap(self._T.roomQueue, matchRoom.MatchId, launchResult.DynamicMapName)
+		_BRMatchRoomQueue:SetRoomTargetMap(self._T.roomQueue, matchRoom.MatchId, launchResult.TargetMapName)
 		if launchResult.MovedCount < self:GetTargetCount() then
 			_BRBattleLauncher:ReturnPlayersToLobby(matchRoom, self)
 			self:FailMatchRoom(matchRoom, tickets, launchResult, "MoveFailed")
@@ -524,21 +518,20 @@ script BRLobbyMatchmaker extends Component
 		end
 		
 		_BRMatchRoomQueue:UpdateRoomState(self._T.roomQueue, matchRoom.MatchId, "Gathered", self:Now())
-		self:SaveDynamicMatch(matchRoom.MatchId, launchResult.DynamicMapName, players)
+		self:SaveActiveMatch(matchRoom.MatchId, launchResult.TargetMapName, players)
 		self.LastGatherId = matchRoom.MatchId
-		self.LastDynamicMapName = launchResult.DynamicMapName
+		self.LastTargetMapName = launchResult.TargetMapName
 		self.GatheredCount = launchResult.MovedCount
 		self.MatchmakingPhase = "Gathered"
 		self:UpdateActiveMatchCount()
 		self:ShowToast("Gathered " .. tostring(self.GatheredCount) .. " players.")
-		log("[BRLobby] gathered " .. matchRoom.MatchId .. " map=" .. launchResult.DynamicMapName .. " players=" .. tostring(self.GatheredCount) .. " activeMatches=" .. tostring(self.ActiveMatchCount))
+		log("[BRLobby] gathered " .. matchRoom.MatchId .. " map=" .. launchResult.TargetMapName .. " players=" .. tostring(self.GatheredCount) .. " activeMatches=" .. tostring(self.ActiveMatchCount))
 	end
 
 	@ExecSpace("ServerOnly")
 	method void FailMatchRoom(any matchRoom, any tickets, any launchResult, string phase)
 		local errorMessage = self:ReadString(launchResult.Error, phase)
 		_BRMatchRoomQueue:UpdateRoomState(self._T.roomQueue, matchRoom.MatchId, "Failed", self:Now())
-		_BRBattleLauncher:DestroyDynamicMap(self:ReadString(launchResult.DynamicMapName, matchRoom.DynamicMapName))
 		self:RestoreTickets(tickets)
 		self:UpdateActiveMatchCount()
 		self.MatchmakingPhase = phase
@@ -555,12 +548,12 @@ script BRLobbyMatchmaker extends Component
 		return players
 	end
 
-	method void SaveDynamicMatch(string gatherId, string mapName, any players)
+	method void SaveActiveMatch(string gatherId, string mapName, any players)
 		if self._T.matches == nil then
 			self._T.matches = {}
 		end
-		if self._T.dynamicMaps == nil then
-			self._T.dynamicMaps = {}
+		if self._T.activeMaps == nil then
+			self._T.activeMaps = {}
 		end
 		
 		self._T.matches[gatherId] = {
@@ -569,7 +562,7 @@ script BRLobbyMatchmaker extends Component
 			Players = players,
 			StartedAt = self:Now()
 		}
-		self._T.dynamicMaps[mapName] = true
+		self._T.activeMaps[mapName] = true
 		self.ActiveMatchCount = self:GetActiveMatchCount()
 	end
 
@@ -578,7 +571,6 @@ script BRLobbyMatchmaker extends Component
 		self:EnsureRoomQueue()
 		local room = _BRMatchRoomQueue:GetRoom(self._T.roomQueue, matchId)
 		if room ~= nil then
-			_BRBattleLauncher:DestroyDynamicMap(room.DynamicMapName)
 			_BRMatchRoomQueue:RemoveRoom(self._T.roomQueue, matchId)
 		end
 		self:UpdateActiveMatchCount()
@@ -598,7 +590,6 @@ script BRLobbyMatchmaker extends Component
 		if _BRMatchRoomQueue:CleanExpiredRooms(self._T.roomQueue, now) == true then
 			for index, room in ipairs(expiredRooms) do
 				_BRBattleLauncher:ReturnPlayersToLobby(room, self)
-				_BRBattleLauncher:DestroyDynamicMap(room.DynamicMapName)
 			end
 			self:UpdateActiveMatchCount()
 		end

@@ -9,7 +9,7 @@ script BRMatchRoomQueue extends Logic
 		}
 	end
 
-	method any CreateMatchRoom(any tickets, string mode, string sourceMapName, string dynamicMapName, string worldInstanceId, number targetPlayerCount, number now, number ttl)
+	method any CreateMatchRoom(any tickets, string mode, string sourceMapName, string targetMapName, string worldInstanceId, number targetPlayerCount, number now, number ttl)
 		local room = {
 			MatchId = _UtilLogic:NewGuid(),
 			State = "Creating",
@@ -17,7 +17,7 @@ script BRMatchRoomQueue extends Logic
 			WorldInstanceId = self:ReadString(worldInstanceId, ""),
 			HostWorldInstanceId = self:ReadString(worldInstanceId, ""),
 			SourceMapName = self:ReadString(sourceMapName, "RoomTestMap"),
-			DynamicMapName = self:ReadString(dynamicMapName, ""),
+			TargetMapName = self:ReadString(targetMapName, ""),
 			TargetPlayerCount = math.max(1, math.floor(self:ReadNumber(targetPlayerCount, 1))),
 			CreatedAt = now,
 			StartedAt = 0,
@@ -48,6 +48,11 @@ script BRMatchRoomQueue extends Logic
 		end
 		if roomQueue.Rooms == nil then
 			roomQueue.Rooms = {}
+		end
+		for index, room in ipairs(roomQueue.Rooms) do
+			if room.TargetMapName == nil or room.TargetMapName == "" then
+				room.TargetMapName = self:ReadString(room.SourceMapName, "RoomTestMap")
+			end
 		end
 	end
 
@@ -106,13 +111,13 @@ script BRMatchRoomQueue extends Logic
 		return true
 	end
 
-	method boolean SetRoomDynamicMap(any roomQueue, string matchId, string dynamicMapName)
+	method boolean SetRoomTargetMap(any roomQueue, string matchId, string targetMapName)
 		local room = self:GetRoom(roomQueue, matchId)
 		if room == nil then
 			return false
 		end
 		
-		room.DynamicMapName = self:ReadString(dynamicMapName, "")
+		room.TargetMapName = self:ReadString(targetMapName, "")
 		return true
 	end
 

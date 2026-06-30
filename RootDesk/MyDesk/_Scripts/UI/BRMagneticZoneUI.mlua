@@ -1,0 +1,184 @@
+@Component
+script BRMagneticZoneUI extends Component
+
+	property Entity panel = "c69a1e1b-2358-4d12-8522-500391a8ecda"
+
+	property TextComponent phaseText = "b4133040-623a-4206-b25e-9908c4f09687"
+
+	property TextComponent faceText = "ca7c22fe-2e29-417e-9e1a-00e44bba149a"
+
+	property TextComponent timerText = "52bfb960-b581-4b6b-af1b-ff991e5e5ffc"
+
+	property TextComponent activeText = "6723197a-f465-4840-9316-a46f99ee2f87"
+
+	property TextComponent personalText = "e0882e09-9de6-411f-ad5e-0362b49ad5e4"
+
+	property number RefreshSeconds = 0.1
+
+	property boolean VerboseLog = true
+
+	property number refreshTimerId = 0
+
+	property boolean lastVisible = false
+
+	property string lastPhaseText = ""
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		-- Starts the local magnetic-zone HUD refresh loop.
+		self:SetPanelActive(false)
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds())
+		self:Log("ready")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		-- Clears the local magnetic-zone HUD refresh loop.
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method void Refresh()
+		-- Updates every visible magnetic-zone HUD field from synchronized state.
+		local visible = self:ShouldShow()
+		self:SetPanelActive(visible)
+		if visible ~= true then
+			return
+		end
+
+		local phase = self:GetPhaseDisplayText()
+		if self.phaseText ~= nil then
+			self.phaseText.Text = phase
+			if _BRMagneticZoneSystem.WarningActive == true then
+				self.phaseText.FontColor = Color(1, 0.72, 0.18, 1)
+			elseif self:HasActiveForbiddenZone() == true then
+				self.phaseText.FontColor = Color(1, 0.18, 0.12, 1)
+			else
+				self.phaseText.FontColor = Color(0.75, 0.95, 1, 1)
+			end
+		end
+
+		if self.faceText ~= nil then
+			self.faceText.Text = self:GetFaceDisplayText()
+		end
+		if self.timerText ~= nil then
+			self.timerText.Text = "NEXT " .. tostring(math.ceil(math.max(0, self:ReadNumber(_BRMagneticZoneSystem.PhaseTimeRemaining, 0)))) .. "s"
+		end
+		if self.activeText ~= nil then
+			self.activeText.Text = "ACTIVE " .. self:ReadString(_BRMagneticZoneSystem.ActiveFacesSummary, "-")
+		end
+		if self.personalText ~= nil then
+			self.personalText.Text = self:GetPersonalDisplayText()
+			if _BRMagneticZoneSystem.ClientInsideForbidden == true then
+				self.personalText.FontColor = Color(1, 0.2, 0.14, 1)
+			else
+				self.personalText.FontColor = Color(0.82, 1, 0.78, 1)
+			end
+		end
+
+		if phase ~= self.lastPhaseText then
+			self.lastPhaseText = phase
+			self:Log("phase=" .. phase)
+		end
+	end
+
+	method boolean ShouldShow()
+		-- Checks whether the magnetic-zone HUD should be visible for the local player.
+		if _BRMagneticZoneSystem == nil then
+			return false
+		end
+		if _BRMagneticZoneSystem.ZoneRunning ~= true then
+			return false
+		end
+
+		local zoneMapName = self:ReadString(_BRMagneticZoneSystem.ZoneMapName, "")
+		if zoneMapName == "" then
+			return true
+		end
+
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return false
+		end
+		return self:ReadString(localPlayer.CurrentMapName, "") == zoneMapName
+	end
+
+	method string GetPhaseDisplayText()
+		-- Returns the current magnetic-zone phase label.
+		if _BRMagneticZoneSystem.WarningActive == true then
+			return "ZONE WARNING"
+		elseif _BRMagneticZoneSystem.ShrinkFinished == true then
+			return "ZONE LOCKED"
+		elseif self:HasActiveForbiddenZone() == true then
+			return "FORBIDDEN ZONE"
+		end
+		return "SAFE ZONE"
+	end
+
+	method boolean HasActiveForbiddenZone()
+		-- Returns true after at least one face has become forbidden.
+		return self:ReadString(_BRMagneticZoneSystem.ActiveFacesSummary, "") ~= ""
+	end
+
+	method string GetFaceDisplayText()
+		-- Returns the current face label for warning or active state.
+		if _BRMagneticZoneSystem.WarningActive == true then
+			return "FACE " .. self:ReadString(_BRMagneticZoneSystem.WarningFace, "-")
+		end
+		return "LAST " .. self:ReadString(_BRMagneticZoneSystem.LastFace, "-")
+	end
+
+	method string GetPersonalDisplayText()
+		-- Returns the local player's remaining forbidden-zone time text.
+		local remaining = math.ceil(math.max(0, self:ReadNumber(_BRMagneticZoneSystem.ClientForbiddenRemaining, 0)))
+		if _BRMagneticZoneSystem.ClientInsideForbidden == true then
+			return "FORBIDDEN TIME " .. tostring(remaining) .. "s"
+		end
+		return "RESERVE TIME " .. tostring(remaining) .. "s"
+	end
+
+	method void SetPanelActive(boolean visible)
+		-- Toggles the magnetic-zone HUD panel tree.
+		if self.panel == nil then
+			return
+		end
+		self.panel.Enable = visible
+		if visible ~= self.lastVisible then
+			self.lastVisible = visible
+			self:Log("visible=" .. tostring(visible))
+		end
+	end
+
+	method number GetRefreshSeconds()
+		-- Returns the UI refresh interval.
+		return math.max(0.05, self:ReadNumber(self.RefreshSeconds, 0.1))
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a magnetic-zone UI log when verbose logging is enabled.
+		if self.VerboseLog == true then
+			log("[BRMagneticZoneUI] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

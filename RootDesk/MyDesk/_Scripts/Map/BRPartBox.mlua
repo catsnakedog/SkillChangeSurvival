@@ -21,16 +21,47 @@ script BRPartBox extends Component
 
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
+		-- Starts the box interaction loop when this box is currently active.
 		if self.EnablePartBox == false then
+			self:SetVisualAvailable(false)
 			return
 		end
 		self.available = true
 		self:SetVisualAvailable(true)
-		self.pollTimerId = _TimerService:SetTimerRepeat(function() self:ScanPlayers() end, self:GetPollSeconds(), 0.1)
+		self:StartPollTimer()
 	end
 
 	@ExecSpace("ServerOnly")
 	method void OnEndPlay()
+		-- Stops any active polling loop when the box leaves play.
+		self:ClearPollTimer()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SetRuntimeActive(boolean active)
+		-- Enables or disables this supply box without requiring a map edit.
+		self.EnablePartBox = active == true
+		self.available = active == true
+		self:SetVisualAvailable(active == true)
+		if active == true then
+			self:StartPollTimer()
+		else
+			self:ClearPollTimer()
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartPollTimer()
+		-- Starts player proximity polling if it is not already running.
+		if self.pollTimerId ~= nil and self.pollTimerId > 0 then
+			return
+		end
+		self.pollTimerId = _TimerService:SetTimerRepeat(function() self:ScanPlayers() end, self:GetPollSeconds(), 0.1)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ClearPollTimer()
+		-- Clears the player proximity polling timer.
 		if self.pollTimerId ~= nil and self.pollTimerId > 0 then
 			_TimerService:ClearTimer(self.pollTimerId)
 		end
@@ -39,6 +70,7 @@ script BRPartBox extends Component
 
 	@ExecSpace("ServerOnly")
 	method void ScanPlayers()
+		-- Opens the box for the first living nearby player.
 		if self.EnablePartBox == false or self.available == false then
 			return
 		end
@@ -65,6 +97,7 @@ script BRPartBox extends Component
 
 	@ExecSpace("ServerOnly")
 	method boolean IsPlayerCloseEnough(Entity playerEntity, Vector2 boxPosition, number radius)
+		-- Checks whether a player is close enough to claim this box.
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return false
 		end
@@ -80,6 +113,7 @@ script BRPartBox extends Component
 
 	@ExecSpace("ServerOnly")
 	method void OpenForPlayer(Entity playerEntity)
+		-- Grants the configured part reward to one player and starts the respawn delay.
 		if self.available == false or playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return
 		end
@@ -106,12 +140,14 @@ script BRPartBox extends Component
 
 	@ExecSpace("ServerOnly")
 	method void RespawnBox()
+		-- Makes the box claimable again after its respawn delay.
 		self.available = true
 		self:SetVisualAvailable(true)
 	end
 
 	@ExecSpace("ServerOnly")
 	method void SetVisualAvailable(boolean value)
+		-- Applies the visible claimable state to the box renderer.
 		if self.Entity == nil then
 			return
 		end
@@ -123,6 +159,7 @@ script BRPartBox extends Component
 
 	@ExecSpace("ServerOnly")
 	method void ShowPickupLabel(Entity playerEntity, string message)
+		-- Shows the acquired part summary on the player nametag.
 		if playerEntity == nil or playerEntity.NameTagComponent == nil then
 			return
 		end

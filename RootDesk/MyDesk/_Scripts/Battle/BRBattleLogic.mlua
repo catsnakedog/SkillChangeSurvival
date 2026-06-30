@@ -13,6 +13,8 @@ script BRBattleLogic extends Component
 
 	property number HitInvincibleSeconds = 0.25
 
+	property number PortalCombatLockSeconds = 1.25
+
 	property number AttackBoxWidth = 1.6
 
 	property number AttackBoxHeight = 1.0
@@ -26,6 +28,22 @@ script BRBattleLogic extends Component
 	property number PlayerScanSeconds = 0.05
 
 	property number PlayerRespawnDuration = 5
+
+	property boolean EnableLifeSystem = true
+
+	property number DefaultLives = 2
+
+	property number LifeReviveDelaySeconds = 4
+
+	property number LifeReviveHpPercent = 0.6
+
+	property number LifeReviveInvincibleSeconds = 2
+
+	property number LifeNativeRespawnBlockSeconds = 9999
+
+	property number LifeRespawnFloorOffsetY = 0.35
+
+	property number LifeRespawnSearchDistance = 24
 
 	property boolean EnablePlatformFallback = false
 
@@ -53,6 +71,15 @@ script BRBattleLogic extends Component
 	@Sync
 	property string BattlePhase = "Idle"
 
+	@Sync
+	property string LifeMapName = ""
+
+	@Sync
+	property string LifeSummary = ""
+
+	@Sync
+	property number LifeVersion = 0
+
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
 		if self.EnableBattleLogic == false then
@@ -72,6 +99,12 @@ script BRBattleLogic extends Component
 		self._T.playerHandlers = {}
 		self._T.nextAttackAt = {}
 		self._T.invincibleUntil = {}
+		self._T.portalLockedUntil = {}
+		self._T.lives = {}
+		self._T.lifeState = {}
+		self._T.reviveUntil = {}
+		self._T.pendingRevive = {}
+		self._T.lastLifeSummary = ""
 		self._T.preparedPlayers = {}
 		self._T.lastPositions = {}
 		self._T.basePhysicsStats = {}
@@ -106,9 +139,18 @@ script BRBattleLogic extends Component
 		self._T.playerHandlers = {}
 		self._T.nextAttackAt = {}
 		self._T.invincibleUntil = {}
+		self._T.portalLockedUntil = {}
+		self._T.lives = {}
+		self._T.lifeState = {}
+		self._T.reviveUntil = {}
+		self._T.pendingRevive = {}
+		self._T.lastLifeSummary = ""
 		self._T.preparedPlayers = {}
 		self._T.lastPositions = {}
 		self._T.basePhysicsStats = {}
+		self.LifeMapName = ""
+		self.LifeSummary = ""
+		self.LifeVersion = self.LifeVersion + 1
 	end
 
 	@ExecSpace("ServerOnly")
@@ -136,6 +178,7 @@ script BRBattleLogic extends Component
 		end
 		
 		self:UpdateAlivePlayerCount()
+		self:UpdateLifeSummary()
 	end
 
 	@ExecSpace("ServerOnly")
@@ -186,6 +229,21 @@ script BRBattleLogic extends Component
 		if self._T.invincibleUntil ~= nil then
 			self._T.invincibleUntil[userId] = nil
 		end
+		if self._T.portalLockedUntil ~= nil then
+			self._T.portalLockedUntil[userId] = nil
+		end
+		if self._T.lives ~= nil then
+			self._T.lives[userId] = nil
+		end
+		if self._T.lifeState ~= nil then
+			self._T.lifeState[userId] = nil
+		end
+		if self._T.reviveUntil ~= nil then
+			self._T.reviveUntil[userId] = nil
+		end
+		if self._T.pendingRevive ~= nil then
+			self._T.pendingRevive[userId] = nil
+		end
 		if self._T.preparedPlayers ~= nil then
 			self._T.preparedPlayers[userId] = nil
 		end
@@ -223,7 +281,11 @@ script BRBattleLogic extends Component
 		local maxHp = self:GetAdjustedBattleMaxHp(playerEntity)
 		playerComponent.PVPMode = true
 		playerComponent.MaxHp = maxHp
-		playerComponent.RespawnDuration = self:GetPlayerRespawnDuration()
+		if self.EnableLifeSystem == true then
+			playerComponent.RespawnDuration = self:GetLifeNativeRespawnBlockSeconds()
+		else
+			playerComponent.RespawnDuration = self:GetPlayerRespawnDuration()
+		end
 		self:PreparePlayerPhysics(playerEntity)
 		self:ApplySkillStatsToPlayer(playerEntity)
 		if self._T.preparedPlayers == nil then
@@ -232,8 +294,23 @@ script BRBattleLogic extends Component
 		
 		if self.ResetHpOnEnter == true and self._T.preparedPlayers[userId] == nil then
 			playerComponent.Hp = maxHp
+			self._T.lives[userId] = self:GetDefaultLives()
+			self._T.lifeState[userId] = "ALIVE"
+			self._T.reviveUntil[userId] = 0
+			self._T.pendingRevive[userId] = nil
 		elseif playerComponent.Hp <= 0 then
 			playerComponent.Hp = maxHp
+			if self._T.lives[userId] == nil then
+				self._T.lives[userId] = self:GetDefaultLives()
+			end
+			self._T.lifeState[userId] = "ALIVE"
+			self._T.reviveUntil[userId] = 0
+			self._T.pendingRevive[userId] = nil
+		elseif self._T.lives[userId] == nil then
+			self._T.lives[userId] = self:GetDefaultLives()
+			self._T.lifeState[userId] = "ALIVE"
+			self._T.reviveUntil[userId] = 0
+			self._T.pendingRevive[userId] = nil
 		end
 		
 		self._T.preparedPlayers[userId] = true
@@ -476,10 +553,51 @@ script BRBattleLogic extends Component
 			return
 		end
 		
+		if playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent:Stop()
+			playerEntity.MovementComponent:SetWorldPosition(position)
+		end
+
 		if playerEntity.RigidbodyComponent ~= nil then
+			playerEntity.RigidbodyComponent.IgnoreMoveBoundary = true
+			playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
 			playerEntity.RigidbodyComponent:SetWorldPosition(position)
-		elseif playerEntity.PlayerComponent ~= nil then
+			playerEntity.RigidbodyComponent:PositionReset()
+		elseif playerEntity.KinematicbodyComponent ~= nil then
+			playerEntity.KinematicbodyComponent:SetWorldPosition(position)
+		elseif playerEntity.SideviewbodyComponent ~= nil then
+			playerEntity.SideviewbodyComponent:SetWorldPosition(position)
+		end
+
+		if playerEntity.PlayerComponent ~= nil then
 			playerEntity.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
+		end
+	end
+
+	@ExecSpace("Client")
+	method void ApplyLocalLifeRespawnPosition(Vector2 position, string reason)
+		-- Mirrors a server revive teleport on the owning client.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+
+		if localPlayer.MovementComponent ~= nil then
+			localPlayer.MovementComponent:Stop()
+			localPlayer.MovementComponent:SetWorldPosition(position)
+		end
+		if localPlayer.RigidbodyComponent ~= nil then
+			localPlayer.RigidbodyComponent.IgnoreMoveBoundary = true
+			localPlayer.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			localPlayer.RigidbodyComponent:SetWorldPosition(position)
+			localPlayer.RigidbodyComponent:PositionReset()
+		elseif localPlayer.KinematicbodyComponent ~= nil then
+			localPlayer.KinematicbodyComponent:SetWorldPosition(position)
+		elseif localPlayer.SideviewbodyComponent ~= nil then
+			localPlayer.SideviewbodyComponent:SetWorldPosition(position)
+		end
+		if localPlayer.PlayerComponent ~= nil then
+			localPlayer.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
 		end
 	end
 
@@ -516,6 +634,7 @@ script BRBattleLogic extends Component
 		end
 		
 		self._T.nextAttackAt[userId] = now + self:GetAttackCooldownSeconds()
+		self:LockPortalUse(userId, now)
 		self:PlayBodyAction(attackerEntity, MapleAvatarBodyActionState.Attack, true, 1)
 		
 		local hitCount = 0
@@ -579,6 +698,7 @@ script BRBattleLogic extends Component
 		local damage = self:GetAdjustedBasicAttackDamage(attackerEntity)
 		targetPlayer.Hp = math.max(0, targetPlayer.Hp - damage)
 		self._T.invincibleUntil[targetPlayer.UserId] = now + self:GetHitInvincibleSeconds()
+		self:LockPortalUse(targetPlayer.UserId, now)
 		
 		if targetPlayer.Hp <= 0 then
 			self:KillTarget(attackerEntity, targetEntity)
@@ -590,18 +710,384 @@ script BRBattleLogic extends Component
 	end
 
 	@ExecSpace("ServerOnly")
+	method void LockPortalUse(string userId, number now)
+		-- Blocks portal movement briefly after combat contact.
+		self:EnsureServerRuntimeTables()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		self._T.portalLockedUntil[safeUserId] = self:ReadNumber(now, self:Now()) + self:GetPortalCombatLockSeconds()
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean IsPortalUseBlocked(Entity playerEntity)
+		-- Returns whether the player is currently blocked from using battle portals.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return true
+		end
+		if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+			return true
+		end
+
+		self:EnsureServerRuntimeTables()
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		if userId == "" then
+			return true
+		end
+		return self:Now() < self:ReadNumber(self._T.portalLockedUntil[userId], 0)
+	end
+
+	@ExecSpace("ServerOnly")
 	method void KillTarget(Entity attackerEntity, Entity targetEntity)
+		self:HandlePlayerFatalDeath(attackerEntity, targetEntity, "combat")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void HandleExternalFatalDeath(Entity targetEntity, string reason)
+		-- Lets external hazards use the same life and revive pipeline as combat deaths.
+		self:HandlePlayerFatalDeath(nil, targetEntity, self:ReadString(reason, "external"))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void HandlePlayerFatalDeath(Entity attackerEntity, Entity targetEntity, string reason)
+		-- Consumes one life and either schedules a revive or leaves the player out.
+		self:EnsureServerRuntimeTables()
 		if targetEntity == nil or targetEntity.PlayerComponent == nil then
 			return
 		end
-		
-		self:PlayBodyAction(targetEntity, MapleAvatarBodyActionState.Dead, true, 1)
-		targetEntity.PlayerComponent:ProcessDead(targetEntity.PlayerComponent.UserId)
+
+		local playerComponent = targetEntity.PlayerComponent
+		local userId = self:ReadString(playerComponent.UserId, "")
+		if userId == "" then
+			return
+		end
+		if self._T.pendingRevive[userId] == true then
+			self:UpdateLifeSummary()
+			return
+		end
+
 		local attackerId = ""
 		if attackerEntity ~= nil and attackerEntity.PlayerComponent ~= nil then
 			attackerId = attackerEntity.PlayerComponent.UserId
 		end
-		self:Log("dead user=" .. targetEntity.PlayerComponent.UserId .. " attacker=" .. attackerId)
+
+		playerComponent.Hp = 0
+		playerComponent.RespawnDuration = self:GetLifeNativeRespawnBlockSeconds()
+		self:PlayBodyAction(targetEntity, MapleAvatarBodyActionState.Dead, true, 1)
+		playerComponent:ProcessDead(userId)
+
+		if self.EnableLifeSystem ~= true then
+			self._T.lifeState[userId] = "OUT"
+			self._T.lives[userId] = 0
+			self:UpdateAlivePlayerCount()
+			self:UpdateLifeSummary()
+			self:Log("dead user=" .. userId .. " attacker=" .. attackerId .. " reason=" .. self:ReadString(reason, ""))
+			return
+		end
+
+		local maxLives = self:GetDefaultLives()
+		local remainingLives = math.max(0, math.floor(self:ReadNumber(self._T.lives[userId], maxLives)))
+		remainingLives = math.max(0, remainingLives - 1)
+		self._T.lives[userId] = remainingLives
+
+		if remainingLives > 0 then
+			local delay = self:GetLifeReviveDelaySeconds()
+			self._T.lifeState[userId] = "REVIVE"
+			self._T.pendingRevive[userId] = true
+			self._T.reviveUntil[userId] = self:Now() + delay
+			self:UpdateAlivePlayerCount()
+			self:UpdateLifeSummary()
+			self:RefreshMiniMapPlayerCounts()
+			self:Log("life consumed user=" .. userId .. " lives=" .. tostring(remainingLives) .. "/" .. tostring(maxLives)
+				.. " reviveDelay=" .. tostring(delay) .. " reason=" .. self:ReadString(reason, "") .. " attacker=" .. attackerId)
+			_TimerService:SetTimerOnce(function() self:RevivePlayerByUserId(userId) end, delay)
+			return
+		end
+
+		self._T.lifeState[userId] = "OUT"
+		self._T.pendingRevive[userId] = nil
+		self._T.reviveUntil[userId] = 0
+		self:UpdateAlivePlayerCount()
+		self:UpdateLifeSummary()
+		self:Log("life out user=" .. userId .. " reason=" .. self:ReadString(reason, "") .. " attacker=" .. attackerId)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RevivePlayerByUserId(string userId)
+		-- Revives a player in an empty logical grid room after the delay expires.
+		self:EnsureServerRuntimeTables()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		if self._T.pendingRevive[safeUserId] ~= true then
+			return
+		end
+		if self:ReadNumber(self._T.lives[safeUserId], 0) <= 0 then
+			self._T.pendingRevive[safeUserId] = nil
+			self._T.lifeState[safeUserId] = "OUT"
+			self:UpdateLifeSummary()
+			return
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			self._T.pendingRevive[safeUserId] = nil
+			self._T.lifeState[safeUserId] = "OUT"
+			self:UpdateLifeSummary()
+			return
+		end
+		if playerEntity.CurrentMapName ~= self:GetBattleMapName() then
+			self._T.pendingRevive[safeUserId] = nil
+			self._T.lifeState[safeUserId] = "OUT"
+			self:UpdateLifeSummary()
+			return
+		end
+
+		local revivePosition = self:PickEmptyRespawnPosition(safeUserId)
+		if revivePosition == nil then
+			revivePosition = self:GetEntityPosition2(playerEntity)
+		end
+
+		local playerComponent = playerEntity.PlayerComponent
+		local maxHp = self:GetAdjustedBattleMaxHp(playerEntity)
+		playerComponent.PVPMode = true
+		playerComponent.MaxHp = maxHp
+		playerComponent.RespawnDuration = self:GetLifeNativeRespawnBlockSeconds()
+		playerComponent.RespawnPosition = Vector3(revivePosition.x, revivePosition.y, 0)
+		playerComponent.Hp = math.max(1, math.ceil(maxHp * self:GetLifeReviveHpPercent()))
+		playerComponent:ProcessRevive(safeUserId)
+		self:PreparePlayerPhysics(playerEntity)
+		self:ApplySkillStatsToPlayer(playerEntity)
+		self:SetEntityWorldPosition2(playerEntity, revivePosition)
+		self:ApplyLocalLifeRespawnPosition(revivePosition, "life-revive", safeUserId)
+		self:PlayBodyAction(playerEntity, MapleAvatarBodyActionState.Stand, true, 1)
+
+		local now = self:Now()
+		self._T.invincibleUntil[safeUserId] = now + self:GetLifeReviveInvincibleSeconds()
+		self._T.portalLockedUntil[safeUserId] = now + math.max(self:GetPortalCombatLockSeconds(), 0.5)
+		self._T.pendingRevive[safeUserId] = nil
+		self._T.reviveUntil[safeUserId] = 0
+		self._T.lifeState[safeUserId] = "ALIVE"
+		self:UpdateAlivePlayerCount()
+		self:UpdateLifeSummary()
+		self:RefreshMiniMapPlayerCounts()
+		self:Log("life revive user=" .. safeUserId
+			.. " lives=" .. tostring(math.floor(self:ReadNumber(self._T.lives[safeUserId], 0)))
+			.. " hp=" .. tostring(playerComponent.Hp) .. "/" .. tostring(maxHp)
+			.. " pos=(" .. tostring(revivePosition.x) .. "," .. tostring(revivePosition.y) .. ")")
+	end
+
+	method any PickEmptyRespawnPosition(string excludedUserId)
+		-- Picks a respawn point from the latest logical graph, ignoring magnetic-zone state.
+		if _BRRoomGraphGenerator == nil then
+			return nil
+		end
+
+		local mapName = self:GetBattleMapName()
+		local graph = _BRRoomGraphGenerator:GetLatestGraphForMap(mapName)
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local occupied = self:BuildOccupiedLogicalRoomCounts(graph, excludedUserId)
+		local emptyRooms = {}
+		local fallbackRooms = {}
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				local roomKey = self:GetLogicalRoomKey(room)
+				if roomKey ~= "" then
+					table.insert(fallbackRooms, room)
+					if self:ReadNumber(occupied[roomKey], 0) <= 0 then
+						table.insert(emptyRooms, room)
+					end
+				end
+			end
+		end
+
+		local candidates = emptyRooms
+		if #candidates <= 0 then
+			candidates = fallbackRooms
+		end
+		if #candidates <= 0 then
+			return nil
+		end
+
+		local selectedIndex = _UtilLogic:RandomIntegerRange(1, #candidates)
+		return self:GetRespawnPositionForLogicalRoom(graph, candidates[selectedIndex])
+	end
+
+	method any BuildOccupiedLogicalRoomCounts(any graph, string excludedUserId)
+		-- Counts other players by logical room so revives can prefer empty rooms.
+		local result = {}
+		if _BRRoomGraphGenerator == nil or graph == nil then
+			return result
+		end
+
+		local users = _UserService:GetUsersByMapName(self:GetBattleMapName())
+		if users == nil then
+			return result
+		end
+
+		local excluded = self:ReadString(excludedUserId, "")
+		for index, playerEntity in ipairs(users) do
+			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+				local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+				if userId ~= "" and userId ~= excluded then
+					local room = _BRRoomGraphGenerator:GetLogicalRoomForPosition(graph, self:GetEntityPosition2(playerEntity))
+					local roomKey = self:GetLogicalRoomKey(room)
+					if roomKey ~= "" then
+						result[roomKey] = self:ReadNumber(result[roomKey], 0) + 1
+					end
+				end
+			end
+		end
+		return result
+	end
+
+	method any GetRespawnPositionForLogicalRoom(any graph, any room)
+		-- Converts a logical room assignment into a foothold-aligned world position.
+		if _BRRoomGraphGenerator == nil or graph == nil or room == nil then
+			return nil
+		end
+
+		local roomName = self:GetAssignedPhysicalRoomName(room)
+		if roomName == "" then
+			return nil
+		end
+
+		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(graph.MapName)
+		local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(graph.MapName, root, roomName)
+		if center == nil then
+			return nil
+		end
+
+		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(graph.MapName)
+		local rawPosition = Vector2(center.x, center.y - halfSize.y + self:GetLifeRespawnFloorOffsetY())
+		return self:GetFootholdAlignedRespawnPosition(graph.MapName, rawPosition, halfSize.y * 2)
+	end
+
+	method Vector2 GetFootholdAlignedRespawnPosition(string mapName, Vector2 rawPosition, number roomHeight)
+		-- Aligns a revive position to the real foothold below the selected room.
+		local safeMapName = self:ReadString(mapName, self:GetBattleMapName())
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. safeMapName)
+		if mapEntity == nil or mapEntity.FootholdComponent == nil then
+			return rawPosition
+		end
+
+		local searchDistance = math.max(self:GetLifeRespawnSearchDistance(), self:ReadNumber(roomHeight, 10) * 2 + 5)
+		local rayStart = Vector2(rawPosition.x, rawPosition.y + searchDistance * 0.5)
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDistance)
+		if foothold == nil then
+			return rawPosition
+		end
+
+		local alignedY = foothold:GetYByX(rawPosition.x) + self:GetLifeRespawnFloorOffsetY()
+		local allowedDelta = math.max(1, self:ReadNumber(roomHeight, 10) * 0.5)
+		if math.abs(alignedY - rawPosition.y) > allowedDelta then
+			return rawPosition
+		end
+		return Vector2(rawPosition.x, alignedY)
+	end
+
+	method string GetAssignedPhysicalRoomName(any logicalRoom)
+		-- Reads the physical room name assigned to a logical room.
+		if logicalRoom == nil then
+			return ""
+		end
+		local assignedRoomName = self:ReadString(logicalRoom.AssignedRoomName, "")
+		if assignedRoomName ~= "" then
+			return assignedRoomName
+		end
+		return self:ReadString(logicalRoom.FixedPhysicalRoomName, "")
+	end
+
+	method string GetLogicalRoomKey(any logicalRoom)
+		-- Builds a stable row-column key for a logical room.
+		if logicalRoom == nil then
+			return ""
+		end
+		local row = math.floor(self:ReadNumber(logicalRoom.Row, 0))
+		local column = math.floor(self:ReadNumber(logicalRoom.Column, 0))
+		if row <= 0 or column <= 0 then
+			return ""
+		end
+		return tostring(row) .. ":" .. tostring(column)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UpdateLifeSummary()
+		-- Synchronizes each current player's life and revive countdown to clients.
+		self:EnsureServerRuntimeTables()
+		local mapName = self:GetBattleMapName()
+		local summary = self:BuildLifeSummary(mapName)
+		self.LifeMapName = mapName
+		if summary ~= self._T.lastLifeSummary then
+			self._T.lastLifeSummary = summary
+			self.LifeSummary = summary
+			self.LifeVersion = self.LifeVersion + 1
+		else
+			self.LifeSummary = summary
+		end
+	end
+
+	method string BuildLifeSummary(string mapName)
+		-- Formats current life state records as user,lives,max,state,seconds.
+		local users = _UserService:GetUsersByMapName(self:ReadString(mapName, self:GetBattleMapName()))
+		if users == nil then
+			return ""
+		end
+
+		local now = self:Now()
+		local records = ""
+		for index, playerEntity in ipairs(users) do
+			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+				local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+				if userId ~= "" and self._T.playerHandlers[userId] ~= nil then
+					local maxLives = self:GetDefaultLives()
+					local lives = math.max(0, math.floor(self:ReadNumber(self._T.lives[userId], maxLives)))
+					local state = self:ReadString(self._T.lifeState[userId], "ALIVE")
+					if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+						if self._T.pendingRevive[userId] == true then
+							state = "REVIVE"
+						elseif lives <= 0 then
+							state = "OUT"
+						end
+					elseif self._T.pendingRevive[userId] ~= true and lives > 0 then
+						state = "ALIVE"
+					end
+
+					local remaining = 0
+					if state == "REVIVE" then
+						remaining = math.max(0, math.ceil(self:ReadNumber(self._T.reviveUntil[userId], now) - now))
+					end
+					records = self:AppendLifeRecord(records, userId, lives, maxLives, state, remaining)
+				end
+			end
+		end
+		return records
+	end
+
+	method string AppendLifeRecord(string records, string userId, number lives, number maxLives, string state, number remaining)
+		-- Appends one semicolon-delimited life HUD record.
+		local nextRecord = self:ReadString(userId, "")
+			.. "," .. tostring(math.max(0, math.floor(self:ReadNumber(lives, 0))))
+			.. "," .. tostring(math.max(1, math.floor(self:ReadNumber(maxLives, 1))))
+			.. "," .. self:ReadString(state, "ALIVE")
+			.. "," .. tostring(math.max(0, math.floor(self:ReadNumber(remaining, 0))))
+		if records == nil or records == "" then
+			return nextRecord
+		end
+		return records .. ";" .. nextRecord
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RefreshMiniMapPlayerCounts()
+		-- Refreshes minimap occupancy after death or life revive changes player count state.
+		if _BRRoomGraphGenerator ~= nil then
+			_BRRoomGraphGenerator:RefreshMiniMapPlayerCounts()
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -645,6 +1131,24 @@ script BRBattleLogic extends Component
 		end
 		if self._T.invincibleUntil == nil then
 			self._T.invincibleUntil = {}
+		end
+		if self._T.portalLockedUntil == nil then
+			self._T.portalLockedUntil = {}
+		end
+		if self._T.lives == nil then
+			self._T.lives = {}
+		end
+		if self._T.lifeState == nil then
+			self._T.lifeState = {}
+		end
+		if self._T.reviveUntil == nil then
+			self._T.reviveUntil = {}
+		end
+		if self._T.pendingRevive == nil then
+			self._T.pendingRevive = {}
+		end
+		if self._T.lastLifeSummary == nil then
+			self._T.lastLifeSummary = ""
 		end
 		if self._T.preparedPlayers == nil then
 			self._T.preparedPlayers = {}
@@ -718,6 +1222,11 @@ script BRBattleLogic extends Component
 		return math.max(0, self:ReadNumber(self.HitInvincibleSeconds, 0.25))
 	end
 
+	method number GetPortalCombatLockSeconds()
+		-- Returns how long combat contact blocks portal entry.
+		return math.max(0, self:ReadNumber(self.PortalCombatLockSeconds, 1.25))
+	end
+
 	method number GetAttackBoxWidth()
 		return math.max(0.1, self:ReadNumber(self.AttackBoxWidth, 1.6))
 	end
@@ -744,6 +1253,41 @@ script BRBattleLogic extends Component
 
 	method number GetPlayerRespawnDuration()
 		return math.max(0, self:ReadNumber(self.PlayerRespawnDuration, 5))
+	end
+
+	method number GetDefaultLives()
+		-- Returns total lives granted at battle entry.
+		return math.max(1, math.floor(self:ReadNumber(self.DefaultLives, 2)))
+	end
+
+	method number GetLifeReviveDelaySeconds()
+		-- Returns the delay before a consumed life revives the player.
+		return math.max(0.5, self:ReadNumber(self.LifeReviveDelaySeconds, 4))
+	end
+
+	method number GetLifeReviveHpPercent()
+		-- Returns the HP ratio restored on life revive.
+		return math.max(0.05, math.min(1, self:ReadNumber(self.LifeReviveHpPercent, 0.6)))
+	end
+
+	method number GetLifeReviveInvincibleSeconds()
+		-- Returns temporary invulnerability after life revive.
+		return math.max(0, self:ReadNumber(self.LifeReviveInvincibleSeconds, 2))
+	end
+
+	method number GetLifeNativeRespawnBlockSeconds()
+		-- Keeps native respawn delayed while the custom life system controls revive.
+		return math.max(1, self:ReadNumber(self.LifeNativeRespawnBlockSeconds, 9999))
+	end
+
+	method number GetLifeRespawnFloorOffsetY()
+		-- Returns the vertical offset above a selected foothold.
+		return self:ReadNumber(self.LifeRespawnFloorOffsetY, 0.35)
+	end
+
+	method number GetLifeRespawnSearchDistance()
+		-- Returns the minimum downward ray distance for foothold alignment.
+		return math.max(4, self:ReadNumber(self.LifeRespawnSearchDistance, 24))
 	end
 
 	method number GetPlatformGroundingSeconds()

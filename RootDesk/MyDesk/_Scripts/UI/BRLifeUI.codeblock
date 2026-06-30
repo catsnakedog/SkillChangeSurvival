@@ -1,14 +1,14 @@
 {
   "Id": "",
   "GameId": "",
-  "EntryKey": "codeblock://4926ffd3-aa17-41a2-83cb-18d71042946a",
+  "EntryKey": "codeblock://73580bcd-a993-4088-8466-41ed56e760d9",
   "ContentType": "x-mod/codeblock",
   "Content": "",
   "Usage": 0,
   "UsePublish": 1,
   "UseService": 0,
-  "CoreVersion": "26.3.0.0",
-  "StudioVersion": "0.1.0.0",
+  "CoreVersion": "26.5.0.0",
+  "StudioVersion": "",
   "DynamicLoading": 0,
   "ContentProto": {
     "Use": "Json",
@@ -21,11 +21,11 @@
         "Major": 1,
         "Minor": 1
       },
-      "Description": "Generates a test n by n room grid and routes players through logical room portals.",
-      "Id": "4926ffd3-aa17-41a2-83cb-18d71042946a",
+      "Description": "",
+      "Id": "73580bcd-a993-4088-8466-41ed56e760d9",
       "Language": 1,
-      "Name": "TestMapGenerate",
-      "Type": 1,
+      "Name": "BRLifeUI",
+      "Type": 5,
       "Source": 0,
       "Target": null
     }

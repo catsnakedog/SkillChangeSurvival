@@ -1,0 +1,1228 @@
+@Logic
+script BRMagneticZoneSystem extends Logic
+
+	property boolean AutoStartOnBeginPlay = false
+
+	property string DefaultMapName = "RoomTestMap"
+
+	property number InitialMinX = -14
+
+	property number InitialMaxX = 14
+
+	property number InitialMinY = -6
+
+	property number InitialMaxY = 8
+
+	property number ShrinkIntervalSeconds = 30
+
+	property number WarningSeconds = 5
+
+	property number ForbiddenTimeSeconds = 20
+
+	property number ShrinkAmount = 2
+
+	property number MinSafeWidth = 4
+
+	property number MinSafeHeight = 2
+
+	property number PlayerTickSeconds = 0.2
+
+	property boolean UseLogicalRoomZone = true
+
+	property number LogicalShrinkCells = 1
+
+	property number MinSafeRows = 1
+
+	property number MinSafeColumns = 1
+
+	property boolean EnableWorldVisuals = true
+
+	property boolean VerboseLog = true
+
+	@Sync
+	property boolean ZoneRunning = false
+
+	@Sync
+	property boolean WarningActive = false
+
+	@Sync
+	property boolean ShrinkFinished = false
+
+	@Sync
+	property string ZoneMapName = ""
+
+	@Sync
+	property string WarningFace = ""
+
+	@Sync
+	property string LastFace = ""
+
+	@Sync
+	property string ActiveFacesSummary = ""
+
+	@Sync
+	property number CurrentShrinkAmount = 0
+
+	@Sync
+	property number CurrentLogicalShrinkCells = 1
+
+	@Sync
+	property number ZoneRows = 0
+
+	@Sync
+	property number ZoneColumns = 0
+
+	@Sync
+	property number SafeMinRow = 1
+
+	@Sync
+	property number SafeMaxRow = 1
+
+	@Sync
+	property number SafeMinColumn = 1
+
+	@Sync
+	property number SafeMaxColumn = 1
+
+	@Sync
+	property number PhaseTimeRemaining = 0
+
+	@Sync
+	property number SafeMinX = 0
+
+	@Sync
+	property number SafeMaxX = 0
+
+	@Sync
+	property number SafeMinY = 0
+
+	@Sync
+	property number SafeMaxY = 0
+
+	property number ClientForbiddenRemaining = 0
+
+	property boolean ClientInsideForbidden = false
+
+	property number phaseTimer = 0
+
+	property number playerTickTimer = 0
+
+	property number runtimeShrinkInterval = 0
+
+	property number runtimeWarningSeconds = 0
+
+	property number runtimeForbiddenSeconds = 0
+
+	property number runtimeShrinkAmount = 0
+
+	property string lastWorldVisualKey = ""
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		-- Initializes the magnetic zone in a hidden idle state.
+		self:ResetZoneState()
+		if self.AutoStartOnBeginPlay == true then
+			self:StartZone(self:ReadString(self.DefaultMapName, "RoomTestMap"), 0, 0, 0, 0)
+		else
+			self:Log("ready defaultMap=" .. self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnUpdate(number delta)
+		-- Advances the shrink phase timers and forbidden-zone player timers.
+		if self.ZoneRunning ~= true then
+			return
+		end
+
+		local safeDelta = math.max(0, self:ReadNumber(delta, 0))
+		self:AdvancePhase(safeDelta)
+		self:UpdateWorldVisuals()
+		self.playerTickTimer = self.playerTickTimer - safeDelta
+		if self.playerTickTimer <= 0 then
+			local tickDelta = self:GetPlayerTickSeconds()
+			self.playerTickTimer = tickDelta
+			self:TickPlayers(tickDelta)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartZone(string mapName, number shrinkIntervalSeconds, number warningSeconds, number forbiddenTimeSeconds, number shrinkAmount)
+		-- Starts the magnetic zone with the requested timing overrides.
+		self:ResetZoneState()
+		self.ZoneMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		self.runtimeShrinkInterval = self:NormalizeSeconds(shrinkIntervalSeconds, self:GetDefaultShrinkIntervalSeconds())
+		self.runtimeWarningSeconds = self:NormalizeSeconds(warningSeconds, self:GetDefaultWarningSeconds())
+		self.runtimeForbiddenSeconds = self:NormalizeSeconds(forbiddenTimeSeconds, self:GetDefaultForbiddenTimeSeconds())
+		self.runtimeShrinkAmount = self:NormalizeAmount(shrinkAmount, self:GetDefaultShrinkAmount())
+		self.CurrentShrinkAmount = self.runtimeShrinkAmount
+		self.CurrentLogicalShrinkCells = self:GetLogicalShrinkCells()
+		self:InitializeZoneBounds()
+		self.phaseTimer = self.runtimeShrinkInterval
+		self.PhaseTimeRemaining = self.phaseTimer
+		self.playerTickTimer = self:GetPlayerTickSeconds()
+		self.ZoneRunning = true
+		self.WarningActive = false
+		self.ShrinkFinished = false
+		self:EnsureRuntimeTables()
+		self:PrimeCurrentPlayers()
+		self:Log("started map=" .. self.ZoneMapName
+			.. " interval=" .. tostring(self.runtimeShrinkInterval)
+			.. " warning=" .. tostring(self.runtimeWarningSeconds)
+			.. " forbidden=" .. tostring(self.runtimeForbiddenSeconds)
+			.. " amount=" .. tostring(self.runtimeShrinkAmount)
+			.. " safe=" .. self:GetSafeRectText())
+		self:UpdateWorldVisuals()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StopZone()
+		-- Stops and hides the magnetic zone state.
+		local mapName = self:ReadString(self.ZoneMapName, "")
+		self:SendResetToCurrentPlayers()
+		self:ResetWorldVisuals(mapName)
+		self:ResetZoneState()
+		self:Log("stopped")
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Start Magnetic Zone")
+	method void DebugStartZone()
+		-- Starts the magnetic zone with configured defaults for playtesting.
+		self:StartZone(self:ReadString(self.DefaultMapName, "RoomTestMap"), 0, 0, 0, 0)
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Start Fast Magnetic Zone")
+	method void DebugStartFastZone()
+		-- Starts a fast shrink cycle for quick verification.
+		self:StartZone(self:ReadString(self.DefaultMapName, "RoomTestMap"), 6, 2, 8, self:GetDefaultShrinkAmount())
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Stop Magnetic Zone")
+	method void DebugStopZone()
+		-- Stops the magnetic zone during playtesting.
+		self:StopZone()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void AdvancePhase(number delta)
+		-- Advances either the warning countdown or the active interval countdown.
+		if self.ShrinkFinished == true then
+			self.PhaseTimeRemaining = 0
+			return
+		end
+
+		self.phaseTimer = math.max(0, self.phaseTimer - delta)
+		self.PhaseTimeRemaining = self.phaseTimer
+		if self.phaseTimer > 0 then
+			return
+		end
+
+		if self.WarningActive == true then
+			self:ApplyWarningFace()
+			return
+		end
+
+		self:BeginNextWarning()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void BeginNextWarning()
+		-- Chooses the next shrink face while excluding the previous face.
+		local face = self:SelectNextFace()
+		if face == "" then
+			self.ShrinkFinished = true
+			self.WarningActive = false
+			self.WarningFace = ""
+			self.PhaseTimeRemaining = 0
+			self:Log("shrink finished safe=" .. self:GetSafeRectText())
+			return
+		end
+
+		self.WarningFace = face
+		self.WarningActive = true
+		self.phaseTimer = self.runtimeWarningSeconds
+		self.PhaseTimeRemaining = self.phaseTimer
+		self:Log("warning face=" .. face .. " seconds=" .. tostring(self.phaseTimer))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyWarningFace()
+		-- Converts the warned face into a forbidden strip by shrinking the safe rectangle.
+		local face = self:ReadString(self.WarningFace, "")
+		if face == "" then
+			self.WarningActive = false
+			self.phaseTimer = self.runtimeShrinkInterval
+			self.PhaseTimeRemaining = self.phaseTimer
+			return
+		end
+
+		self:ShrinkFace(face)
+		self.LastFace = face
+		self.ActiveFacesSummary = self:AppendActiveFace(face)
+		self.WarningFace = ""
+		self.WarningActive = false
+		self.phaseTimer = self.runtimeShrinkInterval
+		self.PhaseTimeRemaining = self.phaseTimer
+		self:Log("activated face=" .. face .. " active=" .. self.ActiveFacesSummary .. " safe=" .. self:GetSafeRectText())
+	end
+
+	method string SelectNextFace()
+		-- Picks a shrinkable face and prevents the same face from appearing twice in a row.
+		local faces = { "NORTH", "EAST", "SOUTH", "WEST" }
+		local candidates = {}
+		for index, face in ipairs(faces) do
+			if face ~= self.LastFace and self:CanShrinkFace(face) == true then
+				table.insert(candidates, face)
+			end
+		end
+
+		if #candidates <= 0 then
+			return ""
+		end
+
+		local selectedIndex = _UtilLogic:RandomIntegerRange(1, #candidates)
+		return candidates[selectedIndex]
+	end
+
+	method boolean CanShrinkFace(string face)
+		-- Checks if the face can move inward while preserving a minimum safe area.
+		if self.UseLogicalRoomZone == true then
+			return self:CanShrinkLogicalFace(face)
+		end
+
+		local amount = self.runtimeShrinkAmount
+		if face == "WEST" then
+			return self.SafeMinX + amount < self.SafeMaxX - self:GetMinSafeWidth()
+		elseif face == "EAST" then
+			return self.SafeMaxX - amount > self.SafeMinX + self:GetMinSafeWidth()
+		elseif face == "SOUTH" then
+			return self.SafeMinY + amount < self.SafeMaxY - self:GetMinSafeHeight()
+		elseif face == "NORTH" then
+			return self.SafeMaxY - amount > self.SafeMinY + self:GetMinSafeHeight()
+		end
+		return false
+	end
+
+	method void ShrinkFace(string face)
+		-- Moves one safe-rectangle face inward.
+		if self.UseLogicalRoomZone == true then
+			self:ShrinkLogicalFace(face)
+			self:RefreshSafeWorldRectFromLogicalBounds()
+			return
+		end
+
+		local amount = self.runtimeShrinkAmount
+		if face == "WEST" then
+			self.SafeMinX = math.min(self.SafeMaxX - self:GetMinSafeWidth(), self.SafeMinX + amount)
+		elseif face == "EAST" then
+			self.SafeMaxX = math.max(self.SafeMinX + self:GetMinSafeWidth(), self.SafeMaxX - amount)
+		elseif face == "SOUTH" then
+			self.SafeMinY = math.min(self.SafeMaxY - self:GetMinSafeHeight(), self.SafeMinY + amount)
+		elseif face == "NORTH" then
+			self.SafeMaxY = math.max(self.SafeMinY + self:GetMinSafeHeight(), self.SafeMaxY - amount)
+		end
+	end
+
+	method void InitializeZoneBounds()
+		-- Initializes the zone from the logical room graph when available.
+		self.CurrentLogicalShrinkCells = self:GetLogicalShrinkCells()
+		local graph = self:GetZoneGraph()
+		if self.UseLogicalRoomZone == true and graph ~= nil then
+			self.ZoneRows = math.max(1, math.floor(self:ReadNumber(graph.Rows, 1)))
+			self.ZoneColumns = math.max(1, math.floor(self:ReadNumber(graph.Columns, 1)))
+			self.SafeMinRow = 1
+			self.SafeMaxRow = self.ZoneRows
+			self.SafeMinColumn = 1
+			self.SafeMaxColumn = self.ZoneColumns
+			self:RefreshSafeWorldRectFromLogicalBounds()
+			self:Log("logical bounds initialized grid=" .. tostring(self.ZoneColumns) .. "x" .. tostring(self.ZoneRows) .. " safe=" .. self:GetSafeRectText())
+			return
+		end
+
+		self.ZoneRows = 0
+		self.ZoneColumns = 0
+		self.SafeMinRow = 1
+		self.SafeMaxRow = 1
+		self.SafeMinColumn = 1
+		self.SafeMaxColumn = 1
+		self:RefreshSafeWorldRectFromPhysicalRooms()
+		self:Log("physical bounds initialized safe=" .. self:GetSafeRectText())
+	end
+
+	method any GetZoneGraph()
+		-- Returns the latest logical graph for the active zone map.
+		if _BRRoomGraphGenerator == nil then
+			return nil
+		end
+		local mapName = self:ReadString(self.ZoneMapName, "")
+		if mapName == "" then
+			return nil
+		end
+		return _BRRoomGraphGenerator:GetLatestGraphForMap(mapName)
+	end
+
+	method void RefreshSafeWorldRectFromLogicalBounds()
+		-- Mirrors the logical safe cells into world bounds for fallback UI and logs.
+		local graph = self:GetZoneGraph()
+		if graph == nil or graph.Rooms == nil then
+			self:RefreshSafeWorldRectFromPhysicalRooms()
+			return
+		end
+
+		local halfSize = self:GetRoomHalfSize(self.ZoneMapName)
+		local minX = 0
+		local maxX = 0
+		local minY = 0
+		local maxY = 0
+		local hasBounds = false
+		for index, room in ipairs(graph.Rooms) do
+			if self:IsLogicalRoomInsideSafe(room) == true then
+				local roomName = self:GetAssignedPhysicalRoomName(room)
+				local center = self:GetPhysicalRoomCenter(self.ZoneMapName, roomName)
+				if center ~= nil then
+					local roomMinX = center.x - halfSize.x
+					local roomMaxX = center.x + halfSize.x
+					local roomMinY = center.y - halfSize.y
+					local roomMaxY = center.y + halfSize.y
+					if hasBounds ~= true then
+						minX = roomMinX
+						maxX = roomMaxX
+						minY = roomMinY
+						maxY = roomMaxY
+						hasBounds = true
+					else
+						minX = math.min(minX, roomMinX)
+						maxX = math.max(maxX, roomMaxX)
+						minY = math.min(minY, roomMinY)
+						maxY = math.max(maxY, roomMaxY)
+					end
+				end
+			end
+		end
+
+		if hasBounds == true then
+			self.SafeMinX = minX
+			self.SafeMaxX = maxX
+			self.SafeMinY = minY
+			self.SafeMaxY = maxY
+			return
+		end
+
+		self:RefreshSafeWorldRectFromPhysicalRooms()
+	end
+
+	method void RefreshSafeWorldRectFromPhysicalRooms()
+		-- Uses all generated physical rooms as a fallback safe area.
+		local root = self:GetPhysicalRoomRoot(self.ZoneMapName)
+		if root == nil then
+			self.SafeMinX = self:ReadNumber(self.InitialMinX, -14)
+			self.SafeMaxX = self:ReadNumber(self.InitialMaxX, 14)
+			self.SafeMinY = self:ReadNumber(self.InitialMinY, -6)
+			self.SafeMaxY = self:ReadNumber(self.InitialMaxY, 8)
+			return
+		end
+
+		local halfSize = self:GetRoomHalfSize(self.ZoneMapName)
+		local minX = 0
+		local maxX = 0
+		local minY = 0
+		local maxY = 0
+		local hasBounds = false
+		local children = root.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil and self:IsGeneratedRoomName(child.Name) == true and child.TransformComponent ~= nil then
+				local center = self:GetEntityPosition2(child)
+				local roomMinX = center.x - halfSize.x
+				local roomMaxX = center.x + halfSize.x
+				local roomMinY = center.y - halfSize.y
+				local roomMaxY = center.y + halfSize.y
+				if hasBounds ~= true then
+					minX = roomMinX
+					maxX = roomMaxX
+					minY = roomMinY
+					maxY = roomMaxY
+					hasBounds = true
+				else
+					minX = math.min(minX, roomMinX)
+					maxX = math.max(maxX, roomMaxX)
+					minY = math.min(minY, roomMinY)
+					maxY = math.max(maxY, roomMaxY)
+				end
+			end
+		end
+
+		if hasBounds == true then
+			self.SafeMinX = minX
+			self.SafeMaxX = maxX
+			self.SafeMinY = minY
+			self.SafeMaxY = maxY
+		else
+			self.SafeMinX = self:ReadNumber(self.InitialMinX, -14)
+			self.SafeMaxX = self:ReadNumber(self.InitialMaxX, 14)
+			self.SafeMinY = self:ReadNumber(self.InitialMinY, -6)
+			self.SafeMaxY = self:ReadNumber(self.InitialMaxY, 8)
+		end
+	end
+
+	method boolean CanShrinkLogicalFace(string face)
+		-- Checks if a logical grid face can move inward.
+		local amount = self:GetLogicalShrinkCells()
+		local minRows = self:GetMinSafeRows()
+		local minColumns = self:GetMinSafeColumns()
+		local nextMinRow = self.SafeMinRow
+		local nextMaxRow = self.SafeMaxRow
+		local nextMinColumn = self.SafeMinColumn
+		local nextMaxColumn = self.SafeMaxColumn
+
+		if face == "NORTH" then
+			nextMinRow = nextMinRow + amount
+		elseif face == "SOUTH" then
+			nextMaxRow = nextMaxRow - amount
+		elseif face == "WEST" then
+			nextMinColumn = nextMinColumn + amount
+		elseif face == "EAST" then
+			nextMaxColumn = nextMaxColumn - amount
+		else
+			return false
+		end
+
+		return nextMaxRow - nextMinRow + 1 >= minRows
+			and nextMaxColumn - nextMinColumn + 1 >= minColumns
+	end
+
+	method void ShrinkLogicalFace(string face)
+		-- Moves one logical grid face inward.
+		local amount = self:GetLogicalShrinkCells()
+		if face == "NORTH" then
+			self.SafeMinRow = math.min(self.SafeMaxRow - self:GetMinSafeRows() + 1, self.SafeMinRow + amount)
+		elseif face == "SOUTH" then
+			self.SafeMaxRow = math.max(self.SafeMinRow + self:GetMinSafeRows() - 1, self.SafeMaxRow - amount)
+		elseif face == "WEST" then
+			self.SafeMinColumn = math.min(self.SafeMaxColumn - self:GetMinSafeColumns() + 1, self.SafeMinColumn + amount)
+		elseif face == "EAST" then
+			self.SafeMaxColumn = math.max(self.SafeMinColumn + self:GetMinSafeColumns() - 1, self.SafeMaxColumn - amount)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void TickPlayers(number tickDelta)
+		-- Consumes forbidden-zone time for every player outside the current safe rectangle.
+		if self.ZoneMapName == "" then
+			return
+		end
+
+		self:EnsureRuntimeTables()
+		local users = _UserService:GetUsersByMapName(self.ZoneMapName)
+		if users == nil then
+			return
+		end
+
+		for index, playerEntity in ipairs(users) do
+			self:TickPlayer(playerEntity, tickDelta)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void TickPlayer(Entity playerEntity, number tickDelta)
+		-- Updates one player's forbidden-zone timer and kills the player when it reaches zero.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		local playerComponent = playerEntity.PlayerComponent
+		local userId = self:ReadString(playerComponent.UserId, "")
+		if userId == "" then
+			return
+		end
+
+		if self._T.forbiddenRemaining[userId] == nil then
+			self._T.forbiddenRemaining[userId] = self.runtimeForbiddenSeconds
+		end
+
+		local insideForbidden = self:IsEntityInForbiddenZone(playerEntity)
+		local remaining = self:ReadNumber(self._T.forbiddenRemaining[userId], self.runtimeForbiddenSeconds)
+		if insideForbidden == true and playerComponent:IsDead() ~= true and playerComponent.Hp > 0 then
+			remaining = math.max(0, remaining - tickDelta)
+			self._T.forbiddenRemaining[userId] = remaining
+			if remaining <= 0 then
+				self:KillByMagneticZone(playerEntity)
+			end
+		end
+
+		self:ReceivePersonalZoneState(remaining, insideForbidden, userId)
+	end
+
+	method boolean IsEntityInForbiddenZone(Entity entity)
+		-- Returns true when an entity is outside the current safe rectangle.
+		if self.UseLogicalRoomZone == true and self.ZoneRows > 0 and self.ZoneColumns > 0 then
+			local logicalRoom = self:GetLogicalRoomForEntity(entity)
+			if logicalRoom == nil then
+				return false
+			end
+			return self:IsLogicalRoomInsideSafe(logicalRoom) ~= true
+		end
+
+		local position = self:GetEntityPosition2(entity)
+		return self:IsPointInsideSafe(position) ~= true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UpdateWorldVisuals()
+		-- Tints generated room polygons when the magnetic-zone state changes.
+		if self.EnableWorldVisuals ~= true then
+			return
+		end
+		if self.ZoneRunning ~= true or self.ZoneMapName == "" then
+			return
+		end
+
+		local visualKey = self:GetWorldVisualKey()
+		if visualKey == self.lastWorldVisualKey then
+			return
+		end
+		self.lastWorldVisualKey = visualKey
+
+		local root = self:GetPhysicalRoomRoot(self.ZoneMapName)
+		if root == nil then
+			self:Log("visual skipped: root missing map=" .. self.ZoneMapName)
+			return
+		end
+
+		local safeCount = 0
+		local warningCount = 0
+		local forbiddenCount = 0
+		local children = root.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil and self:IsGeneratedRoomName(child.Name) == true then
+				local zoneState = self:GetRoomZoneState(child)
+				self:ApplyRoomZoneVisual(child, zoneState)
+				if zoneState >= 2 then
+					forbiddenCount = forbiddenCount + 1
+				elseif zoneState == 1 then
+					warningCount = warningCount + 1
+				else
+					safeCount = safeCount + 1
+				end
+			end
+		end
+
+		self:Log("visual updated safe=" .. tostring(safeCount)
+			.. " warning=" .. tostring(warningCount)
+			.. " forbidden=" .. tostring(forbiddenCount)
+			.. " state=" .. visualKey)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ResetWorldVisuals(string mapName)
+		-- Restores generated room polygon colors after the magnetic zone stops.
+		local safeMapName = self:ReadString(mapName, "")
+		if safeMapName == "" then
+			return
+		end
+
+		local root = self:GetPhysicalRoomRoot(safeMapName)
+		if root == nil then
+			return
+		end
+
+		local resetCount = 0
+		local children = root.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil and self:IsGeneratedRoomName(child.Name) == true then
+				self:ApplyRoomZoneVisual(child, 0)
+				resetCount = resetCount + 1
+			end
+		end
+		self.lastWorldVisualKey = ""
+		self:Log("visual reset rooms=" .. tostring(resetCount) .. " map=" .. safeMapName)
+	end
+
+	method void ApplyRoomZoneVisual(Entity room, number zoneState)
+		-- Applies a safe, warning, or forbidden tint to one generated room polygon.
+		if room == nil or room.PolygonRendererComponent == nil then
+			return
+		end
+
+		local renderer = room.PolygonRendererComponent
+		renderer.SortingLayer = "MapLayer0"
+		renderer.IgnoreMapLayerCheck = true
+		local state = math.floor(self:ReadNumber(zoneState, 0))
+		if state >= 2 then
+			renderer.Color = Color(0.95, 0.08, 0.12, 0.42)
+			renderer.OrderInLayer = 28
+		elseif state == 1 then
+			renderer.Color = Color(1, 0.64, 0.08, 0.38)
+			renderer.OrderInLayer = 28
+		else
+			renderer.Color = Color(0.08, 0.16, 0.2, 0.25)
+			renderer.OrderInLayer = 2
+		end
+	end
+
+	method number GetRoomZoneState(Entity room)
+		-- Returns 0=safe, 1=warning, 2=forbidden for one physical room.
+		if self.UseLogicalRoomZone == true and room ~= nil then
+			local graph = self:GetZoneGraph()
+			if graph ~= nil then
+				local logicalRoom = self:GetLogicalRoomByPhysicalName(graph, room.Name)
+				if logicalRoom == nil then
+					return 0
+				end
+				if self:IsLogicalRoomInsideSafe(logicalRoom) ~= true then
+					return 2
+				end
+				if self.WarningActive == true and self:IsLogicalRoomInsidePredictedSafe(logicalRoom) ~= true then
+					return 1
+				end
+				return 0
+			end
+		end
+
+		local center = self:GetEntityPosition2(room)
+		if self:IsPointInsideSafe(center) ~= true then
+			return 2
+		end
+		if self.WarningActive == true and self:IsPointInsidePredictedSafe(center) ~= true then
+			return 1
+		end
+		return 0
+	end
+
+	method boolean IsPointInsideSafe(Vector2 point)
+		-- Checks whether a point is inside the current safe rectangle.
+		if point == nil then
+			return true
+		end
+		return point.x >= self.SafeMinX
+			and point.x <= self.SafeMaxX
+			and point.y >= self.SafeMinY
+			and point.y <= self.SafeMaxY
+	end
+
+	method boolean IsPointInsidePredictedSafe(Vector2 point)
+		-- Checks whether a point remains safe after the warned face activates.
+		if point == nil then
+			return true
+		end
+
+		local minX = self.SafeMinX
+		local maxX = self.SafeMaxX
+		local minY = self.SafeMinY
+		local maxY = self.SafeMaxY
+		local amount = math.max(0.1, self:ReadNumber(self.CurrentShrinkAmount, self:GetDefaultShrinkAmount()))
+		local face = self:ReadString(self.WarningFace, "")
+		if face == "WEST" then
+			minX = minX + amount
+		elseif face == "EAST" then
+			maxX = maxX - amount
+		elseif face == "SOUTH" then
+			minY = minY + amount
+		elseif face == "NORTH" then
+			maxY = maxY - amount
+		end
+
+		return point.x >= minX and point.x <= maxX and point.y >= minY and point.y <= maxY
+	end
+
+	method boolean IsLogicalRoomInsideSafe(any room)
+		-- Checks whether a logical room is inside the current safe grid bounds.
+		if room == nil then
+			return true
+		end
+		return self:IsLogicalCoordinateInsideSafe(self:ReadNumber(room.Row, 1), self:ReadNumber(room.Column, 1))
+	end
+
+	method boolean IsLogicalCoordinateInsideSafe(number row, number column)
+		-- Checks whether a logical coordinate is inside the current safe grid bounds.
+		if self.ZoneRows <= 0 or self.ZoneColumns <= 0 then
+			return true
+		end
+		local safeRow = math.floor(self:ReadNumber(row, 1))
+		local safeColumn = math.floor(self:ReadNumber(column, 1))
+		return safeRow >= self.SafeMinRow
+			and safeRow <= self.SafeMaxRow
+			and safeColumn >= self.SafeMinColumn
+			and safeColumn <= self.SafeMaxColumn
+	end
+
+	method boolean IsLogicalRoomInsidePredictedSafe(any room)
+		-- Checks whether a logical room remains safe after the warned face activates.
+		if room == nil then
+			return true
+		end
+		return self:IsLogicalCoordinateInsidePredictedSafe(self:ReadNumber(room.Row, 1), self:ReadNumber(room.Column, 1))
+	end
+
+	method boolean IsLogicalCoordinateInsidePredictedSafe(number row, number column)
+		-- Checks whether a logical coordinate remains safe after the warned face activates.
+		if self.ZoneRows <= 0 or self.ZoneColumns <= 0 then
+			return true
+		end
+
+		local minRow = self.SafeMinRow
+		local maxRow = self.SafeMaxRow
+		local minColumn = self.SafeMinColumn
+		local maxColumn = self.SafeMaxColumn
+		local amount = self:GetLogicalShrinkCells()
+		local face = self:ReadString(self.WarningFace, "")
+		if face == "NORTH" then
+			minRow = minRow + amount
+		elseif face == "SOUTH" then
+			maxRow = maxRow - amount
+		elseif face == "WEST" then
+			minColumn = minColumn + amount
+		elseif face == "EAST" then
+			maxColumn = maxColumn - amount
+		end
+
+		local safeRow = math.floor(self:ReadNumber(row, 1))
+		local safeColumn = math.floor(self:ReadNumber(column, 1))
+		return safeRow >= minRow
+			and safeRow <= maxRow
+			and safeColumn >= minColumn
+			and safeColumn <= maxColumn
+	end
+
+	method any GetLogicalRoomForEntity(Entity entity)
+		-- Resolves the logical room that currently owns an entity's physical position.
+		local graph = self:GetZoneGraph()
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local position = self:GetEntityPosition2(entity)
+		for index, room in ipairs(graph.Rooms) do
+			local physicalRoomName = self:GetAssignedPhysicalRoomName(room)
+			if physicalRoomName ~= "" and self:IsPositionInsidePhysicalRoom(position, physicalRoomName) == true then
+				return room
+			end
+		end
+		return nil
+	end
+
+	method any GetLogicalRoomByPhysicalName(any graph, string physicalRoomName)
+		-- Finds the logical room assigned to a physical room name.
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local safeRoomName = self:ReadString(physicalRoomName, "")
+		if safeRoomName == "" then
+			return nil
+		end
+
+		for index, room in ipairs(graph.Rooms) do
+			if self:GetAssignedPhysicalRoomName(room) == safeRoomName then
+				return room
+			end
+		end
+		return nil
+	end
+
+	method string GetAssignedPhysicalRoomName(any logicalRoom)
+		-- Returns the physical room name assigned to one logical room.
+		if logicalRoom == nil then
+			return ""
+		end
+
+		local assignedRoomName = self:ReadString(logicalRoom.AssignedRoomName, "")
+		if assignedRoomName ~= "" then
+			return assignedRoomName
+		end
+		return self:ReadString(logicalRoom.FixedPhysicalRoomName, "")
+	end
+
+	method boolean IsPositionInsidePhysicalRoom(Vector2 position, string physicalRoomName)
+		-- Checks whether a world position falls inside one physical room rectangle.
+		if position == nil then
+			return false
+		end
+
+		local center = self:GetPhysicalRoomCenter(self.ZoneMapName, physicalRoomName)
+		if center == nil then
+			return false
+		end
+
+		local halfSize = self:GetRoomHalfSize(self.ZoneMapName)
+		local margin = 0.05
+		return position.x >= center.x - halfSize.x - margin
+			and position.x <= center.x + halfSize.x + margin
+			and position.y >= center.y - halfSize.y - margin
+			and position.y <= center.y + halfSize.y + margin
+	end
+
+	method any GetPhysicalRoomCenter(string mapName, string roomName)
+		-- Reads the world center of one physical room entity.
+		local room = self:GetPhysicalRoom(mapName, roomName)
+		if room == nil or room.TransformComponent == nil then
+			return nil
+		end
+
+		local position = room.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method Entity GetPhysicalRoom(string mapName, string roomName)
+		-- Resolves one generated physical room by name.
+		local safeRoomName = self:ReadString(roomName, "")
+		if safeRoomName == "" then
+			return nil
+		end
+
+		local safeMapName = self:ReadString(mapName, "RoomTestMap")
+		local root = self:GetPhysicalRoomRoot(safeMapName)
+		if root ~= nil then
+			local room = root:GetChildByName(safeRoomName, false)
+			if room ~= nil then
+				return room
+			end
+		end
+
+		local generatedRoom = _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/EditorGeneratedGrid/" .. safeRoomName)
+		if generatedRoom ~= nil then
+			return generatedRoom
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/" .. safeRoomName)
+	end
+
+	method Vector2 GetRoomHalfSize(string mapName)
+		-- Reads room half extents from the grid editor tool.
+		local width = 10
+		local height = 10
+		local gridTool = self:GetGridMapEditorTool(mapName)
+		if gridTool ~= nil then
+			width = gridTool:GetRoomWidth()
+			height = gridTool:GetRoomHeight()
+		end
+		return Vector2(math.max(0.5, width * 0.5), math.max(0.5, height * 0.5))
+	end
+
+	method any GetGridMapEditorTool(string mapName)
+		-- Resolves the grid editor tool for the target map.
+		local toolEntity = _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/GridMapEditorTool")
+		if toolEntity == nil then
+			return nil
+		end
+
+		---@type BRGridMapEditorTool
+		local gridTool = toolEntity:GetComponent("script.BRGridMapEditorTool")
+		return gridTool
+	end
+
+	method string GetWorldVisualKey()
+		-- Builds a compact state key used to avoid recoloring rooms every frame.
+		return self:ReadString(self.ZoneMapName, "")
+			.. ":" .. tostring(self.WarningActive == true)
+			.. ":" .. self:ReadString(self.WarningFace, "")
+			.. ":" .. self:ReadString(self.ActiveFacesSummary, "")
+			.. ":" .. tostring(self.ZoneRows)
+			.. ":" .. tostring(self.ZoneColumns)
+			.. ":" .. tostring(self.SafeMinRow)
+			.. ":" .. tostring(self.SafeMaxRow)
+			.. ":" .. tostring(self.SafeMinColumn)
+			.. ":" .. tostring(self.SafeMaxColumn)
+			.. ":" .. tostring(self.CurrentLogicalShrinkCells)
+			.. ":" .. self:FormatNumber(self.SafeMinX)
+			.. ":" .. self:FormatNumber(self.SafeMaxX)
+			.. ":" .. self:FormatNumber(self.SafeMinY)
+			.. ":" .. self:FormatNumber(self.SafeMaxY)
+			.. ":" .. self:FormatNumber(self.CurrentShrinkAmount)
+	end
+
+	method Entity GetPhysicalRoomRoot(string mapName)
+		-- Resolves the generated room root for the target map.
+		return _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/EditorGeneratedGrid")
+	end
+
+	method boolean IsGeneratedRoomName(string roomName)
+		-- Checks whether a room name belongs to generated fixed corners or pooled rooms.
+		local name = self:ReadString(roomName, "")
+		if name == "CornerNW" or name == "CornerNE" or name == "CornerSW" or name == "CornerSE" then
+			return true
+		end
+		local prefix = "Room_"
+		if string.sub(name, 1, string.len(prefix)) ~= prefix then
+			return false
+		end
+		return tonumber(string.sub(name, string.len(prefix) + 1)) ~= nil
+	end
+
+	@ExecSpace("ServerOnly")
+	method void KillByMagneticZone(Entity playerEntity)
+		-- Instantly kills a player whose forbidden-zone time is depleted.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		local playerComponent = playerEntity.PlayerComponent
+		if playerComponent:IsDead() == true then
+			return
+		end
+
+		local battleLogic = self:GetBattleLogic(self.ZoneMapName)
+		if battleLogic ~= nil then
+			battleLogic:HandleExternalFatalDeath(playerEntity, "magnetic")
+			self:Log("life death by magnetic zone user=" .. self:ReadString(playerComponent.UserId, ""))
+			return
+		end
+
+		playerComponent.Hp = 0
+		playerEntity:SendEvent(BodyActionStateChangeEvent(true, MapleAvatarBodyActionState.Dead, 0, 2147483647, 1))
+		playerComponent:ProcessDead(playerComponent.UserId)
+		self:Log("dead by magnetic zone user=" .. self:ReadString(playerComponent.UserId, ""))
+	end
+
+	method any GetBattleLogic(string mapName)
+		-- Finds the battle logic component attached to the active battle map.
+		local safeMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		if safeMapName == "" then
+			return nil
+		end
+
+		local battleLogicEntity = _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/BattleLogic")
+		if battleLogicEntity == nil then
+			return nil
+		end
+
+		---@type BRBattleLogic
+		local battleLogic = battleLogicEntity:GetComponent("script.BRBattleLogic")
+		return battleLogic
+	end
+
+	@ExecSpace("Client")
+	method void ReceivePersonalZoneState(number remainingSeconds, boolean insideForbidden)
+		-- Receives the local player's private forbidden-zone timer state.
+		self.ClientForbiddenRemaining = math.max(0, self:ReadNumber(remainingSeconds, 0))
+		self.ClientInsideForbidden = insideForbidden
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PrimeCurrentPlayers()
+		-- Initializes forbidden-zone timers for players already in the zone map.
+		self:EnsureRuntimeTables()
+		local users = _UserService:GetUsersByMapName(self.ZoneMapName)
+		if users == nil then
+			return
+		end
+
+		for index, playerEntity in ipairs(users) do
+			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+				local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+				if userId ~= "" then
+					self._T.forbiddenRemaining[userId] = self.runtimeForbiddenSeconds
+					self:ReceivePersonalZoneState(self.runtimeForbiddenSeconds, false, userId)
+				end
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SendResetToCurrentPlayers()
+		-- Resets private client state for players in the zone map before stopping.
+		if self.ZoneMapName == "" then
+			return
+		end
+		local users = _UserService:GetUsersByMapName(self.ZoneMapName)
+		if users == nil then
+			return
+		end
+
+		for index, playerEntity in ipairs(users) do
+			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+				self:ReceivePersonalZoneState(self:GetDefaultForbiddenTimeSeconds(), false, playerEntity.PlayerComponent.UserId)
+			end
+		end
+	end
+
+	method string AppendActiveFace(string face)
+		-- Updates and formats the active forbidden face summary.
+		if self._T.faceCounts == nil then
+			self._T.faceCounts = {}
+		end
+		self._T.faceCounts[face] = self:ReadNumber(self._T.faceCounts[face], 0) + 1
+
+		local order = { "NORTH", "EAST", "SOUTH", "WEST" }
+		local summary = ""
+		for index, key in ipairs(order) do
+			local count = math.floor(self:ReadNumber(self._T.faceCounts[key], 0))
+			if count > 0 then
+				if summary ~= "" then
+					summary = summary .. ", "
+				end
+				summary = summary .. key
+				if count > 1 then
+					summary = summary .. "x" .. tostring(count)
+				end
+			end
+		end
+		return summary
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		-- Reads an entity's world position as a 2D vector.
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method void ResetZoneState()
+		-- Clears synchronized and runtime zone state.
+		self.ZoneRunning = false
+		self.WarningActive = false
+		self.ShrinkFinished = false
+		self.ZoneMapName = ""
+		self.WarningFace = ""
+		self.LastFace = ""
+		self.ActiveFacesSummary = ""
+		self.CurrentShrinkAmount = self:GetDefaultShrinkAmount()
+		self.CurrentLogicalShrinkCells = self:GetLogicalShrinkCells()
+		self.ZoneRows = 0
+		self.ZoneColumns = 0
+		self.SafeMinRow = 1
+		self.SafeMaxRow = 1
+		self.SafeMinColumn = 1
+		self.SafeMaxColumn = 1
+		self.PhaseTimeRemaining = 0
+		self.SafeMinX = self:ReadNumber(self.InitialMinX, -14)
+		self.SafeMaxX = self:ReadNumber(self.InitialMaxX, 14)
+		self.SafeMinY = self:ReadNumber(self.InitialMinY, -6)
+		self.SafeMaxY = self:ReadNumber(self.InitialMaxY, 8)
+		self.ClientForbiddenRemaining = self:GetDefaultForbiddenTimeSeconds()
+		self.ClientInsideForbidden = false
+		self.phaseTimer = 0
+		self.playerTickTimer = 0
+		self.runtimeShrinkInterval = self:GetDefaultShrinkIntervalSeconds()
+		self.runtimeWarningSeconds = self:GetDefaultWarningSeconds()
+		self.runtimeForbiddenSeconds = self:GetDefaultForbiddenTimeSeconds()
+		self.runtimeShrinkAmount = self:GetDefaultShrinkAmount()
+		self.lastWorldVisualKey = ""
+		self._T.forbiddenRemaining = {}
+		self._T.faceCounts = {}
+	end
+
+	method void EnsureRuntimeTables()
+		-- Ensures runtime-only tables exist.
+		if self._T.forbiddenRemaining == nil then
+			self._T.forbiddenRemaining = {}
+		end
+		if self._T.faceCounts == nil then
+			self._T.faceCounts = {}
+		end
+	end
+
+	method string GetSafeRectText()
+		-- Formats the current safe rectangle for logs and UI.
+		if self.UseLogicalRoomZone == true and self.ZoneRows > 0 and self.ZoneColumns > 0 then
+			return "logical=(r" .. tostring(self.SafeMinRow) .. "-r" .. tostring(self.SafeMaxRow)
+				.. ",c" .. tostring(self.SafeMinColumn) .. "-c" .. tostring(self.SafeMaxColumn)
+				.. ") world=(" .. self:FormatNumber(self.SafeMinX) .. "," .. self:FormatNumber(self.SafeMinY) .. ")-("
+				.. self:FormatNumber(self.SafeMaxX) .. "," .. self:FormatNumber(self.SafeMaxY) .. ")"
+		end
+
+		return "(" .. self:FormatNumber(self.SafeMinX) .. "," .. self:FormatNumber(self.SafeMinY) .. ")-("
+			.. self:FormatNumber(self.SafeMaxX) .. "," .. self:FormatNumber(self.SafeMaxY) .. ")"
+	end
+
+	method string FormatNumber(number value)
+		-- Formats a number with one decimal place.
+		return string.format("%.1f", self:ReadNumber(value, 0))
+	end
+
+	method number GetDefaultShrinkIntervalSeconds()
+		-- Returns the configured default shrink interval.
+		return math.max(1, self:ReadNumber(self.ShrinkIntervalSeconds, 30))
+	end
+
+	method number GetDefaultWarningSeconds()
+		-- Returns the configured default warning duration.
+		return math.max(0.5, self:ReadNumber(self.WarningSeconds, 5))
+	end
+
+	method number GetDefaultForbiddenTimeSeconds()
+		-- Returns the configured default forbidden-zone time budget.
+		return math.max(1, self:ReadNumber(self.ForbiddenTimeSeconds, 20))
+	end
+
+	method number GetDefaultShrinkAmount()
+		-- Returns the configured default face shrink amount.
+		return math.max(0.1, self:ReadNumber(self.ShrinkAmount, 2))
+	end
+
+	method number GetPlayerTickSeconds()
+		-- Returns the player forbidden-zone tick interval.
+		return math.max(0.05, self:ReadNumber(self.PlayerTickSeconds, 0.2))
+	end
+
+	method number GetLogicalShrinkCells()
+		-- Returns the logical grid shrink amount in cells.
+		return math.max(1, math.floor(self:ReadNumber(self.LogicalShrinkCells, 1)))
+	end
+
+	method number GetMinSafeWidth()
+		-- Returns the minimum safe rectangle width.
+		return math.max(0.1, self:ReadNumber(self.MinSafeWidth, 4))
+	end
+
+	method number GetMinSafeHeight()
+		-- Returns the minimum safe rectangle height.
+		return math.max(0.1, self:ReadNumber(self.MinSafeHeight, 2))
+	end
+
+	method number GetMinSafeRows()
+		-- Returns the minimum logical safe row count.
+		return math.max(1, math.floor(self:ReadNumber(self.MinSafeRows, 1)))
+	end
+
+	method number GetMinSafeColumns()
+		-- Returns the minimum logical safe column count.
+		return math.max(1, math.floor(self:ReadNumber(self.MinSafeColumns, 1)))
+	end
+
+	method number NormalizeSeconds(number value, number fallback)
+		-- Reads a positive seconds override or returns the fallback.
+		local seconds = self:ReadNumber(value, 0)
+		if seconds <= 0 then
+			return fallback
+		end
+		return math.max(0.05, seconds)
+	end
+
+	method number NormalizeAmount(number value, number fallback)
+		-- Reads a positive shrink amount override or returns the fallback.
+		local amount = self:ReadNumber(value, 0)
+		if amount <= 0 then
+			return fallback
+		end
+		return math.max(0.1, amount)
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a magnetic-zone log when verbose logging is enabled.
+		if self.VerboseLog == true then
+			log("[BRMagneticZone] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

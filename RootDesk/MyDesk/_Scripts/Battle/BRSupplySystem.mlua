@@ -1,0 +1,443 @@
+@Logic
+script BRSupplySystem extends Logic
+
+	property string DefaultMapName = "RoomTestMap"
+
+	property string SupplyChildName = "SupplyBox"
+
+	property string FallbackSupplyChildNames = "SupplyBox,SupplyPoint,SkillPartBox,PartBox"
+
+	property number MaxSuppliesPerDrop = 0
+
+	property boolean VerboseLog = true
+
+	@Sync
+	property string LastSupplyMapName = ""
+
+	@Sync
+	property string LastSupplyState = "Idle"
+
+	@Sync
+	property number LastSupplyCandidateCount = 0
+
+	@Sync
+	property number LastSupplyDroppedCount = 0
+
+	@Sync
+	property number LastSupplyVersion = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		-- Initializes runtime storage for supply anchors.
+		self:EnsureRuntime()
+		self:Log("ready child=" .. self:GetSupplyChildName() .. " maxDrop=" .. tostring(self:GetMaxSuppliesPerDrop()))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PrepareSuppliesForMatch(any matchRoom, any graph, string mapName)
+		-- Collects and hides supply anchors before players enter the generated battle.
+		local targetMapName = self:ResolveMapName(matchRoom, mapName)
+		self:PrepareSupplies(targetMapName, graph)
+	end
+
+	@ExecSpace("ServerOnly")
+	method number PrepareSupplies(string mapName, any graph)
+		-- Finds supply child prefabs for a map and stores them until the timer finishes.
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local candidates = self:CollectSupplyCandidates(targetMapName, graph)
+		self._T.candidatesByMap[targetMapName] = candidates
+
+		for index, supply in ipairs(candidates) do
+			self:SetSupplyRuntimeActive(supply, false)
+		end
+
+		self.LastSupplyMapName = targetMapName
+		self.LastSupplyState = "Prepared"
+		self.LastSupplyCandidateCount = #candidates
+		self.LastSupplyDroppedCount = 0
+		self.LastSupplyVersion = self.LastSupplyVersion + 1
+		self:Log("prepared map=" .. targetMapName .. " candidates=" .. tostring(#candidates))
+		return #candidates
+	end
+
+	@ExecSpace("ServerOnly")
+	method number DropSuppliesForMap(string mapName)
+		-- Activates prepared supply boxes for the requested map.
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local candidates = self._T.candidatesByMap[targetMapName]
+		if candidates == nil or #candidates <= 0 then
+			candidates = self:CollectSupplyCandidates(targetMapName, nil)
+			self._T.candidatesByMap[targetMapName] = candidates
+		end
+
+		if candidates == nil or #candidates <= 0 then
+			self.LastSupplyMapName = targetMapName
+			self.LastSupplyState = "Skipped"
+			self.LastSupplyCandidateCount = 0
+			self.LastSupplyDroppedCount = 0
+			self.LastSupplyVersion = self.LastSupplyVersion + 1
+			self:Log("drop skipped: no supply anchors map=" .. targetMapName)
+			return 0
+		end
+
+		local dropped = 0
+		local limit = self:GetMaxSuppliesPerDrop()
+		for index, supply in ipairs(candidates) do
+			if limit <= 0 or dropped < limit then
+				if self:SetSupplyRuntimeActive(supply, true) == true then
+					dropped = dropped + 1
+				end
+			else
+				self:SetSupplyRuntimeActive(supply, false)
+			end
+		end
+
+		self.LastSupplyMapName = targetMapName
+		self.LastSupplyState = "Dropped"
+		self.LastSupplyCandidateCount = #candidates
+		self.LastSupplyDroppedCount = dropped
+		self.LastSupplyVersion = self.LastSupplyVersion + 1
+		self:Log("dropped map=" .. targetMapName .. " active=" .. tostring(dropped) .. "/" .. tostring(#candidates))
+		return dropped
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ClearSuppliesForMap(string mapName)
+		-- Hides every remembered supply box on the requested map.
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.LastSupplyMapName, self:ReadString(self.DefaultMapName, "RoomTestMap")))
+		local candidates = self._T.candidatesByMap[targetMapName]
+		local cleared = 0
+		if candidates ~= nil then
+			for index, supply in ipairs(candidates) do
+				if self:SetSupplyRuntimeActive(supply, false) == true then
+					cleared = cleared + 1
+				end
+			end
+		end
+
+		self.LastSupplyMapName = targetMapName
+		self.LastSupplyState = "Cleared"
+		self.LastSupplyDroppedCount = 0
+		self.LastSupplyVersion = self.LastSupplyVersion + 1
+		self:Log("cleared map=" .. targetMapName .. " count=" .. tostring(cleared))
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Prepare Supplies")
+	method void DebugPrepareSupplies()
+		-- Prepares supply anchors on the default test map.
+		self:PrepareSupplies(self:ReadString(self.DefaultMapName, "RoomTestMap"), nil)
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Drop Supplies")
+	method void DebugDropSupplies()
+		-- Drops supply boxes on the default test map.
+		self:DropSuppliesForMap(self:ReadString(self.DefaultMapName, "RoomTestMap"))
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Clear Supplies")
+	method void DebugClearSupplies()
+		-- Clears supply boxes on the default test map.
+		self:ClearSuppliesForMap(self:ReadString(self.DefaultMapName, "RoomTestMap"))
+	end
+
+	method any CollectSupplyCandidates(string mapName, any graph)
+		-- Collects supply child entities from assigned physical rooms first, then falls back to all generated rooms.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local root = self:GetPhysicalRoomRoot(targetMapName)
+		if root == nil then
+			self:Log("collect skipped: room root missing map=" .. targetMapName)
+			return {}
+		end
+
+		local graphForMap = graph
+		if graphForMap == nil and _BRRoomGraphGenerator ~= nil then
+			graphForMap = _BRRoomGraphGenerator:GetLatestGraphForMap(targetMapName)
+		end
+
+		local rooms = self:CollectGraphPhysicalRooms(targetMapName, root, graphForMap)
+		if #rooms <= 0 then
+			rooms = self:CollectAllGeneratedRooms(root)
+		end
+
+		local candidates = {}
+		local seenSupply = {}
+		for index, room in ipairs(rooms) do
+			self:CollectRoomSupplyChildren(room, candidates, seenSupply)
+		end
+		return candidates
+	end
+
+	method any CollectGraphPhysicalRooms(string mapName, Entity root, any graph)
+		-- Resolves the physical rooms assigned by the latest logical room graph.
+		local rooms = {}
+		local seenRoom = {}
+		if graph == nil or graph.Rooms == nil then
+			return rooms
+		end
+
+		for index, graphRoom in ipairs(graph.Rooms) do
+			local roomName = self:ReadString(graphRoom.AssignedRoomName, self:ReadString(graphRoom.Name, ""))
+			if roomName ~= "" and seenRoom[roomName] ~= true then
+				local room = self:GetPhysicalRoom(mapName, root, roomName)
+				if room ~= nil then
+					table.insert(rooms, room)
+					seenRoom[roomName] = true
+				end
+			end
+		end
+		return rooms
+	end
+
+	method any CollectAllGeneratedRooms(Entity root)
+		-- Returns every generated room child under the physical room root.
+		local rooms = {}
+		if root == nil then
+			return rooms
+		end
+
+		local children = root.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil and self:IsGeneratedRoomName(child.Name) == true then
+				table.insert(rooms, child)
+			end
+		end
+		return rooms
+	end
+
+	method void CollectRoomSupplyChildren(Entity room, any candidates, any seenSupply)
+		-- Adds direct supply children from one room.
+		if room == nil then
+			return
+		end
+
+		local direct = room:GetChildByName(self:GetSupplyChildName(), false)
+		self:AddSupplyCandidate(candidates, seenSupply, direct)
+
+		local names = self:GetFallbackSupplyNames()
+		for index, childName in ipairs(names) do
+			local child = room:GetChildByName(childName, false)
+			self:AddSupplyCandidate(candidates, seenSupply, child)
+		end
+
+		local children = room.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil and self:IsSupplyChildName(child.Name) == true then
+				self:AddSupplyCandidate(candidates, seenSupply, child)
+			end
+		end
+	end
+
+	method void AddSupplyCandidate(any candidates, any seenSupply, Entity supply)
+		-- Adds one supply entity if it has not already been recorded.
+		if supply == nil then
+			return
+		end
+
+		local key = self:GetEntityKey(supply)
+		if key == "" or seenSupply[key] == true then
+			return
+		end
+
+		table.insert(candidates, supply)
+		seenSupply[key] = true
+	end
+
+	method boolean SetSupplyRuntimeActive(Entity supply, boolean active)
+		-- Toggles one supply prefab and its optional BRPartBox component.
+		if supply == nil or isvalid(supply) ~= true then
+			return false
+		end
+
+		local component = supply:GetComponent("script.BRPartBox")
+		if active == true then
+			supply:SetEnable(true)
+			supply:SetVisible(true)
+			if component ~= nil then
+				---@type BRPartBox
+				local partBox = component
+				partBox:SetRuntimeActive(true)
+			end
+		else
+			if component ~= nil then
+				---@type BRPartBox
+				local partBox = component
+				partBox:SetRuntimeActive(false)
+			end
+			supply:SetVisible(false)
+			supply:SetEnable(false)
+		end
+		return true
+	end
+
+	method Entity GetPhysicalRoomRoot(string mapName)
+		-- Resolves the generated-room container for a fixed physical map.
+		local safeMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local root = _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/EditorGeneratedGrid")
+		if root ~= nil then
+			return root
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. safeMapName)
+	end
+
+	method Entity GetPhysicalRoom(string mapName, Entity root, string roomName)
+		-- Resolves one physical room by generated-grid path or direct map path.
+		local safeRoomName = self:ReadString(roomName, "")
+		if safeRoomName == "" then
+			return nil
+		end
+
+		if root ~= nil then
+			local room = root:GetChildByName(safeRoomName, false)
+			if room ~= nil then
+				return room
+			end
+		end
+
+		local safeMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local generatedPath = "/maps/" .. safeMapName .. "/EditorGeneratedGrid/" .. safeRoomName
+		local generatedRoom = _EntityService:GetEntityByPath(generatedPath)
+		if generatedRoom ~= nil then
+			return generatedRoom
+		end
+
+		return _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/" .. safeRoomName)
+	end
+
+	method boolean IsGeneratedRoomName(string roomName)
+		-- Checks whether a name follows the generated room naming pattern.
+		local value = self:ReadString(roomName, "")
+		if value == "CornerNW" or value == "CornerNE" or value == "CornerSW" or value == "CornerSE" then
+			return true
+		end
+
+		local prefix = "Room_"
+		if string.sub(value, 1, string.len(prefix)) ~= prefix then
+			return false
+		end
+		return tonumber(string.sub(value, string.len(prefix) + 1)) ~= nil
+	end
+
+	method boolean IsSupplyChildName(string childName)
+		-- Checks whether a room child should be treated as a supply anchor.
+		local value = self:ReadString(childName, "")
+		if value == "" then
+			return false
+		end
+		if value == self:GetSupplyChildName() then
+			return true
+		end
+
+		local fallbackNames = self:GetFallbackSupplyNames()
+		for index, fallbackName in ipairs(fallbackNames) do
+			if value == fallbackName then
+				return true
+			end
+		end
+
+		return string.sub(value, 1, 6) == "Supply"
+	end
+
+	method any GetFallbackSupplyNames()
+		-- Parses comma-delimited fallback supply child names.
+		local result = {}
+		local text = self:ReadString(self.FallbackSupplyChildNames, "")
+		for name in string.gmatch(text, "([^,]+)") do
+			local trimmed = self:Trim(name)
+			if trimmed ~= "" then
+				table.insert(result, trimmed)
+			end
+		end
+		return result
+	end
+
+	method string GetSupplyChildName()
+		-- Returns the primary supply child name.
+		return self:ReadString(self.SupplyChildName, "SupplyBox")
+	end
+
+	method number GetMaxSuppliesPerDrop()
+		-- Returns zero for all supplies or a positive cap for each drop.
+		return math.max(0, math.floor(self:ReadNumber(self.MaxSuppliesPerDrop, 0)))
+	end
+
+	method string ResolveMapName(any matchRoom, string mapName)
+		-- Resolves the target map from explicit input or match room fields.
+		local value = self:ReadString(mapName, "")
+		if value ~= "" then
+			return value
+		end
+		if matchRoom ~= nil then
+			value = self:ReadString(matchRoom.TargetMapName, self:ReadString(matchRoom.SourceMapName, ""))
+		end
+		return self:ReadString(value, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+	end
+
+	method string GetEntityKey(Entity entity)
+		-- Returns a stable key for an entity reference.
+		if entity == nil then
+			return ""
+		end
+		if entity.Id ~= nil and entity.Id ~= "" then
+			return entity.Id
+		end
+		return self:ReadString(entity.Path, "")
+	end
+
+	method string Trim(string text)
+		-- Removes leading and trailing whitespace from a small config token.
+		local value = self:ReadString(text, "")
+		while string.len(value) > 0 and self:IsWhitespace(string.sub(value, 1, 1)) == true do
+			value = string.sub(value, 2)
+		end
+		while string.len(value) > 0 and self:IsWhitespace(string.sub(value, string.len(value), string.len(value))) == true do
+			value = string.sub(value, 1, string.len(value) - 1)
+		end
+		return value
+	end
+
+	method boolean IsWhitespace(string value)
+		-- Checks a single-character whitespace token.
+		return value == " " or value == "\t" or value == "\n" or value == "\r"
+	end
+
+	method void EnsureRuntime()
+		-- Initializes non-synced runtime tables.
+		if self._T == nil then
+			self._T = {}
+		end
+		if self._T.candidatesByMap == nil then
+			self._T.candidatesByMap = {}
+		end
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes a supply-system log when verbose logging is enabled.
+		if self.VerboseLog == true then
+			log("[BRSupplySystem] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

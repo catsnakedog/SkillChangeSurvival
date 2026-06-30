@@ -16,7 +16,7 @@
       {
         "id": "832237fa-ee0b-4274-807f-becb06239fd9",
         "path": "/maps/StartMap",
-        "componentNames": "MOD.Core.MapComponent,MOD.Core.FootholdComponent",
+        "componentNames": "MOD.Core.MapComponent,MOD.Core.FootholdComponent,MOD.Core.PhysicsSimulatorComponent",
         "jsonString": {
           "name": "StartMap",
           "path": "/maps/StartMap",
@@ -38,6 +38,24 @@
             {
               "@type": "MOD.Core.FootholdComponent",
               "FootholdsByLayer": {},
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PhysicsSimulatorComponent",
+              "Gravity": {
+                "x": 0.0,
+                "y": -10.0
+              },
+              "NativePositionIteration": 3,
+              "NativeVelocityIteration": 8,
+              "Paused": false,
+              "PositionIteration": 3,
+              "ServerSimulation": false,
+              "VelocityIteration": 8,
+              "WorldBounds": {
+                "x": 10000.0,
+                "y": 10000.0
+              },
               "Enable": true
             }
           ],
@@ -202,7 +220,11 @@
               "Enable": true,
               "TargetPlayerCount": 2.0,
               "LobbyMapName": "StartMap",
-              "GatherMapName": "RoomTestMap"
+              "GatherMapName": "RoomTestMap",
+              "RoomGraphColumns": 3.0,
+              "RoomGraphRows": 3.0,
+              "RoomGraphMapPartCount": 9.0,
+              "RoomGraphExtraConnectionChancePercent": 0.0
             }
           ],
           "@version": 1

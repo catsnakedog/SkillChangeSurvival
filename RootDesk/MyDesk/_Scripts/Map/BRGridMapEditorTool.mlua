@@ -174,6 +174,12 @@ script BRGridMapEditorTool extends Component
 		self:Log("settings grid=" .. tostring(columns) .. "x" .. tostring(rows) .. " parts=" .. tostring(self:GetMapPartCount()) .. " fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. " pool=" .. tostring(self:GetPoolPartCount()) .. " room=(" .. tostring(roomWidth) .. "," .. tostring(roomHeight) .. ") total=(" .. tostring(totalWidth) .. "," .. tostring(totalHeight) .. ")")
 	end
 
+	@InspectorButton("Apply Grid Map Bounds")
+	method void ApplyGridMapBounds()
+		-- Expands the owning map's custom bounds so every managed map part is playable.
+		self:Log("map bounds " .. self:SyncMapBoundsFromGrid())
+	end
+
 	method void SyncGeneratedGrid(boolean createMissing, boolean disableOutOfRange, string actionName)
 		-- Synchronizes generated rooms with current grid settings without destroying existing rooms.
 		local root = self:GetGeneratedRoot()
@@ -233,8 +239,75 @@ script BRGridMapEditorTool extends Component
 			hiddenOutOfRange = self:SetOutOfRangeRoomsActive(root, false)
 		end
 
+		local boundsText = self:SyncMapBoundsFromGrid()
 		local summary = "grid=" .. tostring(columns) .. "x" .. tostring(rows) .. ", parts=" .. tostring(self:GetMapPartCount()) .. ", fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. ", pool=" .. tostring(self:GetPoolPartCount()) .. ", number=" .. self:GetPartRangeText() .. ", room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. "), gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. "), reused=" .. tostring(reusedCount) .. ", created=" .. tostring(createdCount) .. ", missing=" .. tostring(missingCount)
-		self:Log(self:ReadString(actionName, "synced") .. " " .. summary .. ", hiddenOutOfRange=" .. tostring(hiddenOutOfRange))
+		self:Log(self:ReadString(actionName, "synced") .. " " .. summary .. ", hiddenOutOfRange=" .. tostring(hiddenOutOfRange) .. ", bounds=" .. boundsText)
+	end
+
+	method string SyncMapBoundsFromGrid()
+		-- Applies custom bounds based on all managed fixed-corner and pooled map parts.
+		local bounds = self:CalculateManagedPartBounds()
+		if bounds == nil then
+			return "skipped"
+		end
+
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. self:GetMapName())
+		if mapEntity == nil or mapEntity.MapComponent == nil then
+			return "map-missing"
+		end
+
+		mapEntity.MapComponent.UseCustomBound = true
+		mapEntity.MapComponent.LeftBottom = Vector2(bounds.Left, bounds.Bottom)
+		mapEntity.MapComponent.RightTop = Vector2(bounds.Right, bounds.Top)
+		return "(" .. tostring(bounds.Left) .. "," .. tostring(bounds.Bottom) .. ")-(" .. tostring(bounds.Right) .. "," .. tostring(bounds.Top) .. ")"
+	end
+
+	method any CalculateManagedPartBounds()
+		-- Calculates a padded world rectangle containing every managed map part.
+		local partCount = self:GetMapPartCount()
+		if partCount <= 0 then
+			return nil
+		end
+
+		local halfWidth = self:GetRoomWidth() * 0.5
+		local halfHeight = self:GetRoomHeight() * 0.5
+		local minX = nil
+		local minY = nil
+		local maxX = nil
+		local maxY = nil
+		for partSlot = 1, partCount do
+			local center = self:GetPartCenter(partSlot)
+			if center ~= nil then
+				local left = center.x - halfWidth
+				local bottom = center.y - halfHeight
+				local right = center.x + halfWidth
+				local top = center.y + halfHeight
+				if minX == nil or left < minX then
+					minX = left
+				end
+				if minY == nil or bottom < minY then
+					minY = bottom
+				end
+				if maxX == nil or right > maxX then
+					maxX = right
+				end
+				if maxY == nil or top > maxY then
+					maxY = top
+				end
+			end
+		end
+
+		if minX == nil or minY == nil or maxX == nil or maxY == nil then
+			return nil
+		end
+
+		local padding = self:GetMapBoundsPadding()
+		return {
+			Left = minX - padding,
+			Bottom = minY - padding,
+			Right = maxX + padding,
+			Top = maxY + padding
+		}
 	end
 
 	method Entity CloneRoomFromTemplate(Entity template, Entity root, string roomName)
@@ -476,7 +549,7 @@ script BRGridMapEditorTool extends Component
 	end
 
 	method void ApplyDirectionPortal(Entity room, string portalName, string direction)
-		-- Finds or clones one directional portal child and places it on the matching room edge.
+		-- Finds or clones one directional portal child while preserving authored marker placement.
 		if room == nil then
 			return
 		end
@@ -1023,6 +1096,11 @@ script BRGridMapEditorTool extends Component
 	method number GetGapY()
 		-- Returns vertical gap in world units.
 		return math.max(0, self:ReadNumber(self.GapY, 3))
+	end
+
+	method number GetMapBoundsPadding()
+		-- Keeps player bodies and camera movement away from the exact generated room edge.
+		return 8
 	end
 
 	method number GetOriginX()

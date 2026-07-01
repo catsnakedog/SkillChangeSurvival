@@ -9,7 +9,9 @@ script BRSkillPartPanel extends Component
 
 	property boolean HideWhenEmpty = false
 
-	property string WaitingText = "PARTS\nLoading..."
+	property boolean DeprecatedTextPanelHidden = true
+
+	property string WaitingText = "SKILLS\nLoading..."
 
 	property number refreshTimerId = 0
 
@@ -31,10 +33,15 @@ script BRSkillPartPanel extends Component
 
 	@ExecSpace("ClientOnly")
 	method void RefreshPanel()
+		if self.DeprecatedTextPanelHidden == true then
+			self:SetPanelVisible(false)
+			return
+		end
+
 		local localPlayer = _UserService.LocalPlayer
 		if localPlayer == nil or localPlayer.PlayerComponent == nil then
 			self:SetPanelVisible(self.HideWhenNoPlayer == false)
-			self:SetPanelText(self:ReadString(self.WaitingText, "PARTS"))
+			self:SetPanelText(self:ReadString(self.WaitingText, "SKILLS"))
 			return
 		end
 		
@@ -44,7 +51,7 @@ script BRSkillPartPanel extends Component
 			_BRSkillSystem:RequestUserSnapshot(localPlayer.PlayerComponent.UserId)
 		end
 		
-		local text = self:ReadString(self.WaitingText, "PARTS")
+		local text = self:ReadString(self.WaitingText, "SKILLS")
 		local hasParts = false
 		if _BRSkillSystem ~= nil then
 			text = _BRSkillSystem:GetLocalPanelText()

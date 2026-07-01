@@ -5,9 +5,15 @@ script BRSkillSystem extends Logic
 
 	property boolean VerboseLog = true
 
-	property number PanelMaxPartRows = 5
+	property number PanelMaxPartRows = 2
 
 	property number ChainSlotCount = 5
+
+	property number BagSlotCount = 2
+
+	property number DroppedPartSpawnYOffset = 0.35
+
+	property number DroppedPartSpawnXOffset = 1.15
 
 	method void EnsureRuntime()
 		-- Initializes runtime-only skill data tables.
@@ -20,6 +26,9 @@ script BRSkillSystem extends Logic
 		if self._T.partIds == nil then
 			self._T.partIds = self:CreatePartIdList()
 		end
+		if self._T.snapshotVersions == nil then
+			self._T.snapshotVersions = {}
+		end
 		if self._T.randomSeeded ~= true then
 			self._T.randomSeeded = true
 			math.randomseed(math.floor(_UtilLogic.ElapsedSeconds * 100000) + 17)
@@ -27,39 +36,37 @@ script BRSkillSystem extends Logic
 	end
 
 	method any CreateCatalog()
-		-- Builds the first-order skill part catalog.
+		-- Builds the first-order skill catalog. Part ids stay stable for runtime compatibility.
 		local catalog = {}
-		self:AddPartDefinition(catalog, "power_core", "Core", "Power Core", 0, 6, 0, 0)
-		self:AddPartDefinition(catalog, "vital_core", "Core", "Vital Core", 30, 0, 0, 0)
-		self:AddPartDefinition(catalog, "swift_frame", "Frame", "Swift Frame", 0, 0, 0.2, 0)
-		self:AddPartDefinition(catalog, "spring_frame", "Frame", "Spring Frame", 0, 0, 0, 0.25)
-		self:AddPartDefinition(catalog, "battle_circuit", "Circuit", "Battle Circuit", 10, 3, 0, 0)
-		self:AddPartDefinition(catalog, "agile_circuit", "Circuit", "Agile Circuit", 0, 2, 0.12, 0.12)
+		self:AddPartDefinition(catalog, "slash_part", "Slash", "Slash", "SL")
+		self:AddPartDefinition(catalog, "shot_part", "Shot", "Shot", "SH")
+		self:AddPartDefinition(catalog, "burst_part", "Burst", "Burst", "BU")
+		self:AddPartDefinition(catalog, "dash_part", "Dash", "Dash", "DA")
+		self:AddPartDefinition(catalog, "guard_part", "Guard", "Guard", "GU")
+		self:AddPartDefinition(catalog, "field_part", "Field", "Field", "FI")
 		return catalog
 	end
 
-	method void AddPartDefinition(any catalog, string partId, string slotKey, string displayName, number maxHpBonus, number damageBonus, number speedBonus, number jumpBonus)
-		-- Adds one first-order part definition.
+	method void AddPartDefinition(any catalog, string partId, string skillKey, string displayName, string shortKey)
+		-- Adds one first-order skill definition.
 		catalog[partId] = {
 			PartId = partId,
-			SlotKey = slotKey,
+			SlotKey = skillKey,
+			SkillKey = skillKey,
 			DisplayName = displayName,
-			MaxHpBonus = maxHpBonus,
-			DamageBonus = damageBonus,
-			SpeedBonus = speedBonus,
-			JumpBonus = jumpBonus
+			ShortKey = shortKey
 		}
 	end
 
 	method any CreatePartIdList()
 		-- Returns rollable skill part ids.
 		return {
-			"power_core",
-			"vital_core",
-			"swift_frame",
-			"spring_frame",
-			"battle_circuit",
-			"agile_circuit"
+			"slash_part",
+			"shot_part",
+			"burst_part",
+			"dash_part",
+			"guard_part",
+			"field_part"
 		}
 	end
 
@@ -75,11 +82,12 @@ script BRSkillSystem extends Logic
 	end
 
 	method any CreateUserState()
-		-- Creates a fresh user state with a horizontal 5x1 chain.
+		-- Creates a fresh user state with a horizontal skill chain.
 		return {
 			Parts = {},
 			Equipped = {},
 			EquippedChainSlots = {},
+			BagSlots = {},
 			NextInstanceId = 1
 		}
 	end
@@ -138,17 +146,36 @@ script BRSkillSystem extends Logic
 		
 		local definition = self._T.catalog[self:ReadString(partId, "")]
 		if definition == nil then
-			definition = self._T.catalog["power_core"]
+			definition = self._T.catalog["slash_part"]
 		end
 		
 		local part = self:CreatePartInstance(state, definition, sourceId)
 		table.insert(state.Parts, part)
+		local placed = false
 		if autoEquip == true then
-			if self:EquipPartInstance(userId, part.InstanceId) == false then
-				self:NotifyUserChanged(userId)
+			local chainSlot = self:FindFirstEmptyChainSlot(state)
+			if chainSlot > 0 then
+				placed = self:EquipPartInstanceToChainSlot(userId, part.InstanceId, chainSlot)
 			end
-		else
+		end
+		if placed == false then
+			local bagSlot = self:GetBagSlotIndexByInstanceId(state, part.InstanceId)
+			if bagSlot > 0 then
+				self:NotifyUserChanged(userId)
+				placed = true
+			end
+		end
+		if placed == false then
+			local bagSlot = self:FindFirstEmptyBagSlot(state)
+			if bagSlot <= 0 then
+				self:RemovePartFromOwned(state, part.InstanceId)
+				self:NotifyUserChanged(userId)
+				self:Log("grant skipped user=" .. userId .. " part=" .. part.PartId .. " reason=noInventorySpace")
+				return nil
+			end
+			state.BagSlots[bagSlot] = part.InstanceId
 			self:NotifyUserChanged(userId)
+			placed = true
 		end
 		
 		self:Log("grant user=" .. userId .. " part=" .. part.PartId .. " slot=" .. part.SlotKey .. " autoEquip=" .. tostring(autoEquip))
@@ -163,11 +190,9 @@ script BRSkillSystem extends Logic
 			InstanceId = instanceId,
 			PartId = definition.PartId,
 			SlotKey = definition.SlotKey,
+			SkillKey = definition.SkillKey,
 			DisplayName = definition.DisplayName,
-			MaxHpBonus = definition.MaxHpBonus,
-			DamageBonus = definition.DamageBonus,
-			SpeedBonus = definition.SpeedBonus,
-			JumpBonus = definition.JumpBonus,
+			ShortKey = definition.ShortKey,
 			SourceId = self:ReadString(sourceId, "")
 		}
 	end
@@ -192,7 +217,7 @@ script BRSkillSystem extends Logic
 	end
 
 	method boolean EquipPartInstanceToChainSlot(string userId, number instanceId, number chainSlot)
-		-- Equips one owned part into an explicit 5x1 chain slot.
+		-- Equips one owned part into an explicit chain slot.
 		local state = self:GetUserState(userId)
 		if state == nil then
 			return false
@@ -203,11 +228,248 @@ script BRSkillSystem extends Logic
 		end
 
 		local slotIndex = self:ClampChainSlot(chainSlot)
+		local sourceBagSlot = self:GetBagSlotIndexByInstanceId(state, part.InstanceId)
+		local targetInstanceId = state.EquippedChainSlots[slotIndex]
+		if targetInstanceId ~= nil and targetInstanceId ~= part.InstanceId and self:FindPartInState(state, targetInstanceId) ~= nil then
+			if sourceBagSlot > 0 then
+				state.BagSlots[sourceBagSlot] = targetInstanceId
+			else
+				local emptyBagSlot = self:FindFirstEmptyBagSlot(state)
+				if emptyBagSlot <= 0 then
+					self:Log("chain equip failed user=" .. userId .. " slot=" .. tostring(slotIndex) .. " reason=noInventorySpace")
+					return false
+				end
+				state.BagSlots[emptyBagSlot] = targetInstanceId
+			end
+		elseif sourceBagSlot > 0 then
+			state.BagSlots[sourceBagSlot] = nil
+		end
 		self:RemovePartFromChain(state, part.InstanceId)
+		self:RemovePartFromBag(state, part.InstanceId)
 		state.EquippedChainSlots[slotIndex] = part.InstanceId
 		state.Equipped["Chain" .. tostring(slotIndex)] = part.InstanceId
 		self:NotifyUserChanged(userId)
 		self:Log("chain equip user=" .. userId .. " slot=" .. tostring(slotIndex) .. " part=" .. part.PartId .. " tier=" .. tostring(self:GetPartChainTier(state, part.InstanceId)))
+		return true
+	end
+
+	method boolean ClearChainSlot(string userId, number chainSlot)
+		-- Clears one equipped chain slot.
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+
+		local slotIndex = self:ClampChainSlot(chainSlot)
+		local instanceId = state.EquippedChainSlots[slotIndex]
+		if instanceId == nil then
+			return false
+		end
+
+		local part = self:FindPartInState(state, instanceId)
+		if part ~= nil then
+			local bagSlot = self:FindFirstEmptyBagSlot(state)
+			if bagSlot <= 0 then
+				self:Log("chain clear failed user=" .. userId .. " slot=" .. tostring(slotIndex) .. " reason=noInventorySpace")
+				return false
+			end
+			state.BagSlots[bagSlot] = instanceId
+		end
+		state.EquippedChainSlots[slotIndex] = nil
+		state.Equipped["Chain" .. tostring(slotIndex)] = nil
+		self:NotifyUserChanged(userId)
+		self:Log("chain clear user=" .. userId .. " slot=" .. tostring(slotIndex))
+		return true
+	end
+
+	method boolean ClearPartInstanceFromChain(string userId, number instanceId)
+		-- Clears whichever chain slot currently contains the owned part instance.
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 or self:FindPartInState(state, safeInstanceId) == nil then
+			return false
+		end
+		for slotIndex = 1, self:GetChainSlotCount() do
+			if state.EquippedChainSlots[slotIndex] == safeInstanceId then
+				return self:ClearChainSlot(userId, slotIndex)
+			end
+		end
+		return false
+	end
+
+	method boolean MovePartInstanceToBagSlot(string userId, number instanceId, number bagSlot)
+		-- Moves one owned part into a spare bag slot, swapping with the current slot content when needed.
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local part = self:FindPartInState(state, safeInstanceId)
+		if part == nil then
+			return false
+		end
+
+		local targetBagSlot = self:ClampBagSlot(bagSlot)
+		local sourceChainSlot = self:GetEquippedPartSlotIndex(state, part)
+		local sourceBagSlot = self:GetBagSlotIndexByInstanceId(state, safeInstanceId)
+		local targetInstanceId = state.BagSlots[targetBagSlot]
+		if sourceChainSlot <= 0 and sourceBagSlot <= 0 then
+			return false
+		end
+		if sourceBagSlot == targetBagSlot then
+			return false
+		end
+
+		if sourceChainSlot > 0 then
+			if targetInstanceId ~= nil and self:FindPartInState(state, targetInstanceId) ~= nil then
+				state.EquippedChainSlots[sourceChainSlot] = targetInstanceId
+				state.Equipped["Chain" .. tostring(sourceChainSlot)] = targetInstanceId
+			else
+				state.EquippedChainSlots[sourceChainSlot] = nil
+				state.Equipped["Chain" .. tostring(sourceChainSlot)] = nil
+			end
+			state.BagSlots[targetBagSlot] = safeInstanceId
+		else
+			state.BagSlots[sourceBagSlot] = targetInstanceId
+			state.BagSlots[targetBagSlot] = safeInstanceId
+		end
+
+		self:NotifyUserChanged(userId)
+		self:Log("bag move user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " bag=" .. tostring(targetBagSlot) .. " fromChain=" .. tostring(sourceChainSlot))
+		return true
+	end
+
+	method boolean DropPartInstanceToWorld(string userId, number instanceId)
+		-- Removes one owned part and creates a pickup entity near the player.
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local part = self:FindPartInState(state, safeInstanceId)
+		if part == nil then
+			return false
+		end
+		local playerEntity = self:FindPlayerEntityByUserId(userId)
+		if playerEntity == nil then
+			self:Log("world drop failed user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " reason=noPlayer")
+			return false
+		end
+		local dropEntity = self:SpawnDroppedPart(playerEntity, part)
+		if dropEntity == nil then
+			self:Log("world drop failed user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " reason=spawnFailed")
+			return false
+		end
+		self:RemovePartFromOwned(state, safeInstanceId)
+		self:NotifyUserChanged(userId)
+		self:Log("world drop user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " part=" .. part.PartId .. " entity=" .. dropEntity.Name)
+		return true
+	end
+
+	method Entity SpawnDroppedPart(Entity playerEntity, any part)
+		-- Spawns a pickup clone from the nearest skill box template on the current map.
+		if playerEntity == nil or part == nil then
+			return nil
+		end
+		local mapEntity = playerEntity.CurrentMap
+		if mapEntity == nil then
+			return nil
+		end
+		local template = self:FindDropTemplateEntity(mapEntity)
+		if template == nil then
+			return nil
+		end
+		local playerPosition = self:GetEntityPosition2(playerEntity)
+		local spawnPosition = Vector3(
+			playerPosition.x + self:GetPlayerDropDirection(playerEntity) * self:GetDroppedPartSpawnXOffset(),
+			playerPosition.y + self:GetDroppedPartSpawnYOffset(),
+			0
+		)
+		local name = "DroppedSkillPart_" .. tostring(math.floor(self:ReadNumber(part.InstanceId, 0))) .. "_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000))
+		local dropEntity = _SpawnService:SpawnByEntity(template, name, spawnPosition, mapEntity, false)
+		if dropEntity == nil then
+			return nil
+		end
+		dropEntity.Visible = true
+		local boxComponent = dropEntity:GetComponent("script.BRPartBox")
+		if boxComponent ~= nil then
+			dropEntity:RemoveComponent("script.BRPartBox")
+		end
+		---@type any
+		local dropComponent = dropEntity:GetComponent("script.BRDroppedSkillPart")
+		if dropComponent == nil then
+			dropComponent = dropEntity:AddComponent("script.BRDroppedSkillPart")
+		end
+		if dropComponent ~= nil then
+			dropComponent:InitializeDrop(
+				self:ReadString(part.PartId, "slash_part"),
+				self:GetSkillName(part),
+				self:GetPartShortText(part),
+				self:GetUserIdFromPlayer(playerEntity),
+				self:ReadNumber(part.InstanceId, 0)
+			)
+		end
+		return dropEntity
+	end
+
+	method Entity FindDropTemplateEntity(Entity mapEntity)
+		-- Finds a placed skill part box that can be cloned for a dropped pickup.
+		if mapEntity == nil then
+			return nil
+		end
+		local preferred = { "SkillPartBox", "LobbySkillPartBoxA", "LobbySkillPartBoxB", "LobbySkillPartBoxC" }
+		for index, name in ipairs(preferred) do
+			local entity = mapEntity:GetChildByName(name, false)
+			if entity ~= nil and entity:GetComponent("script.BRPartBox") ~= nil then
+				return entity
+			end
+		end
+		if mapEntity.Children == nil then
+			return nil
+		end
+		for index, child in ipairs(mapEntity.Children:ToTable()) do
+			if child ~= nil and child:GetComponent("script.BRPartBox") ~= nil then
+				return child
+			end
+		end
+		return nil
+	end
+
+	method boolean MoveChainSlot(string userId, number fromChainSlot, number toChainSlot)
+		-- Moves an equipped chain slot, swapping when the target slot is occupied.
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+
+		local fromIndex = self:ClampChainSlot(fromChainSlot)
+		local toIndex = self:ClampChainSlot(toChainSlot)
+		if fromIndex == toIndex then
+			return false
+		end
+
+		local sourceInstanceId = state.EquippedChainSlots[fromIndex]
+		if sourceInstanceId == nil or self:FindPartInState(state, sourceInstanceId) == nil then
+			return false
+		end
+
+		local targetInstanceId = state.EquippedChainSlots[toIndex]
+		state.EquippedChainSlots[toIndex] = sourceInstanceId
+		state.Equipped["Chain" .. tostring(toIndex)] = sourceInstanceId
+
+		if targetInstanceId ~= nil and self:FindPartInState(state, targetInstanceId) ~= nil then
+			state.EquippedChainSlots[fromIndex] = targetInstanceId
+			state.Equipped["Chain" .. tostring(fromIndex)] = targetInstanceId
+		else
+			state.EquippedChainSlots[fromIndex] = nil
+			state.Equipped["Chain" .. tostring(fromIndex)] = nil
+		end
+
+		self:NotifyUserChanged(userId)
+		self:Log("chain move user=" .. userId .. " from=" .. tostring(fromIndex) .. " to=" .. tostring(toIndex) .. " swapped=" .. tostring(targetInstanceId ~= nil))
 		return true
 	end
 
@@ -240,92 +502,77 @@ script BRSkillSystem extends Logic
 	end
 
 	method any GetEquippedStats(string userId)
-		-- Calculates stats from chain slots, multiplying each part by its current chain tier.
-		local stats = {
+		-- Returns zero stats because skill parts no longer grant direct stat bonuses.
+		return {
 			MaxHpBonus = 0,
 			DamageBonus = 0,
 			SpeedBonus = 0,
 			JumpBonus = 0
 		}
-		local state = self:GetUserState(userId)
-		if state == nil or state.Equipped == nil then
-			return stats
-		end
-		
-		local chain = self:BuildChainState(state)
-		for slotIndex = 1, self:GetChainSlotCount() do
-			local instanceId = chain.Slots[slotIndex]
-			local part = self:FindPartInState(state, instanceId)
-			if part ~= nil then
-				local tier = self:ReadNumber(chain.Tiers[slotIndex], 1)
-				stats.MaxHpBonus = stats.MaxHpBonus + self:ReadNumber(part.MaxHpBonus, 0) * tier
-				stats.DamageBonus = stats.DamageBonus + self:ReadNumber(part.DamageBonus, 0) * tier
-				stats.SpeedBonus = stats.SpeedBonus + self:ReadNumber(part.SpeedBonus, 0) * tier
-				stats.JumpBonus = stats.JumpBonus + self:ReadNumber(part.JumpBonus, 0) * tier
-			end
-		end
-		return stats
 	end
 
 	method number GetMaxHp(string userId, number baseMaxHp)
-		-- Returns battle max HP after chain bonuses.
-		local stats = self:GetEquippedStats(userId)
-		return math.max(1, math.floor(self:ReadNumber(baseMaxHp, 100) + self:ReadNumber(stats.MaxHpBonus, 0)))
+		-- Returns base HP; skill parts do not provide stat bonuses.
+		return math.max(1, math.floor(self:ReadNumber(baseMaxHp, 100)))
 	end
 
 	method number GetBasicAttackDamage(string userId, number baseDamage)
-		-- Returns basic attack damage after chain bonuses.
-		local stats = self:GetEquippedStats(userId)
-		return math.max(1, math.floor(self:ReadNumber(baseDamage, 20) + self:ReadNumber(stats.DamageBonus, 0)))
+		-- Returns base damage; skill parts do not provide stat bonuses.
+		return math.max(1, math.floor(self:ReadNumber(baseDamage, 20)))
 	end
 
 	method void ApplyMovementStatsToPlayer(Entity playerEntity, any baseStats)
-		-- Applies chain-derived movement stats to one player.
+		-- Restores base movement values; skill parts do not provide movement stats.
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return
 		end
-		
-		local stats = self:GetEquippedStats(playerEntity.PlayerComponent.UserId)
-		local speedBonus = self:ReadNumber(stats.SpeedBonus, 0)
-		local jumpBonus = self:ReadNumber(stats.JumpBonus, 0)
-		
+
 		if playerEntity.MovementComponent ~= nil and baseStats ~= nil then
-			playerEntity.MovementComponent.InputSpeed = math.max(0.1, self:ReadNumber(baseStats.InputSpeed, playerEntity.MovementComponent.InputSpeed) + speedBonus)
-			playerEntity.MovementComponent.JumpForce = math.max(0.1, self:ReadNumber(baseStats.JumpForce, playerEntity.MovementComponent.JumpForce) + jumpBonus)
+			playerEntity.MovementComponent.InputSpeed = math.max(0.1, self:ReadNumber(baseStats.InputSpeed, playerEntity.MovementComponent.InputSpeed))
+			playerEntity.MovementComponent.JumpForce = math.max(0.1, self:ReadNumber(baseStats.JumpForce, playerEntity.MovementComponent.JumpForce))
 		end
 		if playerEntity.RigidbodyComponent ~= nil and baseStats ~= nil then
-			playerEntity.RigidbodyComponent.WalkSpeed = math.max(0.1, self:ReadNumber(baseStats.WalkSpeed, playerEntity.RigidbodyComponent.WalkSpeed) + speedBonus)
-			playerEntity.RigidbodyComponent.WalkJump = math.max(0.1, self:ReadNumber(baseStats.WalkJump, playerEntity.RigidbodyComponent.WalkJump) + jumpBonus)
+			playerEntity.RigidbodyComponent.WalkSpeed = math.max(0.1, self:ReadNumber(baseStats.WalkSpeed, playerEntity.RigidbodyComponent.WalkSpeed))
+			playerEntity.RigidbodyComponent.WalkJump = math.max(0.1, self:ReadNumber(baseStats.WalkJump, playerEntity.RigidbodyComponent.WalkJump))
 		end
 	end
 
 	method string GetPartSummary(any part)
-		-- Builds a compact stat summary for one part.
+		-- Builds a compact first-order skill summary.
 		if part == nil then
 			return ""
 		end
-		local summary = self:ReadString(part.DisplayName, part.PartId)
-		if self:ReadNumber(part.MaxHpBonus, 0) ~= 0 then
-			summary = summary .. " HP+" .. tostring(part.MaxHpBonus)
-		end
-		if self:ReadNumber(part.DamageBonus, 0) ~= 0 then
-			summary = summary .. " DMG+" .. tostring(part.DamageBonus)
-		end
-		if self:ReadNumber(part.SpeedBonus, 0) ~= 0 then
-			summary = summary .. " SPD+" .. tostring(part.SpeedBonus)
-		end
-		if self:ReadNumber(part.JumpBonus, 0) ~= 0 then
-			summary = summary .. " JMP+" .. tostring(part.JumpBonus)
-		end
-		return summary
+		return self:GetSkillTierText(part, 1)
 	end
 
 	method string GetPartSummaryWithTier(any part, number tier)
-		-- Builds a part summary that includes its current chain tier.
+		-- Builds a skill summary that includes its current chain tier.
 		if part == nil then
 			return "-"
 		end
-		return self:GetPartSummary(part) .. " T" .. tostring(math.max(1, math.floor(self:ReadNumber(tier, 1))))
+		return self:GetSkillTierText(part, tier)
+	end
+
+	method string GetSkillName(any part)
+		-- Returns the display name without the old Part suffix.
+		if part == nil then
+			return "Skill"
+		end
+		local displayName = self:ReadString(part.DisplayName, "")
+		if displayName ~= "" then
+			return displayName
+		end
+		local skillKey = self:ReadString(part.SkillKey, "")
+		if skillKey ~= "" then
+			return skillKey
+		end
+		return self:ReadString(part.PartId, "Skill")
+	end
+
+	method string GetSkillTierText(any part, number tier)
+		-- Formats skill order as "Name n차"; no actual merge is performed.
+		local order = math.max(1, math.floor(self:ReadNumber(tier, 1)))
+		return self:GetSkillName(part) .. " " .. tostring(order) .. "차"
 	end
 
 	@ExecSpace("Server")
@@ -334,18 +581,98 @@ script BRSkillSystem extends Logic
 		self:NotifyUserChanged(userId)
 	end
 
+	@ExecSpace("Server")
+	method void RequestEquipPartToChainSlot(string requestUserId, number instanceId, number chainSlot)
+		-- Handles drag-and-drop chain placement from the local skill UI.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("chain equip request skipped reason=noUser instance=" .. tostring(instanceId) .. " slot=" .. tostring(chainSlot))
+			return
+		end
+		if self:EquipPartInstanceToChainSlot(userId, instanceId, chainSlot) == false then
+			self:Log("chain equip request failed user=" .. userId .. " instance=" .. tostring(instanceId) .. " slot=" .. tostring(chainSlot))
+		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestClearChainSlot(string requestUserId, number chainSlot)
+		-- Handles explicit chain-slot clearing from the local skill UI.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("chain clear request skipped reason=noUser slot=" .. tostring(chainSlot))
+			return
+		end
+		if self:ClearChainSlot(userId, chainSlot) == false then
+			self:Log("chain clear request failed user=" .. userId .. " slot=" .. tostring(chainSlot))
+		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestClearPartInstanceFromChain(string requestUserId, number instanceId)
+		-- Handles explicit unequip by owned part instance id from the local skill UI.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("chain clear instance request skipped reason=noUser instance=" .. tostring(instanceId))
+			return
+		end
+		if self:ClearPartInstanceFromChain(userId, instanceId) == false then
+			self:Log("chain clear instance request failed user=" .. userId .. " instance=" .. tostring(instanceId))
+		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestMoveChainSlotToChainSlot(string requestUserId, number fromChainSlot, number toChainSlot)
+		-- Handles drag-and-drop movement between already equipped chain slots.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("chain move request skipped reason=noUser from=" .. tostring(fromChainSlot) .. " to=" .. tostring(toChainSlot))
+			return
+		end
+		if self:MoveChainSlot(userId, fromChainSlot, toChainSlot) == false then
+			self:Log("chain move request failed user=" .. userId .. " from=" .. tostring(fromChainSlot) .. " to=" .. tostring(toChainSlot))
+		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestMovePartToBagSlot(string requestUserId, number instanceId, number bagSlot)
+		-- Handles drag-and-drop movement into one of the two spare bag slots.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("bag move request skipped reason=noUser instance=" .. tostring(instanceId) .. " bag=" .. tostring(bagSlot))
+			return
+		end
+		if self:MovePartInstanceToBagSlot(userId, instanceId, bagSlot) == false then
+			self:Log("bag move request failed user=" .. userId .. " instance=" .. tostring(instanceId) .. " bag=" .. tostring(bagSlot))
+		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestDropPartToWorld(string requestUserId, number instanceId)
+		-- Handles releasing a skill part outside the chain UI into the world.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("world drop request skipped reason=noUser instance=" .. tostring(instanceId))
+			return
+		end
+		if self:DropPartInstanceToWorld(userId, instanceId) == false then
+			self:Log("world drop request failed user=" .. userId .. " instance=" .. tostring(instanceId))
+		end
+	end
+
 	@ExecSpace("ServerOnly")
 	method void NotifyUserChanged(string userId)
 		-- Rebuilds and pushes the user's skill snapshot.
 		if userId == nil or userId == "" then
 			return
 		end
+		self:EnsureRuntime()
+		self._T.snapshotVersions[userId] = self:ReadNumber(self._T.snapshotVersions[userId], 0) + 1
 		local snapshot = self:BuildUserSnapshot(userId)
-		self:PushUserSnapshot(userId, snapshot.PanelText, snapshot.HasParts)
+		self:PushUserSnapshot(userId, snapshot.PanelText, snapshot.HasParts, snapshot.ChainText, snapshot.BagText, snapshot.RecipeText, snapshot.Version)
 	end
 
 	@ExecSpace("Client")
-	method void PushUserSnapshot(string userId, string panelText, boolean hasParts)
+	method void PushUserSnapshot(string userId, string panelText, boolean hasParts, string chainText, string bagText, string recipeText, number version)
 		-- Receives the local player's skill panel snapshot.
 		local localPlayer = _UserService.LocalPlayer
 		if localPlayer == nil or localPlayer.PlayerComponent == nil then
@@ -357,6 +684,10 @@ script BRSkillSystem extends Logic
 		
 		self._T.localPanelText = self:ReadString(panelText, self:GetEmptyPanelText())
 		self._T.localPanelHasParts = hasParts == true
+		self._T.localChainText = self:ReadString(chainText, "")
+		self._T.localBagText = self:ReadString(bagText, "")
+		self._T.localRecipeText = self:ReadString(recipeText, self:BuildEmptyRecipeText())
+		self._T.localSnapshotVersion = self:ReadNumber(version, 0)
 		self._T.localPanelUpdatedAt = _UtilLogic.ElapsedSeconds
 	end
 
@@ -372,6 +703,36 @@ script BRSkillSystem extends Logic
 		return self._T.localPanelHasParts == true
 	end
 
+	@ExecSpace("Client")
+	method string GetLocalChainText()
+		-- Returns semicolon-delimited chain slot records for the dedicated chain UI.
+		return self:ReadString(self._T.localChainText, "")
+	end
+
+	@ExecSpace("Client")
+	method string GetLocalBagText()
+		-- Returns semicolon-delimited owned part records for the dedicated chain UI.
+		return self:ReadString(self._T.localBagText, "")
+	end
+
+	@ExecSpace("Client")
+	method string GetLocalStatsText()
+		-- Returns the compact skill recipe line for legacy UI callers.
+		return self:GetLocalRecipeText()
+	end
+
+	@ExecSpace("Client")
+	method string GetLocalRecipeText()
+		-- Returns the compact skill recipe line for the dedicated chain UI.
+		return self:ReadString(self._T.localRecipeText, self:BuildEmptyRecipeText())
+	end
+
+	@ExecSpace("Client")
+	method number GetLocalSnapshotVersion()
+		-- Returns the latest local skill snapshot version.
+		return self:ReadNumber(self._T.localSnapshotVersion, 0)
+	end
+
 	method any BuildUserSnapshot(string userId)
 		-- Builds synchronized text for the player's skill chain panel.
 		local state = self:GetUserState(userId)
@@ -380,20 +741,24 @@ script BRSkillSystem extends Logic
 			hasParts = true
 		end
 		
-		local text = "PARTS"
+		local text = "SKILLS"
 			.. "\n" .. self:BuildEquippedText(state)
-			.. "\n" .. self:BuildStatsText(userId)
+			.. "\n" .. self:BuildRecipeText(state)
 			.. "\n" .. self:BuildOwnedPartsText(state)
 		
 		return {
 			PanelText = text,
-			HasParts = hasParts
+			HasParts = hasParts,
+			ChainText = self:BuildChainSnapshotText(state),
+			BagText = self:BuildBagSnapshotText(state),
+			RecipeText = self:BuildRecipeText(state),
+			Version = self:ReadNumber(self._T.snapshotVersions[userId], 0)
 		}
 	end
 
 	method string BuildEquippedText(any state)
-		-- Builds a 5x1 horizontal chain summary.
-		return "Chain 5x1: " .. self:BuildChainLineText(state)
+		-- Builds a horizontal chain summary.
+		return "Chain " .. tostring(self:GetChainSlotCount()) .. "x1: " .. self:BuildChainLineText(state)
 			.. "\n" .. self:BuildChainDetailText(state)
 	end
 
@@ -422,33 +787,103 @@ script BRSkillSystem extends Logic
 	end
 
 	method string BuildStatsText(string userId)
-		-- Builds the summed stat line after chain-tier multiplication.
-		local stats = self:GetEquippedStats(userId)
-		return "Stats: HP+" .. self:FormatNumber(stats.MaxHpBonus)
-			.. " DMG+" .. self:FormatNumber(stats.DamageBonus)
-			.. " SPD+" .. self:FormatNumber(stats.SpeedBonus)
-			.. " JMP+" .. self:FormatNumber(stats.JumpBonus)
+		-- Builds a legacy-compatible skill recipe line.
+		local state = self:GetUserState(userId)
+		return self:BuildRecipeText(state)
+	end
+
+	method string BuildZeroStatsText()
+		-- Returns a legacy-compatible empty skill recipe line.
+		return self:BuildEmptyRecipeText()
+	end
+
+	method string BuildEmptyRecipeText()
+		-- Returns a stable empty recipe line for client fallbacks.
+		return "Skill: empty"
+	end
+
+	method string BuildRecipeText(any state)
+		-- Builds the current skill recipe summary from consecutive chain parts.
+		local chain = self:BuildChainState(state)
+		if chain.FilledCount <= 0 then
+			return self:BuildEmptyRecipeText()
+		end
+		local part = self:FindPartInState(state, chain.HighestTierInstanceId)
+		if part == nil then
+			return "Skill: " .. tostring(math.max(1, math.floor(self:ReadNumber(chain.HighestTier, 1)))) .. "차"
+		end
+		return "Skill: " .. self:GetSkillTierText(part, chain.HighestTier)
+	end
+
+	method string BuildChainSnapshotText(any state)
+		-- Serializes slots as slot,instanceId,short,tier,displayName records.
+		local chain = self:BuildChainState(state)
+		local text = ""
+		for slotIndex = 1, self:GetChainSlotCount() do
+			local instanceId = math.floor(self:ReadNumber(chain.Slots[slotIndex], 0))
+			local part = self:FindPartInState(state, instanceId)
+			local shortText = "-"
+			local displayName = "-"
+			local tier = math.floor(self:ReadNumber(chain.Tiers[slotIndex], 0))
+			if part ~= nil then
+				shortText = self:GetPartShortText(part)
+				displayName = self:SanitizeRecordText(self:GetSkillName(part))
+			end
+			if text ~= "" then
+				text = text .. ";"
+			end
+			text = text .. tostring(slotIndex) .. "," .. tostring(instanceId) .. "," .. shortText .. "," .. tostring(tier) .. "," .. displayName
+		end
+		return text
+	end
+
+	method string BuildBagSnapshotText(any state)
+		-- Serializes explicit spare bag slots as slot,instanceId,short,tier,displayName records.
+		self:NormalizeUserState(state)
+		local text = ""
+		for bagSlot = 1, self:GetBagSlotCount() do
+			local instanceId = 0
+			if state ~= nil and state.BagSlots ~= nil then
+				instanceId = math.floor(self:ReadNumber(state.BagSlots[bagSlot], 0))
+			end
+			local part = self:FindPartInState(state, instanceId)
+			local shortText = "-"
+			local displayName = "-"
+			local tier = 0
+			if part ~= nil then
+				shortText = self:GetPartShortText(part)
+				displayName = self:SanitizeRecordText(self:GetSkillName(part))
+				tier = 1
+			end
+			if text ~= "" then
+				text = text .. ";"
+			end
+			text = text .. tostring(bagSlot)
+				.. "," .. tostring(instanceId)
+				.. "," .. shortText
+				.. "," .. tostring(tier)
+				.. "," .. displayName
+		end
+		return text
 	end
 
 	method string BuildOwnedPartsText(any state)
-		-- Builds a short bag list with equipped markers.
-		if state == nil or state.Parts == nil or #state.Parts <= 0 then
-			return "Bag(0): empty"
-		end
-		
-		local count = #state.Parts
-		local firstIndex = math.max(1, count - self:GetPanelMaxPartRows() + 1)
-		local text = "Bag(" .. tostring(count) .. ")"
-		for index = firstIndex, count do
-			local part = state.Parts[index]
+		-- Builds a short spare bag list.
+		self:NormalizeUserState(state)
+		local bagSlotCount = self:GetBagSlotCount()
+		local count = 0
+		local text = ""
+		for bagSlot = 1, bagSlotCount do
+			local part = self:GetBagSlotPart(state, bagSlot)
 			if part ~= nil then
-				text = text .. "\n#" .. tostring(part.InstanceId) .. " " .. self:GetPartSummary(part)
-				if self:IsPartEquipped(state, part) == true then
-					text = text .. " [E]"
-				end
+				count = count + 1
+				text = text .. "\nB" .. tostring(bagSlot) .. ": #" .. tostring(part.InstanceId) .. " " .. self:GetPartSummary(part)
 			end
 		end
-		return text
+		if count <= 0 then
+			return "Bag(0/" .. tostring(bagSlotCount) .. "): empty"
+		end
+		return "Bag(" .. tostring(count) .. "/" .. tostring(bagSlotCount) .. ")" .. text
 	end
 
 	method boolean IsPartEquipped(any state, any part)
@@ -461,12 +896,41 @@ script BRSkillSystem extends Logic
 
 	method string GetEmptyPanelText()
 		-- Returns the panel text before the first snapshot arrives.
-		return "PARTS\nChain 5x1: [1:-][2:-][3:-][4:-][5:-]\nStats: HP+0 DMG+0 SPD+0 JMP+0\nBag(0): empty"
+		local chainText = ""
+		for slotIndex = 1, self:GetChainSlotCount() do
+			chainText = chainText .. "[" .. tostring(slotIndex) .. ":-]"
+		end
+		return "SKILLS\nChain " .. tostring(self:GetChainSlotCount()) .. "x1: " .. chainText .. "\nSkill: empty\nBag(0): empty"
 	end
 
 	method number GetPanelMaxPartRows()
 		-- Returns the max number of bag rows shown in the text panel.
-		return math.max(1, math.floor(self:ReadNumber(self.PanelMaxPartRows, 5)))
+		return math.max(1, math.floor(self:ReadNumber(self.PanelMaxPartRows, 2)))
+	end
+
+	method number GetBagSlotCount()
+		-- Returns the number of visible spare inventory slots.
+		return math.max(1, math.floor(self:ReadNumber(self.BagSlotCount, 2)))
+	end
+
+	method number GetDroppedPartSpawnYOffset()
+		-- Returns the vertical offset used for player-foot dropped parts.
+		return self:ReadNumber(self.DroppedPartSpawnYOffset, 0.35)
+	end
+
+	method number GetDroppedPartSpawnXOffset()
+		-- Returns the horizontal offset used to place dropped parts in front of the player.
+		return math.max(0, self:ReadNumber(self.DroppedPartSpawnXOffset, 1.15))
+	end
+
+	method number GetPlayerDropDirection(Entity playerEntity)
+		-- Returns the direction used when tossing a skill part from the UI to the world.
+		if playerEntity ~= nil and playerEntity.PlayerControllerComponent ~= nil then
+			if playerEntity.PlayerControllerComponent.LookDirectionX < 0 then
+				return -1
+			end
+		end
+		return 1
 	end
 
 	method void NormalizeUserState(any state)
@@ -490,53 +954,85 @@ script BRSkillSystem extends Logic
 				end
 			end
 		end
+		if state.BagSlots == nil then
+			state.BagSlots = {}
+		end
 		if state.NextInstanceId == nil then
 			state.NextInstanceId = #state.Parts + 1
+		end
+
+		local used = {}
+		for slotIndex = 1, self:GetChainSlotCount() do
+			local instanceId = state.EquippedChainSlots[slotIndex]
+			if instanceId ~= nil and self:FindPartInState(state, instanceId) ~= nil then
+				used[instanceId] = true
+				state.Equipped["Chain" .. tostring(slotIndex)] = instanceId
+			else
+				state.EquippedChainSlots[slotIndex] = nil
+				state.Equipped["Chain" .. tostring(slotIndex)] = nil
+			end
+		end
+
+		for bagSlot = 1, self:GetBagSlotCount() do
+			local instanceId = state.BagSlots[bagSlot]
+			if instanceId ~= nil and self:FindPartInState(state, instanceId) ~= nil and used[instanceId] ~= true then
+				used[instanceId] = true
+			else
+				state.BagSlots[bagSlot] = nil
+			end
+		end
+
+		for index, part in ipairs(state.Parts) do
+			if part ~= nil and used[part.InstanceId] ~= true then
+				local bagSlot = self:FindFirstEmptyBagSlot(state)
+				if bagSlot > 0 then
+					state.BagSlots[bagSlot] = part.InstanceId
+					used[part.InstanceId] = true
+				end
+			end
 		end
 	end
 
 	method any BuildChainState(any state)
-		-- Builds slot and tier arrays for the 5x1 chain.
+		-- Builds slot and tier arrays for the skill chain.
 		local chain = {
 			Slots = {},
 			Tiers = {},
 			FilledCount = 0,
-			HighestTier = 0
+			HighestTier = 0,
+			HighestTierInstanceId = nil
 		}
 		if state == nil then
 			return chain
 		end
 		self:NormalizeUserState(state)
 		local slotCount = self:GetChainSlotCount()
+		local previousSkillKey = ""
+		local currentTier = 0
 		for slotIndex = 1, slotCount do
 			local instanceId = state.EquippedChainSlots[slotIndex]
-			if instanceId ~= nil and self:FindPartInState(state, instanceId) ~= nil then
+			local part = self:FindPartInState(state, instanceId)
+			if instanceId ~= nil and part ~= nil then
+				local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
+				if skillKey ~= "" and skillKey == previousSkillKey then
+					currentTier = currentTier + 1
+				else
+					currentTier = 1
+				end
+
 				chain.Slots[slotIndex] = instanceId
-				chain.Tiers[slotIndex] = 1
+				chain.Tiers[slotIndex] = currentTier
 				chain.FilledCount = chain.FilledCount + 1
+				previousSkillKey = skillKey
+				if currentTier > chain.HighestTier then
+					chain.HighestTier = currentTier
+					chain.HighestTierInstanceId = instanceId
+				end
 			else
 				chain.Slots[slotIndex] = nil
 				chain.Tiers[slotIndex] = 0
-			end
-		end
-
-		local slotIndex = 1
-		while slotIndex <= slotCount do
-			if chain.Slots[slotIndex] == nil then
-				slotIndex = slotIndex + 1
-			else
-				local startSlot = slotIndex
-				while slotIndex <= slotCount and chain.Slots[slotIndex] ~= nil do
-					slotIndex = slotIndex + 1
-				end
-				local endSlot = slotIndex - 1
-				local tier = endSlot - startSlot + 1
-				for tierSlot = startSlot, endSlot do
-					chain.Tiers[tierSlot] = tier
-				end
-				if tier > chain.HighestTier then
-					chain.HighestTier = tier
-				end
+				previousSkillKey = ""
+				currentTier = 0
 			end
 		end
 		return chain
@@ -550,7 +1046,7 @@ script BRSkillSystem extends Logic
 			local part = self:FindPartInState(state, chain.Slots[slotIndex])
 			local label = "-"
 			if part ~= nil then
-				label = self:GetPartShortText(part) .. "T" .. tostring(chain.Tiers[slotIndex])
+				label = self:GetPartShortText(part) .. tostring(chain.Tiers[slotIndex]) .. "차"
 			end
 			text = text .. "[" .. tostring(slotIndex) .. ":" .. label .. "]"
 		end
@@ -560,7 +1056,7 @@ script BRSkillSystem extends Logic
 	method string BuildChainDetailText(any state)
 		-- Builds one detail line per occupied chain slot.
 		local chain = self:BuildChainState(state)
-		local text = "Chain Bonus: highest T" .. tostring(math.max(0, math.floor(self:ReadNumber(chain.HighestTier, 0))))
+		local text = "Recipe: highest " .. tostring(math.max(0, math.floor(self:ReadNumber(chain.HighestTier, 0)))) .. "차"
 		for slotIndex = 1, self:GetChainSlotCount() do
 			local part = self:FindPartInState(state, chain.Slots[slotIndex])
 			if part ~= nil then
@@ -575,6 +1071,10 @@ script BRSkillSystem extends Logic
 		if part == nil then
 			return "-"
 		end
+		local shortKey = self:ReadString(part.ShortKey, "")
+		if shortKey ~= "" then
+			return shortKey
+		end
 		local slotKey = self:ReadString(part.SlotKey, "")
 		if slotKey == "Core" then
 			return "C"
@@ -587,11 +1087,56 @@ script BRSkillSystem extends Logic
 	end
 
 	method number FindFirstEmptyChainSlot(any state)
-		-- Finds the first empty slot in the 5x1 chain.
+		-- Finds the first empty slot in the skill chain.
 		self:NormalizeUserState(state)
 		for slotIndex = 1, self:GetChainSlotCount() do
 			if state.EquippedChainSlots[slotIndex] == nil then
 				return slotIndex
+			end
+		end
+		return 0
+	end
+
+	method any GetBagSlotPart(any state, number bagSlot)
+		-- Returns the part currently stored in a spare bag slot.
+		if state == nil or state.BagSlots == nil then
+			return nil
+		end
+		local slotIndex = self:ClampBagSlot(bagSlot)
+		local instanceId = state.BagSlots[slotIndex]
+		return self:FindPartInState(state, instanceId)
+	end
+
+	method number FindFirstEmptyBagSlot(any state)
+		-- Finds the first empty spare bag slot.
+		if state == nil then
+			return 0
+		end
+		if state.BagSlots == nil then
+			state.BagSlots = {}
+		end
+		for bagSlot = 1, self:GetBagSlotCount() do
+			local instanceId = state.BagSlots[bagSlot]
+			if instanceId == nil or self:FindPartInState(state, instanceId) == nil then
+				state.BagSlots[bagSlot] = nil
+				return bagSlot
+			end
+		end
+		return 0
+	end
+
+	method number GetBagSlotIndexByInstanceId(any state, number instanceId)
+		-- Returns the spare bag slot containing the given instance id.
+		if state == nil or state.BagSlots == nil then
+			return 0
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return 0
+		end
+		for bagSlot = 1, self:GetBagSlotCount() do
+			if state.BagSlots[bagSlot] == safeInstanceId then
+				return bagSlot
 			end
 		end
 		return 0
@@ -608,6 +1153,68 @@ script BRSkillSystem extends Logic
 				state.Equipped["Chain" .. tostring(slotIndex)] = nil
 			end
 		end
+	end
+
+	method void RemovePartFromBag(any state, number instanceId)
+		-- Removes a part from every spare bag slot.
+		if state == nil or state.BagSlots == nil then
+			return
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		for bagSlot = 1, self:GetBagSlotCount() do
+			if state.BagSlots[bagSlot] == safeInstanceId then
+				state.BagSlots[bagSlot] = nil
+			end
+		end
+	end
+
+	method void RemovePartFromOwned(any state, number instanceId)
+		-- Removes a part from owned state entirely when no visible slot is available.
+		if state == nil or state.Parts == nil then
+			return
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		self:RemovePartFromChain(state, safeInstanceId)
+		self:RemovePartFromBag(state, safeInstanceId)
+		for index = #state.Parts, 1, -1 do
+			local part = state.Parts[index]
+			if part ~= nil and part.InstanceId == safeInstanceId then
+				table.remove(state.Parts, index)
+			end
+		end
+	end
+
+	method Entity FindPlayerEntityByUserId(string userId)
+		-- Finds a live player entity by MSW user id.
+		local safeUserId = tostring(self:ReadString(userId, ""))
+		if safeUserId == "" or _UserService == nil or _UserService.UserEntities == nil then
+			return nil
+		end
+		for index, playerEntity in ipairs(_UserService.UserEntities.Values) do
+			if playerEntity ~= nil and isvalid(playerEntity) and playerEntity.PlayerComponent ~= nil then
+				if tostring(self:ReadString(playerEntity.PlayerComponent.UserId, "")) == safeUserId then
+					return playerEntity
+				end
+			end
+		end
+		return nil
+	end
+
+	method string GetUserIdFromPlayer(Entity playerEntity)
+		-- Reads a player user id with a safe fallback.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return ""
+		end
+		return tostring(self:ReadString(playerEntity.PlayerComponent.UserId, ""))
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		-- Reads an entity world position as Vector2.
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
 	end
 
 	method number GetEquippedPartSlotIndex(any state, any part)
@@ -641,6 +1248,12 @@ script BRSkillSystem extends Logic
 		return math.max(1, math.min(self:GetChainSlotCount(), value))
 	end
 
+	method number ClampBagSlot(number bagSlot)
+		-- Clamps slot indexes to the spare bag bounds.
+		local value = math.floor(self:ReadNumber(bagSlot, 1))
+		return math.max(1, math.min(self:GetBagSlotCount(), value))
+	end
+
 	method number GetChainSlotCount()
 		-- Returns the fixed horizontal chain slot count.
 		return math.max(1, math.floor(self:ReadNumber(self.ChainSlotCount, 5)))
@@ -663,6 +1276,30 @@ script BRSkillSystem extends Logic
 			return tostring(math.floor(numberValue))
 		end
 		return tostring(math.floor(numberValue * 100 + 0.5) / 100)
+	end
+
+	method string SanitizeRecordText(string value)
+		-- Keeps semicolon/comma-delimited UI snapshots parseable.
+		local source = self:ReadString(value, "")
+		local text = ""
+		for index = 1, string.len(source) do
+			local char = string.sub(source, index, index)
+			if char == "," or char == ";" then
+				text = text .. " "
+			else
+				text = text .. char
+			end
+		end
+		return text
+	end
+
+	method string ResolveRequestUserId(string senderId, string requestUserId)
+		-- Prefer the RPC sender id; fall back to the explicit UI id for editor/server tests.
+		local sender = self:ReadString(senderId, "")
+		if sender ~= "" then
+			return sender
+		end
+		return self:ReadString(requestUserId, "")
 	end
 
 	method string ReadString(any value, string fallback)

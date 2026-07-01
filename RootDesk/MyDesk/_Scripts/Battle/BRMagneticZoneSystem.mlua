@@ -999,6 +999,31 @@ script BRMagneticZoneSystem extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
+	method void EnsureForbiddenTimeAtLeast(string userId, number minimumSeconds)
+		-- Restores one player's forbidden-zone time budget up to a minimum value.
+		self:EnsureRuntimeTables()
+		local safeUserId = self:ReadString(userId, "")
+		local minimum = math.max(0, self:ReadNumber(minimumSeconds, 0))
+		if safeUserId == "" or minimum <= 0 then
+			return
+		end
+
+		local current = self:ReadNumber(self._T.forbiddenRemaining[safeUserId], self.runtimeForbiddenSeconds)
+		if current >= minimum then
+			return
+		end
+
+		self._T.forbiddenRemaining[safeUserId] = minimum
+		local insideForbidden = false
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity ~= nil then
+			insideForbidden = self:IsEntityInForbiddenZone(playerEntity)
+		end
+		self:ReceivePersonalZoneState(minimum, insideForbidden, safeUserId)
+		self:Log("forbidden time restored user=" .. safeUserId .. " " .. tostring(current) .. "->" .. tostring(minimum))
+	end
+
+	@ExecSpace("ServerOnly")
 	method void PrimeCurrentPlayers()
 		-- Initializes forbidden-zone timers for players already in the zone map.
 		self:EnsureRuntimeTables()

@@ -31,6 +31,10 @@ script BRBattleLogic extends Component
 
 	property boolean EnableLifeSystem = true
 
+	property boolean EnableLastManStandingEnd = true
+
+	property number MinimumPlayersForLastManEnd = 2
+
 	property number DefaultLives = 2
 
 	property number LifeReviveDelaySeconds = 4
@@ -38,6 +42,10 @@ script BRBattleLogic extends Component
 	property number LifeReviveHpPercent = 0.6
 
 	property number LifeReviveInvincibleSeconds = 2
+
+	property boolean LifeReviveRequireSelection = true
+
+	property number LifeReviveMinForbiddenSeconds = 10
 
 	property number LifeNativeRespawnBlockSeconds = 9999
 
@@ -65,6 +73,10 @@ script BRBattleLogic extends Component
 
 	property boolean LogPhysicsStateOnRegister = false
 
+	property boolean RequireActiveMatch = true
+
+	property number ActiveMatchWaitPollSeconds = 0.25
+
 	@Sync
 	property number AlivePlayerCount = 0
 
@@ -86,7 +98,7 @@ script BRBattleLogic extends Component
 			return
 		end
 		
-		self:StartServerRuntime()
+		self:StartServerRuntimeWhenActive()
 	end
 
 	@ExecSpace("ServerOnly")
@@ -95,7 +107,24 @@ script BRBattleLogic extends Component
 	end
 
 	@ExecSpace("ServerOnly")
+	method void StartServerRuntimeWhenActive()
+		self:EnsureServerRuntimeTables()
+		if self:IsActiveMatchReady() == true then
+			self:StartServerRuntime()
+			return
+		end
+
+		self:StartActiveMatchWait()
+	end
+
+	@ExecSpace("ServerOnly")
 	method void StartServerRuntime()
+		self:EnsureServerRuntimeTables()
+		if self._T.runtimeStarted == true then
+			return
+		end
+
+		self:StopActiveMatchWait()
 		self._T.playerHandlers = {}
 		self._T.nextAttackAt = {}
 		self._T.invincibleUntil = {}
@@ -104,10 +133,15 @@ script BRBattleLogic extends Component
 		self._T.lifeState = {}
 		self._T.reviveUntil = {}
 		self._T.pendingRevive = {}
+		self._T.deathRoomKey = {}
+		self._T.reviveOptionVersions = {}
 		self._T.lastLifeSummary = ""
 		self._T.preparedPlayers = {}
+		self._T.knownParticipants = {}
+		self._T.matchEndRequested = false
 		self._T.lastPositions = {}
 		self._T.basePhysicsStats = {}
+		self._T.runtimeStarted = true
 		self._T.serverTimerId = _TimerService:SetTimerRepeat(function() self:RefreshBattlePlayers() end, self:GetPlayerScanSeconds(), 0)
 		if self.EnablePlatformFallback == true then
 			self._T.groundTimerId = _TimerService:SetTimerRepeat(function() self:GroundBattlePlayers() end, self:GetPlatformGroundingSeconds(), 0.1)
@@ -117,11 +151,13 @@ script BRBattleLogic extends Component
 		self:RefreshBattlePlayers()
 		self.BattlePhase = "Ready"
 		self:LogMapFootholdState()
+		log("[BRBattle] started map=" .. self:GetBattleMapName())
 		self:Log("started map=" .. self:GetBattleMapName())
 	end
 
 	@ExecSpace("ServerOnly")
 	method void StopServerRuntime()
+		self:StopActiveMatchWait()
 		if self._T.serverTimerId ~= nil and self._T.serverTimerId > 0 then
 			_TimerService:ClearTimer(self._T.serverTimerId)
 		end
@@ -144,17 +180,61 @@ script BRBattleLogic extends Component
 		self._T.lifeState = {}
 		self._T.reviveUntil = {}
 		self._T.pendingRevive = {}
+		self._T.deathRoomKey = {}
+		self._T.reviveOptionVersions = {}
 		self._T.lastLifeSummary = ""
 		self._T.preparedPlayers = {}
+		self._T.knownParticipants = {}
+		self._T.matchEndRequested = false
 		self._T.lastPositions = {}
 		self._T.basePhysicsStats = {}
+		self._T.runtimeStarted = false
 		self.LifeMapName = ""
 		self.LifeSummary = ""
 		self.LifeVersion = self.LifeVersion + 1
 	end
 
 	@ExecSpace("ServerOnly")
+	method void StartActiveMatchWait()
+		self:EnsureServerRuntimeTables()
+		if self.RequireActiveMatch ~= true then
+			return
+		end
+		if self._T.activeMatchWaitTimerId ~= nil and self._T.activeMatchWaitTimerId > 0 then
+			return
+		end
+
+		self._T.activeMatchWaitTimerId = _TimerService:SetTimerRepeat(function() self:TryStartServerRuntimeWhenActive() end, self:GetActiveMatchWaitPollSeconds(), 0.1)
+		log("[BRBattle] waiting active match map=" .. self:GetBattleMapName())
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StopActiveMatchWait()
+		if self._T.activeMatchWaitTimerId ~= nil and self._T.activeMatchWaitTimerId > 0 then
+			_TimerService:ClearTimer(self._T.activeMatchWaitTimerId)
+		end
+		self._T.activeMatchWaitTimerId = 0
+	end
+
+	@ExecSpace("ServerOnly")
+	method void TryStartServerRuntimeWhenActive()
+		if self:IsActiveMatchReady() ~= true then
+			return
+		end
+
+		log("[BRBattle] active match detected map=" .. self:GetBattleMapName())
+		self:StartServerRuntime()
+	end
+
+	@ExecSpace("ServerOnly")
 	method void RefreshBattlePlayers()
+		if self:IsActiveMatchReady() ~= true then
+			log("[BRBattle] stopped map=" .. self:GetBattleMapName() .. " reason=active match missing")
+			self:StopServerRuntime()
+			self:StartActiveMatchWait()
+			return
+		end
+
 		self:EnsureServerRuntimeTables()
 		local mapName = self:GetBattleMapName()
 		local activeUsers = {}
@@ -195,6 +275,7 @@ script BRBattleLogic extends Component
 		
 		if self._T.playerHandlers[userId] ~= nil then
 			self._T.playerHandlers[userId].Entity = playerEntity
+			self._T.knownParticipants[userId] = true
 			if self.OverridePlayerPhysicsStats == true then
 				self:ApplyBattlePhysicsSettings(playerEntity, false)
 			end
@@ -209,6 +290,7 @@ script BRBattleLogic extends Component
 			Entity = playerEntity,
 			ActionHandler = actionHandler
 		}
+		self._T.knownParticipants[userId] = true
 		self:Log("registered user=" .. userId .. " map=" .. self:GetBattleMapName())
 	end
 
@@ -243,6 +325,12 @@ script BRBattleLogic extends Component
 		end
 		if self._T.pendingRevive ~= nil then
 			self._T.pendingRevive[userId] = nil
+		end
+		if self._T.deathRoomKey ~= nil then
+			self._T.deathRoomKey[userId] = nil
+		end
+		if self._T.reviveOptionVersions ~= nil then
+			self._T.reviveOptionVersions[userId] = nil
 		end
 		if self._T.preparedPlayers ~= nil then
 			self._T.preparedPlayers[userId] = nil
@@ -298,6 +386,7 @@ script BRBattleLogic extends Component
 			self._T.lifeState[userId] = "ALIVE"
 			self._T.reviveUntil[userId] = 0
 			self._T.pendingRevive[userId] = nil
+			self._T.deathRoomKey[userId] = nil
 		elseif playerComponent.Hp <= 0 then
 			playerComponent.Hp = maxHp
 			if self._T.lives[userId] == nil then
@@ -306,11 +395,13 @@ script BRBattleLogic extends Component
 			self._T.lifeState[userId] = "ALIVE"
 			self._T.reviveUntil[userId] = 0
 			self._T.pendingRevive[userId] = nil
+			self._T.deathRoomKey[userId] = nil
 		elseif self._T.lives[userId] == nil then
 			self._T.lives[userId] = self:GetDefaultLives()
 			self._T.lifeState[userId] = "ALIVE"
 			self._T.reviveUntil[userId] = 0
 			self._T.pendingRevive[userId] = nil
+			self._T.deathRoomKey[userId] = nil
 		end
 		
 		self._T.preparedPlayers[userId] = true
@@ -771,6 +862,7 @@ script BRBattleLogic extends Component
 		if attackerEntity ~= nil and attackerEntity.PlayerComponent ~= nil then
 			attackerId = attackerEntity.PlayerComponent.UserId
 		end
+		local deathRoomKey = self:GetLogicalRoomKeyForEntity(targetEntity)
 
 		playerComponent.Hp = 0
 		playerComponent.RespawnDuration = self:GetLifeNativeRespawnBlockSeconds()
@@ -783,6 +875,7 @@ script BRBattleLogic extends Component
 			self:UpdateAlivePlayerCount()
 			self:UpdateLifeSummary()
 			self:Log("dead user=" .. userId .. " attacker=" .. attackerId .. " reason=" .. self:ReadString(reason, ""))
+			self:CheckLastManStanding(reason)
 			return
 		end
 
@@ -796,12 +889,18 @@ script BRBattleLogic extends Component
 			self._T.lifeState[userId] = "REVIVE"
 			self._T.pendingRevive[userId] = true
 			self._T.reviveUntil[userId] = self:Now() + delay
+			self._T.deathRoomKey[userId] = deathRoomKey
 			self:UpdateAlivePlayerCount()
 			self:UpdateLifeSummary()
 			self:RefreshMiniMapPlayerCounts()
 			self:Log("life consumed user=" .. userId .. " lives=" .. tostring(remainingLives) .. "/" .. tostring(maxLives)
-				.. " reviveDelay=" .. tostring(delay) .. " reason=" .. self:ReadString(reason, "") .. " attacker=" .. attackerId)
-			_TimerService:SetTimerOnce(function() self:RevivePlayerByUserId(userId) end, delay)
+				.. " reviveDelay=" .. tostring(delay) .. " deathRoom=" .. self:ReadString(deathRoomKey, "-") .. " reason=" .. self:ReadString(reason, "") .. " attacker=" .. attackerId)
+			if self:IsLifeReviveSelectionEnabled() == true then
+				self:PushReviveOptionsToUser(userId, "Waiting for revive selection...")
+				_TimerService:SetTimerOnce(function() self:PushReviveOptionsToUser(userId, "Select a revive point.") end, delay)
+			else
+				_TimerService:SetTimerOnce(function() self:RevivePlayerByUserId(userId) end, delay)
+			end
 			return
 		end
 
@@ -811,6 +910,7 @@ script BRBattleLogic extends Component
 		self:UpdateAlivePlayerCount()
 		self:UpdateLifeSummary()
 		self:Log("life out user=" .. userId .. " reason=" .. self:ReadString(reason, "") .. " attacker=" .. attackerId)
+		self:CheckLastManStanding(reason)
 	end
 
 	@ExecSpace("ServerOnly")
@@ -828,6 +928,7 @@ script BRBattleLogic extends Component
 			self._T.pendingRevive[safeUserId] = nil
 			self._T.lifeState[safeUserId] = "OUT"
 			self:UpdateLifeSummary()
+			self:CheckLastManStanding("revive-expired")
 			return
 		end
 
@@ -836,18 +937,35 @@ script BRBattleLogic extends Component
 			self._T.pendingRevive[safeUserId] = nil
 			self._T.lifeState[safeUserId] = "OUT"
 			self:UpdateLifeSummary()
+			self:CheckLastManStanding("revive-missing-player")
 			return
 		end
 		if playerEntity.CurrentMapName ~= self:GetBattleMapName() then
 			self._T.pendingRevive[safeUserId] = nil
 			self._T.lifeState[safeUserId] = "OUT"
 			self:UpdateLifeSummary()
+			self:CheckLastManStanding("revive-map-left")
+			return
+		end
+		if self:IsLifeReviveSelectionEnabled() == true then
+			self:PushReviveOptionsToUser(safeUserId, "Select a revive point.")
 			return
 		end
 
 		local revivePosition = self:PickEmptyRespawnPosition(safeUserId)
 		if revivePosition == nil then
 			revivePosition = self:GetEntityPosition2(playerEntity)
+		end
+
+		self:RevivePlayerAtPosition(safeUserId, playerEntity, revivePosition, "auto")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RevivePlayerAtPosition(string userId, Entity playerEntity, Vector2 revivePosition, string source)
+		-- Performs the actual custom life revive at the validated position.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
 		end
 
 		local playerComponent = playerEntity.PlayerComponent
@@ -870,36 +988,236 @@ script BRBattleLogic extends Component
 		self._T.pendingRevive[safeUserId] = nil
 		self._T.reviveUntil[safeUserId] = 0
 		self._T.lifeState[safeUserId] = "ALIVE"
+		self._T.deathRoomKey[safeUserId] = nil
+		self:EnsureReviveForbiddenTime(safeUserId)
 		self:UpdateAlivePlayerCount()
 		self:UpdateLifeSummary()
 		self:RefreshMiniMapPlayerCounts()
 		self:Log("life revive user=" .. safeUserId
 			.. " lives=" .. tostring(math.floor(self:ReadNumber(self._T.lives[safeUserId], 0)))
 			.. " hp=" .. tostring(playerComponent.Hp) .. "/" .. tostring(maxHp)
-			.. " pos=(" .. tostring(revivePosition.x) .. "," .. tostring(revivePosition.y) .. ")")
+			.. " pos=(" .. tostring(revivePosition.x) .. "," .. tostring(revivePosition.y) .. ") source=" .. self:ReadString(source, ""))
+	end
+
+	@ExecSpace("Server")
+	method void RequestReviveOptions()
+		-- Pushes the caller's current selectable revive rooms to the client UI.
+		local userId = self:GetSenderUserId()
+		if userId == "" then
+			return
+		end
+		self:PushReviveOptionsToUser(userId, "")
+	end
+
+	@ExecSpace("Server")
+	method void RequestReviveAt(number row, number column)
+		-- Validates and performs a selected revive location.
+		local userId = self:GetSenderUserId()
+		if userId == "" then
+			return
+		end
+
+		self:EnsureServerRuntimeTables()
+		if self:IsLifeReviveSelectionEnabled() ~= true then
+			self:PushReviveOptionsToUser(userId, "Revive selection is disabled.")
+			return
+		end
+		if self._T.pendingRevive[userId] ~= true then
+			self:PushReviveOptionsToUser(userId, "You are not waiting for revive.")
+			return
+		end
+		if self:ReadNumber(self._T.lives[userId], 0) <= 0 then
+			self:PushReviveOptionsToUser(userId, "No lives left.")
+			return
+		end
+
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.reviveUntil[userId], now) then
+			self:PushReviveOptionsToUser(userId, "Revive preparing...")
+			return
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(userId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			self._T.pendingRevive[userId] = nil
+			self._T.lifeState[userId] = "OUT"
+			self:UpdateLifeSummary()
+			self:CheckLastManStanding("revive-missing-player")
+			return
+		end
+		if playerEntity.CurrentMapName ~= self:GetBattleMapName() then
+			self._T.pendingRevive[userId] = nil
+			self._T.lifeState[userId] = "OUT"
+			self:UpdateLifeSummary()
+			self:CheckLastManStanding("revive-map-left")
+			return
+		end
+
+		local graph = self:GetLatestRoomGraph()
+		local room = self:FindLogicalRoomByCoordinate(graph, row, column)
+		local roomKey = self:GetLogicalRoomKey(room)
+		if room == nil or roomKey == "" then
+			self:PushReviveOptionsToUser(userId, "That room is not available.")
+			return
+		end
+		if roomKey == self:ReadString(self._T.deathRoomKey[userId], "") then
+			self:PushReviveOptionsToUser(userId, "Cannot revive where you died.")
+			return
+		end
+
+		local occupied = self:BuildOccupiedLogicalRoomCounts(graph, userId)
+		if self:ReadNumber(occupied[roomKey], 0) > 0 then
+			self:PushReviveOptionsToUser(userId, "Cannot revive on another player.")
+			return
+		end
+
+		local revivePosition = self:GetRespawnPositionForLogicalRoom(graph, room)
+		if revivePosition == nil then
+			self:PushReviveOptionsToUser(userId, "Revive point is missing.")
+			return
+		end
+		self:RevivePlayerAtPosition(userId, playerEntity, revivePosition, "selected:" .. roomKey)
+		self:ReceiveReviveOptions("", "", 0, self:GetNextReviveOptionVersion(userId), userId)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PushReviveOptionsToUser(string userId, string message)
+		-- Builds and pushes revive UI state to one waiting user.
+		self:EnsureServerRuntimeTables()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+
+		local now = self:Now()
+		local remaining = math.max(0, self:ReadNumber(self._T.reviveUntil[safeUserId], now) - now)
+		local optionsText = self:BuildReviveOptionsText(safeUserId)
+		local safeMessage = self:ReadString(message, "")
+		if optionsText == "" and self._T.pendingRevive[safeUserId] == true then
+			safeMessage = "No revive room is available."
+		end
+		self:ReceiveReviveOptions(optionsText, safeMessage, remaining, self:GetNextReviveOptionVersion(safeUserId), safeUserId)
+	end
+
+	@ExecSpace("Client")
+	method void ReceiveReviveOptions(string optionsText, string message, number remainingSeconds, number version)
+		-- Receives the local revive-selection payload.
+		self._T.localReviveOptionsText = self:ReadString(optionsText, "")
+		self._T.localReviveMessage = self:ReadString(message, "")
+		self._T.localReviveRemaining = math.max(0, self:ReadNumber(remainingSeconds, 0))
+		self._T.localReviveReceivedAt = _UtilLogic.ElapsedSeconds
+		self._T.localReviveOptionsVersion = self:ReadNumber(version, 0)
+	end
+
+	@ExecSpace("Client")
+	method string GetLocalReviveOptionsText()
+		return self:ReadString(self._T.localReviveOptionsText, "")
+	end
+
+	@ExecSpace("Client")
+	method string GetLocalReviveMessage()
+		return self:ReadString(self._T.localReviveMessage, "")
+	end
+
+	@ExecSpace("Client")
+	method number GetLocalReviveRemainingSeconds()
+		local remaining = math.max(0, self:ReadNumber(self._T.localReviveRemaining, 0))
+		local receivedAt = self:ReadNumber(self._T.localReviveReceivedAt, _UtilLogic.ElapsedSeconds)
+		local elapsed = math.max(0, _UtilLogic.ElapsedSeconds - receivedAt)
+		return math.max(0, remaining - elapsed)
+	end
+
+	@ExecSpace("Client")
+	method number GetLocalReviveOptionsVersion()
+		return self:ReadNumber(self._T.localReviveOptionsVersion, 0)
+	end
+
+	method string BuildReviveOptionsText(string userId)
+		-- Serializes revive candidates as row,column,state,count records.
+		local graph = self:GetLatestRoomGraph()
+		if graph == nil or graph.Rooms == nil then
+			return ""
+		end
+
+		local occupied = self:BuildOccupiedLogicalRoomCounts(graph, userId)
+		local deathRoomKey = self:ReadString(self._T.deathRoomKey[userId], "")
+		local text = ""
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				local roomKey = self:GetLogicalRoomKey(room)
+				if roomKey ~= "" then
+					local state = 1
+					local count = math.floor(self:ReadNumber(occupied[roomKey], 0))
+					if roomKey == deathRoomKey then
+						state = 2
+					elseif count > 0 then
+						state = 3
+					end
+					if text ~= "" then
+						text = text .. ";"
+					end
+					text = text .. tostring(math.floor(self:ReadNumber(room.Row, 0)))
+						.. "," .. tostring(math.floor(self:ReadNumber(room.Column, 0)))
+						.. "," .. tostring(state)
+						.. "," .. tostring(count)
+				end
+			end
+		end
+		return text
+	end
+
+	method number GetNextReviveOptionVersion(string userId)
+		local safeUserId = self:ReadString(userId, "")
+		if self._T.reviveOptionVersions == nil then
+			self._T.reviveOptionVersions = {}
+		end
+		self._T.reviveOptionVersions[safeUserId] = self:ReadNumber(self._T.reviveOptionVersions[safeUserId], 0) + 1
+		return self._T.reviveOptionVersions[safeUserId]
+	end
+
+	method any GetLatestRoomGraph()
+		if _BRRoomGraphGenerator == nil then
+			return nil
+		end
+		return _BRRoomGraphGenerator:GetLatestGraphForMap(self:GetBattleMapName())
+	end
+
+	method any FindLogicalRoomByCoordinate(any graph, number row, number column)
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local safeRow = math.floor(self:ReadNumber(row, 0))
+		local safeColumn = math.floor(self:ReadNumber(column, 0))
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				if math.floor(self:ReadNumber(room.Row, 0)) == safeRow and math.floor(self:ReadNumber(room.Column, 0)) == safeColumn then
+					return room
+				end
+			end
+		end
+		return nil
 	end
 
 	method any PickEmptyRespawnPosition(string excludedUserId)
 		-- Picks a respawn point from the latest logical graph, ignoring magnetic-zone state.
-		if _BRRoomGraphGenerator == nil then
-			return nil
-		end
-
-		local mapName = self:GetBattleMapName()
-		local graph = _BRRoomGraphGenerator:GetLatestGraphForMap(mapName)
+		local graph = self:GetLatestRoomGraph()
 		if graph == nil or graph.Rooms == nil then
 			return nil
 		end
 
 		local occupied = self:BuildOccupiedLogicalRoomCounts(graph, excludedUserId)
+		local deathRoomKey = self:ReadString(self._T.deathRoomKey[self:ReadString(excludedUserId, "")], "")
 		local emptyRooms = {}
 		local fallbackRooms = {}
 		for index, room in ipairs(graph.Rooms) do
 			if room ~= nil and room.Visited == true then
 				local roomKey = self:GetLogicalRoomKey(room)
 				if roomKey ~= "" then
-					table.insert(fallbackRooms, room)
-					if self:ReadNumber(occupied[roomKey], 0) <= 0 then
+					if roomKey ~= deathRoomKey then
+						table.insert(fallbackRooms, room)
+					end
+					if roomKey ~= deathRoomKey and self:ReadNumber(occupied[roomKey], 0) <= 0 then
 						table.insert(emptyRooms, room)
 					end
 				end
@@ -934,7 +1252,7 @@ script BRBattleLogic extends Component
 		for index, playerEntity in ipairs(users) do
 			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
 				local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
-				if userId ~= "" and userId ~= excluded then
+				if userId ~= "" and userId ~= excluded and playerEntity.PlayerComponent:IsDead() ~= true and playerEntity.PlayerComponent.Hp > 0 then
 					local room = _BRRoomGraphGenerator:GetLogicalRoomForPosition(graph, self:GetEntityPosition2(playerEntity))
 					local roomKey = self:GetLogicalRoomKey(room)
 					if roomKey ~= "" then
@@ -1016,6 +1334,31 @@ script BRBattleLogic extends Component
 		return tostring(row) .. ":" .. tostring(column)
 	end
 
+	method string GetLogicalRoomKeyForEntity(Entity playerEntity)
+		-- Finds the current logical room key for a player entity.
+		if playerEntity == nil or _BRRoomGraphGenerator == nil then
+			return ""
+		end
+
+		local graph = self:GetLatestRoomGraph()
+		if graph == nil then
+			return ""
+		end
+
+		local room = _BRRoomGraphGenerator:GetLogicalRoomForPosition(graph, self:GetEntityPosition2(playerEntity))
+		return self:GetLogicalRoomKey(room)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void EnsureReviveForbiddenTime(string userId)
+		-- Guarantees a freshly revived player has enough forbidden-zone budget to move.
+		local minimumSeconds = self:GetLifeReviveMinForbiddenSeconds()
+		if minimumSeconds <= 0 or _BRMagneticZoneSystem == nil then
+			return
+		end
+		_BRMagneticZoneSystem:EnsureForbiddenTimeAtLeast(self:ReadString(userId, ""), minimumSeconds)
+	end
+
 	@ExecSpace("ServerOnly")
 	method void UpdateLifeSummary()
 		-- Synchronizes each current player's life and revive countdown to clients.
@@ -1091,7 +1434,85 @@ script BRBattleLogic extends Component
 	end
 
 	@ExecSpace("ServerOnly")
+	method void CheckLastManStanding(string reason)
+		-- Ends the match when only one non-out participant remains.
+		if self.EnableLastManStandingEnd ~= true then
+			return
+		end
+
+		self:EnsureServerRuntimeTables()
+		if self._T.matchEndRequested == true then
+			return
+		end
+
+		local knownCount = self:GetKnownParticipantCount()
+		if knownCount < self:GetMinimumPlayersForLastManEnd() then
+			return
+		end
+
+		local summary = self:GetRemainingContenderSummary()
+		if summary.Count > 1 then
+			return
+		end
+
+		self._T.matchEndRequested = true
+		self.BattlePhase = "Ending"
+		self:Log("last man result winner=" .. self:ReadString(summary.WinnerUserId, "") .. " contenders=" .. tostring(summary.Count) .. " known=" .. tostring(knownCount) .. " reason=" .. self:ReadString(reason, ""))
+		if _BRBattleLauncher ~= nil then
+			_BRBattleLauncher:FinishMatchByMap(self:GetBattleMapName(), self:ReadString(summary.WinnerUserId, ""), self:ReadString(reason, "last-man"))
+		end
+	end
+
+	method any GetRemainingContenderSummary()
+		-- Counts participants who still have lives and are not out.
+		self:EnsureServerRuntimeTables()
+		local result = {
+			Count = 0,
+			WinnerUserId = ""
+		}
+
+		for userId, known in pairs(self._T.knownParticipants) do
+			if known == true and self:IsUserStillContending(userId) == true then
+				result.Count = result.Count + 1
+				result.WinnerUserId = self:ReadString(userId, "")
+			end
+		end
+		return result
+	end
+
+	method boolean IsUserStillContending(string userId)
+		-- Returns true while a known participant is alive or waiting for revive.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return false
+		end
+		if self._T.playerHandlers == nil or self._T.playerHandlers[safeUserId] == nil then
+			return false
+		end
+
+		local state = self:ReadString(self._T.lifeState[safeUserId], "ALIVE")
+		local lives = math.max(0, math.floor(self:ReadNumber(self._T.lives[safeUserId], self:GetDefaultLives())))
+		if state == "OUT" or lives <= 0 then
+			return false
+		end
+		return true
+	end
+
+	method number GetKnownParticipantCount()
+		-- Counts every participant registered during this match lifecycle.
+		self:EnsureServerRuntimeTables()
+		local count = 0
+		for userId, known in pairs(self._T.knownParticipants) do
+			if known == true then
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	@ExecSpace("ServerOnly")
 	method void UpdateAlivePlayerCount()
+		self:EnsureServerRuntimeTables()
 		local count = 0
 		local users = _UserService:GetUsersByMapName(self:GetBattleMapName())
 		if users ~= nil then
@@ -1105,10 +1526,19 @@ script BRBattleLogic extends Component
 		end
 		
 		self.AlivePlayerCount = count
+		if self._T.matchEndRequested == true then
+			self.BattlePhase = "Ending"
+			return
+		end
 		if count > 0 then
 			self.BattlePhase = "Playing " .. tostring(count)
 		else
-			self.BattlePhase = "Waiting"
+			local contenders = self:GetRemainingContenderSummary()
+			if contenders.Count > 0 then
+				self.BattlePhase = "Reviving " .. tostring(contenders.Count)
+			else
+				self.BattlePhase = "Waiting"
+			end
 		end
 	end
 
@@ -1123,6 +1553,12 @@ script BRBattleLogic extends Component
 
 	@ExecSpace("ServerOnly")
 	method void EnsureServerRuntimeTables()
+		if self._T.runtimeStarted == nil then
+			self._T.runtimeStarted = false
+		end
+		if self._T.activeMatchWaitTimerId == nil then
+			self._T.activeMatchWaitTimerId = 0
+		end
 		if self._T.playerHandlers == nil then
 			self._T.playerHandlers = {}
 		end
@@ -1147,11 +1583,23 @@ script BRBattleLogic extends Component
 		if self._T.pendingRevive == nil then
 			self._T.pendingRevive = {}
 		end
+		if self._T.deathRoomKey == nil then
+			self._T.deathRoomKey = {}
+		end
+		if self._T.reviveOptionVersions == nil then
+			self._T.reviveOptionVersions = {}
+		end
 		if self._T.lastLifeSummary == nil then
 			self._T.lastLifeSummary = ""
 		end
 		if self._T.preparedPlayers == nil then
 			self._T.preparedPlayers = {}
+		end
+		if self._T.knownParticipants == nil then
+			self._T.knownParticipants = {}
+		end
+		if self._T.matchEndRequested == nil then
+			self._T.matchEndRequested = false
 		end
 		if self._T.lastPositions == nil then
 			self._T.lastPositions = {}
@@ -1159,6 +1607,20 @@ script BRBattleLogic extends Component
 		if self._T.basePhysicsStats == nil then
 			self._T.basePhysicsStats = {}
 		end
+		if self._T.localReviveReceivedAt == nil then
+			self._T.localReviveReceivedAt = 0
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean IsActiveMatchReady()
+		if self.RequireActiveMatch ~= true then
+			return true
+		end
+		if _BRBattleLauncher == nil then
+			return false
+		end
+		return _BRBattleLauncher:IsActiveMatchForMap(self:GetBattleMapName())
 	end
 
 	method boolean IsAttackAction(string actionName)
@@ -1251,6 +1713,10 @@ script BRBattleLogic extends Component
 		return math.max(0.033, self:ReadNumber(self.PlayerScanSeconds, 0.05))
 	end
 
+	method number GetActiveMatchWaitPollSeconds()
+		return math.max(0.1, self:ReadNumber(self.ActiveMatchWaitPollSeconds, 0.25))
+	end
+
 	method number GetPlayerRespawnDuration()
 		return math.max(0, self:ReadNumber(self.PlayerRespawnDuration, 5))
 	end
@@ -1258,6 +1724,11 @@ script BRBattleLogic extends Component
 	method number GetDefaultLives()
 		-- Returns total lives granted at battle entry.
 		return math.max(1, math.floor(self:ReadNumber(self.DefaultLives, 2)))
+	end
+
+	method number GetMinimumPlayersForLastManEnd()
+		-- Returns how many participants must have joined before last-man ending is allowed.
+		return math.max(2, math.floor(self:ReadNumber(self.MinimumPlayersForLastManEnd, 2)))
 	end
 
 	method number GetLifeReviveDelaySeconds()
@@ -1273,6 +1744,16 @@ script BRBattleLogic extends Component
 	method number GetLifeReviveInvincibleSeconds()
 		-- Returns temporary invulnerability after life revive.
 		return math.max(0, self:ReadNumber(self.LifeReviveInvincibleSeconds, 2))
+	end
+
+	method boolean IsLifeReviveSelectionEnabled()
+		-- Returns whether custom revive point selection is required.
+		return self.LifeReviveRequireSelection == true
+	end
+
+	method number GetLifeReviveMinForbiddenSeconds()
+		-- Returns the minimum forbidden-zone time restored on revive.
+		return math.max(0, self:ReadNumber(self.LifeReviveMinForbiddenSeconds, 10))
 	end
 
 	method number GetLifeNativeRespawnBlockSeconds()
@@ -1325,6 +1806,10 @@ script BRBattleLogic extends Component
 		return _UtilLogic.ElapsedSeconds
 	end
 
+	method string GetSenderUserId()
+		return self:ReadString(senderUserId, "")
+	end
+
 	method string ReadString(any value, string fallback)
 		if value == nil or value == "" then
 			return fallback
@@ -1350,6 +1835,7 @@ script BRBattleLogic extends Component
 	@EventSender("Service", "UserService")
 	handler HandleUserLeaveEvent(UserLeaveEvent event)
 		self:UnregisterBattlePlayer(event.UserId)
+		self:CheckLastManStanding("leave")
 	end
 
 end

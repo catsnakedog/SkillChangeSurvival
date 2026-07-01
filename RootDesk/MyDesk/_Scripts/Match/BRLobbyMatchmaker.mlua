@@ -53,6 +53,8 @@ script BRLobbyMatchmaker extends Component
 
 	property number GatherColumns = 8
 
+	property number MatchLoadingSeconds = 3
+
 	@Sync
 	property string MatchmakingPhase = "Idle"
 
@@ -564,6 +566,54 @@ script BRLobbyMatchmaker extends Component
 		}
 		self._T.activeMaps[mapName] = true
 		self.ActiveMatchCount = self:GetActiveMatchCount()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void MarkMatchPlaying(any matchRoom)
+		-- Marks a gathered match as actively playing after its loading gate opens.
+		self:EnsureRuntimeStarted()
+		self:EnsureRoomQueue()
+		if matchRoom == nil then
+			return
+		end
+
+		local matchId = self:ReadString(matchRoom.MatchId, "")
+		if matchId == "" then
+			return
+		end
+		_BRMatchRoomQueue:UpdateRoomState(self._T.roomQueue, matchId, "Playing", self:Now())
+		self.MatchmakingPhase = "Playing"
+		self:UpdateActiveMatchCount()
+		log("[BRLobby] match playing id=" .. matchId .. " activeMatches=" .. tostring(self.ActiveMatchCount))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void CompleteMatch(any matchRoom, string winnerUserId, string reason)
+		-- Marks a playing match as ended and releases matchmaker capacity.
+		self:EnsureRuntimeStarted()
+		self:EnsureRoomQueue()
+		if matchRoom == nil then
+			return
+		end
+
+		local matchId = self:ReadString(matchRoom.MatchId, "")
+		local targetMapName = self:ReadString(matchRoom.TargetMapName, "")
+		if matchId ~= "" then
+			_BRMatchRoomQueue:UpdateRoomState(self._T.roomQueue, matchId, "Ended", self:Now())
+			if self._T.matches ~= nil then
+				self._T.matches[matchId] = nil
+			end
+		end
+		if targetMapName ~= "" and self._T.activeMaps ~= nil then
+			self._T.activeMaps[targetMapName] = nil
+		end
+
+		self.MatchmakingPhase = "Ended"
+		self.LastGatherId = matchId
+		self.LastTargetMapName = targetMapName
+		self.LastError = ""
+		self:UpdateActiveMatchCount()
+		log("[BRLobby] match completed id=" .. matchId .. " winner=" .. self:ReadString(winnerUserId, "") .. " reason=" .. self:ReadString(reason, "") .. " activeMatches=" .. tostring(self.ActiveMatchCount))
 	end
 
 	@ExecSpace("ServerOnly")

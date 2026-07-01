@@ -1,0 +1,201 @@
+@Component
+script BRTrainingDummy extends Component
+
+	property boolean EnableTrainingDummy = true
+
+	property number MaxHp = 500
+
+	property number ResetDelaySeconds = 3
+
+	property number DamageFlashSeconds = 0.12
+
+	property boolean VerboseLog = true
+
+	@Sync
+	property number CurrentHp = 500
+
+	@Sync
+	property string DummyStatus = "Ready"
+
+	property number resetTimerId = 0
+
+	property number flashTimerId = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		if self.EnableTrainingDummy == false then
+			return
+		end
+
+		self:ResetDummy()
+		self:Log("ready hp=" .. tostring(self:GetMaxHp()) .. " map=" .. self:GetMapName())
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnEndPlay()
+		self:ClearTimers()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyTrainingDamage(Entity attackerEntity, number rawDamage, string source)
+		if self.EnableTrainingDummy == false then
+			return
+		end
+		if self.CurrentHp <= 0 then
+			return
+		end
+
+		local damage = math.max(1, math.floor(self:ReadNumber(rawDamage, 1)))
+		self.CurrentHp = math.max(0, self.CurrentHp - damage)
+		self:UpdateDummyStatus()
+
+		local attackerId = self:GetUserId(attackerEntity)
+		self:Log("hit source=" .. self:ReadString(source, "unknown")
+			.. " attacker=" .. attackerId
+			.. " damage=" .. tostring(damage)
+			.. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()))
+
+		if self.CurrentHp <= 0 then
+			self:BreakDummy()
+		else
+			self:FlashHit()
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ResetDummy()
+		self:ClearTimers()
+		self.CurrentHp = self:GetMaxHp()
+		self.DummyStatus = "Ready"
+		self:SetDummyColor(Color(0.87, 0.68, 0.32, 1))
+		self:UpdateNameTag()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void BreakDummy()
+		self:ClearFlashTimer()
+		self.DummyStatus = "Broken"
+		self:SetDummyColor(Color(0.4, 0.4, 0.4, 1))
+		self:UpdateNameTag()
+		self:Log("broken resetIn=" .. tostring(self:GetResetDelaySeconds()))
+
+		local delay = self:GetResetDelaySeconds()
+		if delay <= 0 then
+			self:ResetDummy()
+			return
+		end
+		self.resetTimerId = _TimerService:SetTimerOnce(function() self:ResetDummy() end, delay)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void FlashHit()
+		self:ClearFlashTimer()
+		self:SetDummyColor(Color(1, 0.28, 0.22, 1))
+		self.flashTimerId = _TimerService:SetTimerOnce(function() self:RestoreIdleVisual() end, self:GetDamageFlashSeconds())
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RestoreIdleVisual()
+		self.flashTimerId = 0
+		if self.CurrentHp <= 0 then
+			return
+		end
+		self:SetDummyColor(Color(0.87, 0.68, 0.32, 1))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UpdateDummyStatus()
+		if self.CurrentHp <= 0 then
+			self.DummyStatus = "Broken"
+		else
+			self.DummyStatus = "HP " .. tostring(math.floor(self.CurrentHp)) .. "/" .. tostring(self:GetMaxHp())
+		end
+		self:UpdateNameTag()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UpdateNameTag()
+		if self.Entity == nil or self.Entity.NameTagComponent == nil then
+			return
+		end
+		self.Entity.NameTagComponent.Name = "TRAINING DUMMY\n" .. self:ReadString(self.DummyStatus, "Ready")
+		if self.CurrentHp <= 0 then
+			self.Entity.NameTagComponent.FontColor = Color(0.75, 0.75, 0.75, 1)
+		else
+			self.Entity.NameTagComponent.FontColor = Color(1, 0.92, 0.58, 1)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SetDummyColor(Color color)
+		if self.Entity == nil or self.Entity.PolygonRendererComponent == nil then
+			return
+		end
+		self.Entity.PolygonRendererComponent.Color = color
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ClearTimers()
+		self:ClearFlashTimer()
+		if self.resetTimerId ~= nil and self.resetTimerId > 0 then
+			_TimerService:ClearTimer(self.resetTimerId)
+		end
+		self.resetTimerId = 0
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ClearFlashTimer()
+		if self.flashTimerId ~= nil and self.flashTimerId > 0 then
+			_TimerService:ClearTimer(self.flashTimerId)
+		end
+		self.flashTimerId = 0
+	end
+
+	method string GetMapName()
+		if self.Entity ~= nil and self.Entity.CurrentMapName ~= nil then
+			return self.Entity.CurrentMapName
+		end
+		return ""
+	end
+
+	method string GetUserId(Entity entity)
+		if entity ~= nil and entity.PlayerComponent ~= nil then
+			return self:ReadString(entity.PlayerComponent.UserId, "")
+		end
+		return ""
+	end
+
+	method number GetMaxHp()
+		return math.max(1, math.floor(self:ReadNumber(self.MaxHp, 500)))
+	end
+
+	method number GetResetDelaySeconds()
+		return math.max(0, self:ReadNumber(self.ResetDelaySeconds, 3))
+	end
+
+	method number GetDamageFlashSeconds()
+		return math.max(0.03, self:ReadNumber(self.DamageFlashSeconds, 0.12))
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRTrainingDummy] " .. message)
+		end
+	end
+
+end

@@ -1,0 +1,33 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "codeblock://6e2d5559-9bcf-4a51-9bd8-5c8077cfac63",
+  "ContentType": "x-mod/codeblock",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.5.0.0",
+  "StudioVersion": "",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "CoreVersion": {
+        "Major": 0,
+        "Minor": 2
+      },
+      "ScriptVersion": {
+        "Major": 1,
+        "Minor": 1
+      },
+      "Description": "",
+      "Id": "6e2d5559-9bcf-4a51-9bd8-5c8077cfac63",
+      "Language": 1,
+      "Name": "BRTrainingDummy",
+      "Type": 1,
+      "Source": 0,
+      "Target": null
+    }
+  }
+}

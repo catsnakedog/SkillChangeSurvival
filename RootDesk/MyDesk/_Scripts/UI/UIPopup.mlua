@@ -53,6 +53,13 @@ script UIPopup extends Logic
 	end
 
 	@ExecSpace("Client")
+	method void OpenBlockingMessage(string message)
+		-- Opens a modal message without action buttons, used for loading overlays.
+		self:OpenInternal(message, nil, nil, false)
+		self:SetOkVisible(false)
+	end
+
+	@ExecSpace("Client")
 	method void Open(string message, any onOk, any onCancel)
 		self:OpenConfirm(message, onOk, onCancel)
 	end
@@ -76,6 +83,7 @@ script UIPopup extends Logic
 		self.onOk = okCallback
 		self.onCancel = cancelCallback
 		self:ApplyButtonText()
+		self:SetOkVisible(true)
 		self:SetCancelVisible(showCancel)
 		self:ConnectButtons()
 		self:StartTween(true)
@@ -96,6 +104,15 @@ script UIPopup extends Logic
 		end
 		self.btnCancel.Entity.Visible = value
 		self.btnCancel.Enable = value
+	end
+
+	method void SetOkVisible(boolean value)
+		-- Toggles the OK button while preserving the popup panel.
+		if self.btnOk == nil or self.btnOk.Entity == nil then
+			return
+		end
+		self.btnOk.Entity.Visible = value
+		self.btnOk.Enable = value
 	end
 
 	method void ConnectButtons()

@@ -1,0 +1,501 @@
+@Component
+script BRLobbyTrainingController extends Component
+
+	property boolean EnableTrainingLobby = true
+
+	property string AttackActionName = "Attack"
+
+	property string DummyEntityName = "TrainingDummy"
+
+	property number PlayerScanSeconds = 0.15
+
+	property number BasicAttackDamage = 20
+
+	property number AttackCooldownSeconds = 0.45
+
+	property number AttackBoxWidth = 1.8
+
+	property number AttackBoxHeight = 1.15
+
+	property number AttackOffsetX = 0.9
+
+	property number AttackOffsetY = 0.35
+
+	property number AttackOffsetYFromFeet = 0.35
+
+	property number DummyHitRadiusX = 0.55
+
+	property number DummyHitRadiusY = 1.1
+
+	property boolean GrantStarterPartsOnEnter = true
+
+	property boolean ResetSkillOnEnter = false
+
+	property number StarterPartCount = 7
+
+	property boolean AutoEquipStarterParts = true
+
+	property boolean ApplySkillStatsInLobby = true
+
+	property boolean VerboseLog = true
+
+	@Sync
+	property string LobbyTrainingStatus = "Idle"
+
+	property number scanTimerId = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		if self.EnableTrainingLobby == false then
+			return
+		end
+
+		self:StartRuntime()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnEndPlay()
+		self:StopRuntime()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartRuntime()
+		self._T.playerHandlers = {}
+		self._T.nextAttackAt = {}
+		self._T.basePhysicsStats = {}
+		self._T.baseMaxHp = {}
+		self._T.skillReset = {}
+		self._T.starterGranted = {}
+		self.scanTimerId = _TimerService:SetTimerRepeat(function() self:RefreshLobbyPlayers() end, self:GetPlayerScanSeconds(), 0)
+		self:RefreshLobbyPlayers()
+		self.LobbyTrainingStatus = "Ready"
+		self:Log("started map=" .. self:GetMapName())
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StopRuntime()
+		if self.scanTimerId ~= nil and self.scanTimerId > 0 then
+			_TimerService:ClearTimer(self.scanTimerId)
+		end
+		self.scanTimerId = 0
+
+		if self._T.playerHandlers ~= nil then
+			for userId, entry in pairs(self._T.playerHandlers) do
+				self:DisconnectPlayerEntry(entry)
+			end
+		end
+		self._T.playerHandlers = {}
+		self._T.nextAttackAt = {}
+		self._T.basePhysicsStats = {}
+		self._T.baseMaxHp = {}
+		self._T.skillReset = {}
+		self._T.starterGranted = {}
+		self.LobbyTrainingStatus = "Stopped"
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RefreshLobbyPlayers()
+		self:EnsureRuntimeTables()
+		local mapName = self:GetMapName()
+		local activeUsers = {}
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users ~= nil then
+			for index, playerEntity in ipairs(users) do
+				if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+					local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+					if userId ~= "" then
+						activeUsers[userId] = true
+						self:RegisterLobbyPlayer(playerEntity)
+					end
+				end
+			end
+		end
+
+		for userId, entry in pairs(self._T.playerHandlers) do
+			if activeUsers[userId] ~= true then
+				self:UnregisterLobbyPlayer(userId)
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RegisterLobbyPlayer(Entity playerEntity)
+		self:EnsureRuntimeTables()
+		local userId = self:GetUserId(playerEntity)
+		if userId == "" then
+			return
+		end
+
+		if self._T.playerHandlers[userId] ~= nil then
+			self._T.playerHandlers[userId].Entity = playerEntity
+			self:PrepareLobbyPlayer(playerEntity)
+			return
+		end
+
+		self:CaptureBasePhysicsStats(playerEntity)
+		local actionHandler = playerEntity:ConnectEvent(PlayerActionEvent, self.HandlePlayerActionEvent)
+		self._T.playerHandlers[userId] = {
+			Entity = playerEntity,
+			ActionHandler = actionHandler
+		}
+
+		self:PrepareLobbyPlayer(playerEntity)
+		self:Log("registered user=" .. userId .. " map=" .. self:GetMapName())
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UnregisterLobbyPlayer(string userId)
+		if self._T.playerHandlers == nil then
+			return
+		end
+		local entry = self._T.playerHandlers[userId]
+		if entry ~= nil then
+			self:DisconnectPlayerEntry(entry)
+			self._T.playerHandlers[userId] = nil
+		end
+		if self._T.nextAttackAt ~= nil then
+			self._T.nextAttackAt[userId] = nil
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void DisconnectPlayerEntry(any entry)
+		if entry == nil or entry.Entity == nil or entry.ActionHandler == nil then
+			return
+		end
+		entry.Entity:DisconnectEvent(PlayerActionEvent, entry.ActionHandler)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PrepareLobbyPlayer(Entity playerEntity)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		playerEntity.PlayerComponent.PVPMode = false
+		self:GrantStarterPartsIfNeeded(playerEntity)
+		self:ApplyLobbySkillStats(playerEntity)
+
+		if playerEntity.PlayerComponent.Hp <= 0 then
+			playerEntity.PlayerComponent.Hp = playerEntity.PlayerComponent.MaxHp
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void GrantStarterPartsIfNeeded(Entity playerEntity)
+		if self.GrantStarterPartsOnEnter == false or _BRSkillSystem == nil or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		self:EnsureRuntimeTables()
+		local userId = self:GetUserId(playerEntity)
+		if userId == "" then
+			return
+		end
+		if self._T.starterGranted[userId] == true then
+			return
+		end
+		if self.ResetSkillOnEnter == true and self._T.skillReset[userId] ~= true then
+			_BRSkillSystem:ResetUser(userId)
+			self._T.skillReset[userId] = true
+		end
+
+		local state = _BRSkillSystem:GetUserState(userId)
+		local ownedCount = 0
+		if state ~= nil and state.Parts ~= nil then
+			ownedCount = #state.Parts
+		end
+
+		local targetCount = self:GetStarterPartCount()
+		if ownedCount >= targetCount then
+			self._T.starterGranted[userId] = true
+			return
+		end
+
+		for index = ownedCount + 1, targetCount do
+			_BRSkillSystem:GrantRandomPart(userId, self.AutoEquipStarterParts, "lobby-starter")
+		end
+		_BRSkillSystem:NotifyUserChanged(userId)
+		self._T.starterGranted[userId] = true
+		self:Log("starter parts user=" .. userId .. " owned=" .. tostring(ownedCount) .. " target=" .. tostring(targetCount))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyLobbySkillStats(Entity playerEntity)
+		if self.ApplySkillStatsInLobby == false or _BRSkillSystem == nil or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		local userId = playerEntity.PlayerComponent.UserId
+		local baseMaxHp = self:GetBaseMaxHp(playerEntity)
+		local maxHp = _BRSkillSystem:GetMaxHp(userId, baseMaxHp)
+		playerEntity.PlayerComponent.MaxHp = maxHp
+		if playerEntity.PlayerComponent.Hp > maxHp then
+			playerEntity.PlayerComponent.Hp = maxHp
+		end
+
+		_BRSkillSystem:ApplyMovementStatsToPlayer(playerEntity, self:CaptureBasePhysicsStats(playerEntity))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void HandlePlayerActionEvent(PlayerActionEvent event)
+		if self.EnableTrainingLobby == false or event == nil then
+			return
+		end
+		if self:IsAttackAction(event.ActionName) == false then
+			return
+		end
+
+		self:TryAttackDummy(event.PlayerEntity)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void TryAttackDummy(Entity attackerEntity)
+		if attackerEntity == nil or attackerEntity.PlayerComponent == nil then
+			return
+		end
+		if attackerEntity.CurrentMapName ~= self:GetMapName() then
+			return
+		end
+		if attackerEntity.PlayerComponent:IsDead() == true or attackerEntity.PlayerComponent.Hp <= 0 then
+			return
+		end
+
+		local userId = attackerEntity.PlayerComponent.UserId
+		local now = self:Now()
+		local nextAttackAt = self:ReadNumber(self._T.nextAttackAt[userId], 0)
+		if now < nextAttackAt then
+			return
+		end
+		self._T.nextAttackAt[userId] = now + self:GetAttackCooldownSeconds()
+		self:PlayBodyAction(attackerEntity, MapleAvatarBodyActionState.Attack, true, 1)
+
+		local dummyEntity = self:FindDummyEntity()
+		local dummy = nil
+		if dummyEntity ~= nil then
+			dummy = dummyEntity:GetComponent("script.BRTrainingDummy")
+		end
+
+		local hit = false
+		if dummy ~= nil and self:IsDummyInsideAttackBox(attackerEntity, dummyEntity) == true then
+			dummy:ApplyTrainingDamage(attackerEntity, self:GetAdjustedBasicAttackDamage(attackerEntity), "lobby-basic")
+			hit = true
+		end
+
+		self:Log("attack user=" .. userId .. " hitDummy=" .. tostring(hit))
+	end
+
+	method Entity FindDummyEntity()
+		local mapName = self:GetMapName()
+		if mapName == "" then
+			return nil
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. mapName .. "/" .. self:ReadString(self.DummyEntityName, "TrainingDummy"))
+	end
+
+	method boolean IsDummyInsideAttackBox(Entity attackerEntity, Entity dummyEntity)
+		local attackerPosition = self:GetEntityPosition2(attackerEntity)
+		local dummyPosition = self:GetEntityPosition2(dummyEntity)
+		local direction = self:GetLookDirection(attackerEntity)
+		local centerX = attackerPosition.x + direction * self:GetAttackOffsetX()
+		local centerY = attackerPosition.y + self:GetAttackOffsetY()
+		local halfWidth = self:GetAttackBoxWidth() * 0.5 + self:GetDummyHitRadiusX()
+		local halfHeight = self:GetAttackBoxHeight() * 0.5 + self:GetDummyHitRadiusY()
+
+		return math.abs(dummyPosition.x - centerX) <= halfWidth
+			and math.abs((dummyPosition.y + self:GetAttackOffsetYFromFeet()) - centerY) <= halfHeight
+	end
+
+	method any CaptureBasePhysicsStats(Entity playerEntity)
+		self:EnsureRuntimeTables()
+		local userId = self:GetUserId(playerEntity)
+		if userId == "" then
+			return nil
+		end
+		if self._T.basePhysicsStats[userId] ~= nil then
+			return self._T.basePhysicsStats[userId]
+		end
+
+		local stats = {
+			InputSpeed = 1,
+			JumpForce = 1,
+			WalkSpeed = 1,
+			WalkJump = 1
+		}
+		if playerEntity.MovementComponent ~= nil then
+			stats.InputSpeed = self:ReadNumber(playerEntity.MovementComponent.InputSpeed, stats.InputSpeed)
+			stats.JumpForce = self:ReadNumber(playerEntity.MovementComponent.JumpForce, stats.JumpForce)
+		end
+		if playerEntity.RigidbodyComponent ~= nil then
+			stats.WalkSpeed = self:ReadNumber(playerEntity.RigidbodyComponent.WalkSpeed, stats.WalkSpeed)
+			stats.WalkJump = self:ReadNumber(playerEntity.RigidbodyComponent.WalkJump, stats.WalkJump)
+		end
+
+		self._T.basePhysicsStats[userId] = stats
+		return stats
+	end
+
+	method number GetBaseMaxHp(Entity playerEntity)
+		self:EnsureRuntimeTables()
+		local userId = self:GetUserId(playerEntity)
+		if userId == "" then
+			return 100
+		end
+		if self._T.baseMaxHp[userId] == nil then
+			local maxHp = 100
+			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+				maxHp = self:ReadNumber(playerEntity.PlayerComponent.MaxHp, 100)
+			end
+			self._T.baseMaxHp[userId] = math.max(1, math.floor(maxHp))
+		end
+		return self._T.baseMaxHp[userId]
+	end
+
+	method void PlayBodyAction(Entity playerEntity, MapleAvatarBodyActionState actionState, boolean reset, number playRate)
+		if playerEntity == nil then
+			return
+		end
+		playerEntity:SendEvent(BodyActionStateChangeEvent(reset, actionState, 0, 2147483647, playRate))
+	end
+
+	method boolean IsAttackAction(string actionName)
+		local normalized = string.lower(self:ReadString(actionName, ""))
+		local configured = string.lower(self:ReadString(self.AttackActionName, "Attack"))
+		return normalized == configured or normalized == "attack" or normalized == "actionattack" or normalized == "basicattack"
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method number GetLookDirection(Entity entity)
+		if entity ~= nil and entity.PlayerControllerComponent ~= nil then
+			if entity.PlayerControllerComponent.LookDirectionX >= 0 then
+				return 1
+			end
+		end
+		return -1
+	end
+
+	method string GetUserId(Entity entity)
+		if entity ~= nil and entity.PlayerComponent ~= nil then
+			return tostring(self:ReadString(entity.PlayerComponent.UserId, ""))
+		end
+		return ""
+	end
+
+	method string GetMapName()
+		if self.Entity ~= nil and self.Entity.CurrentMapName ~= nil and self.Entity.CurrentMapName ~= "" then
+			return self.Entity.CurrentMapName
+		end
+		return "StartMap"
+	end
+
+	method number GetPlayerScanSeconds()
+		return math.max(0.033, self:ReadNumber(self.PlayerScanSeconds, 0.15))
+	end
+
+	method number GetStarterPartCount()
+		local configuredCount = math.max(0, math.floor(self:ReadNumber(self.StarterPartCount, 7)))
+		local minimumCount = 7
+		if _BRSkillSystem ~= nil then
+			minimumCount = math.max(minimumCount, math.floor(_BRSkillSystem:GetChainSlotCount()) + math.floor(_BRSkillSystem:GetBagSlotCount()))
+		end
+		return math.max(configuredCount, minimumCount)
+	end
+
+	method number GetAdjustedBasicAttackDamage(Entity attackerEntity)
+		if _BRSkillSystem == nil or attackerEntity == nil or attackerEntity.PlayerComponent == nil then
+			return self:GetBasicAttackDamage()
+		end
+		return _BRSkillSystem:GetBasicAttackDamage(attackerEntity.PlayerComponent.UserId, self:GetBasicAttackDamage())
+	end
+
+	method number GetBasicAttackDamage()
+		return math.max(1, math.floor(self:ReadNumber(self.BasicAttackDamage, 20)))
+	end
+
+	method number GetAttackCooldownSeconds()
+		return math.max(0.05, self:ReadNumber(self.AttackCooldownSeconds, 0.45))
+	end
+
+	method number GetAttackBoxWidth()
+		return math.max(0.1, self:ReadNumber(self.AttackBoxWidth, 1.8))
+	end
+
+	method number GetAttackBoxHeight()
+		return math.max(0.1, self:ReadNumber(self.AttackBoxHeight, 1.15))
+	end
+
+	method number GetAttackOffsetX()
+		return math.max(0, self:ReadNumber(self.AttackOffsetX, 0.9))
+	end
+
+	method number GetAttackOffsetY()
+		return self:ReadNumber(self.AttackOffsetY, 0.35)
+	end
+
+	method number GetAttackOffsetYFromFeet()
+		return self:ReadNumber(self.AttackOffsetYFromFeet, 0.35)
+	end
+
+	method number GetDummyHitRadiusX()
+		return math.max(0, self:ReadNumber(self.DummyHitRadiusX, 0.55))
+	end
+
+	method number GetDummyHitRadiusY()
+		return math.max(0, self:ReadNumber(self.DummyHitRadiusY, 1.1))
+	end
+
+	method number Now()
+		return _UtilLogic.ElapsedSeconds
+	end
+
+	method void EnsureRuntimeTables()
+		if self._T.playerHandlers == nil then
+			self._T.playerHandlers = {}
+		end
+		if self._T.nextAttackAt == nil then
+			self._T.nextAttackAt = {}
+		end
+		if self._T.basePhysicsStats == nil then
+			self._T.basePhysicsStats = {}
+		end
+		if self._T.baseMaxHp == nil then
+			self._T.baseMaxHp = {}
+		end
+		if self._T.skillReset == nil then
+			self._T.skillReset = {}
+		end
+		if self._T.starterGranted == nil then
+			self._T.starterGranted = {}
+		end
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRLobbyTraining] " .. message)
+		end
+	end
+
+end

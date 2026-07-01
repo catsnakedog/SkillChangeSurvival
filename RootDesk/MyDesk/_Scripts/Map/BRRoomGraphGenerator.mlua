@@ -866,8 +866,12 @@ script BRRoomGraphGenerator extends Logic
 			return
 		end
 		local key = fromRoom.AssignedRoomName .. ":" .. fromDirection
+		local pairedKey = toRoom.AssignedRoomName .. ":" .. toDirection
 		local link = {
 			Key = key,
+			FromPortalKey = key,
+			ToPortalKey = pairedKey,
+			PairKey = pairedKey,
 			LogicalFromKey = fromRoom.Key,
 			LogicalToKey = toRoom.Key,
 			FromRoomName = fromRoom.AssignedRoomName,

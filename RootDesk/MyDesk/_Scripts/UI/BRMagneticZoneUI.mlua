@@ -26,6 +26,7 @@ script BRMagneticZoneUI extends Component
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
 		-- Starts the local magnetic-zone HUD refresh loop.
+		self:SetRootRaycastBlocked(false)
 		self:SetPanelActive(false)
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds())
 		self:Log("ready")
@@ -149,6 +150,15 @@ script BRMagneticZoneUI extends Component
 		if visible ~= self.lastVisible then
 			self.lastVisible = visible
 			self:Log("visible=" .. tostring(visible))
+		end
+	end
+
+	method void SetRootRaycastBlocked(boolean blocked)
+		-- Keeps this display-only HUD from swallowing skill-chain input.
+		local root = _EntityService:GetEntityByPath("/ui/MagneticZoneGroup")
+		if root ~= nil and root.CanvasGroupComponent ~= nil then
+			root.CanvasGroupComponent.BlocksRaycasts = blocked == true
+			root.CanvasGroupComponent.Interactable = blocked == true
 		end
 	end
 

@@ -1,0 +1,1416 @@
+@Component
+script BRSkillChainUI extends Component
+
+	property string ChainRootPath = "/ui/BRSkillChainGroup"
+
+	property string InventoryRootPath = "/ui/BRSkillInventoryGroup"
+
+	property string RootPath = "/ui/BRSkillChainGroup"
+
+	property number RefreshSeconds = 0.15
+
+	property number RequestSeconds = 0.75
+
+	property number ChainSlotCount = 5
+
+	property number BagSlotCount = 2
+
+	property boolean AttachInventoryPanel = true
+
+	property number InventoryAttachGap = -2
+
+	property number InventoryPanelYOffset = 0
+
+	property boolean VerboseLog = true
+
+	property number refreshTimerId = 0
+
+	property number nextRequestAt = 0
+
+	property number lastSnapshotVersion = -1
+
+	property number draggingInstanceId = 0
+
+	property number draggingSourceSlot = 0
+
+	property string draggingLabel = ""
+
+	property number hoverChainSlot = 0
+
+	property number hoverBagIndex = 0
+
+	property number draggingSourceBagIndex = 0
+
+	property number draggingStartX = 0
+
+	property number draggingStartY = 0
+
+	property boolean draggingMoved = false
+
+	property number ClickDragThreshold = 8
+
+	property any inputKeyDownHandler = nil
+
+	property any inputKeyUpHandler = nil
+
+	property any inputTouchDownHandler = nil
+
+	property any inputTouchHoldHandler = nil
+
+	property any inputTouchReleaseHandler = nil
+
+	property any inputMouseMoveHandler = nil
+
+	property number DragGroupOrder = 90
+
+	property number dragGroupOrderBefore = -1000
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		self:EnsureRuntime()
+		self:ApplyAttachedInventoryLayout()
+		self:ConnectHandlers()
+		self:SetDragGhostActive(false)
+		self:Refresh()
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds(), 0.1)
+		self:Log("ready chainRoot=" .. self:GetChainRootPath() .. " inventoryRoot=" .. self:GetInventoryRootPath())
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+		self:DisconnectHandlers()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void Refresh()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			self:SetChainPanelActive(false)
+			self:SetInventoryPanelActive(false)
+			return
+		end
+
+		self:SetChainPanelActive(true)
+		self:SetInventoryPanelActive(true)
+		local now = _UtilLogic.ElapsedSeconds
+		if _BRSkillSystem ~= nil and now >= self.nextRequestAt then
+			self.nextRequestAt = now + self:GetRequestSeconds()
+			_BRSkillSystem:RequestUserSnapshot(localPlayer.PlayerComponent.UserId)
+		end
+
+		if _BRSkillSystem == nil then
+			self:SetChainTextByPath("Panel/Stats", "SKILL SYSTEM OFF")
+			return
+		end
+
+		local version = _BRSkillSystem:GetLocalSnapshotVersion()
+		if version == self.lastSnapshotVersion then
+			return
+		end
+		self.lastSnapshotVersion = version
+
+		self._T.chainSlots = self:ParseChainText(_BRSkillSystem:GetLocalChainText())
+		self._T.bagParts = self:ParseBagText(_BRSkillSystem:GetLocalBagText())
+		self:RenderChain()
+		self:RenderBag()
+		self:SetChainTextByPath("Panel/Stats", _BRSkillSystem:GetLocalRecipeText())
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ConnectHandlers()
+		self:EnsureRuntime()
+		self:DisconnectHandlers()
+		self._T.handlers = {}
+
+		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnInputKeyDown)
+		self.inputKeyUpHandler = _InputService:ConnectEvent(KeyUpEvent, self.OnInputKeyUp)
+		self.inputTouchDownHandler = _InputService:ConnectEvent(ScreenTouchEvent, self.OnScreenTouchDown)
+		self.inputTouchHoldHandler = _InputService:ConnectEvent(ScreenTouchHoldEvent, self.OnScreenTouchHold)
+		self.inputTouchReleaseHandler = _InputService:ConnectEvent(ScreenTouchReleaseEvent, self.OnScreenTouchRelease)
+		self.inputMouseMoveHandler = _InputService:ConnectEvent(MouseMoveEvent, self.OnMouseMove)
+
+		for index = 1, self:GetChainSlotCount() do
+			local slotIndex = index
+			local touch = self:GetChainTouchEntity(slotIndex)
+			if touch ~= nil then
+				self:ConnectTouchEntity(touch, "CHAIN", slotIndex)
+			end
+			local slot = self:GetChainEntity("Panel/Chain/Slot_" .. tostring(slotIndex))
+			if slot ~= nil and slot ~= touch then
+				self:ConnectTouchEntity(slot, "CHAIN", slotIndex)
+			end
+		end
+
+		for index = 1, self:GetBagSlotCount() do
+			local bagIndex = index
+			local touch = self:GetBagTouchEntity(bagIndex)
+			if touch ~= nil then
+				self:ConnectTouchEntity(touch, "BAG", bagIndex)
+			end
+			local item = self:GetInventoryEntity("Panel/Inventory/Item_" .. tostring(bagIndex))
+			if item ~= nil and item ~= touch then
+				self:ConnectTouchEntity(item, "BAG", bagIndex)
+			end
+		end
+
+		self:Log("handlers connected count=" .. tostring(#self._T.handlers))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyAttachedInventoryLayout()
+		if self.AttachInventoryPanel ~= true then
+			return
+		end
+
+		local chainPanel = self:GetChainEntity("Panel")
+		local inventoryPanel = self:GetInventoryEntity("Panel")
+		if chainPanel == nil or inventoryPanel == nil or chainPanel.UITransformComponent == nil or inventoryPanel.UITransformComponent == nil then
+			self:Log("layout attach skipped chainPanel=" .. tostring(chainPanel ~= nil) .. " inventoryPanel=" .. tostring(inventoryPanel ~= nil))
+			return
+		end
+
+		local chainTransform = chainPanel.UITransformComponent
+		local inventoryTransform = inventoryPanel.UITransformComponent
+		local chainSize = chainTransform.RectSize
+		local inventorySize = inventoryTransform.RectSize
+		local chainPosition = chainTransform.anchoredPosition
+		local gap = self:ReadNumber(self.InventoryAttachGap, -2)
+		local offsetY = self:ReadNumber(self.InventoryPanelYOffset, 0)
+		local targetX = chainPosition.x + chainSize.x * 0.5 + inventorySize.x * 0.5 + gap
+		local targetY = chainPosition.y + offsetY
+		inventoryTransform.anchoredPosition = Vector2(targetX, targetY)
+		self:Log("layout attached inventoryX=" .. tostring(math.floor(targetX)) .. " inventoryY=" .. tostring(math.floor(targetY)))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ConnectTouchEntity(Entity entity, string kind, number index)
+		if entity == nil then
+			return
+		end
+
+		local downHandler = entity:ConnectEvent(UITouchDownEvent, function(event) self:OnTouchDown(kind, index, event) end)
+		local dragHandler = entity:ConnectEvent(UITouchDragEvent, function(event) self:OnTouchDrag(kind, index, event) end)
+		local upHandler = entity:ConnectEvent(UITouchUpEvent, function(event) self:OnTouchUp(kind, index, event) end)
+		local enterHandler = entity:ConnectEvent(UITouchEnterEvent, function(event) self:OnTouchEnter(kind, index, event) end)
+		local exitHandler = entity:ConnectEvent(UITouchExitEvent, function(event) self:OnTouchExit(kind, index, event) end)
+
+		table.insert(self._T.handlers, { Entity = entity, EventType = "DOWN", Handler = downHandler })
+		table.insert(self._T.handlers, { Entity = entity, EventType = "DRAG", Handler = dragHandler })
+		table.insert(self._T.handlers, { Entity = entity, EventType = "UP", Handler = upHandler })
+		table.insert(self._T.handlers, { Entity = entity, EventType = "ENTER", Handler = enterHandler })
+		table.insert(self._T.handlers, { Entity = entity, EventType = "EXIT", Handler = exitHandler })
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisconnectHandlers()
+		if self.inputKeyDownHandler ~= nil then
+			_InputService:DisconnectEvent(KeyDownEvent, self.inputKeyDownHandler)
+		end
+		self.inputKeyDownHandler = nil
+		if self.inputKeyUpHandler ~= nil then
+			_InputService:DisconnectEvent(KeyUpEvent, self.inputKeyUpHandler)
+		end
+		self.inputKeyUpHandler = nil
+		if self.inputTouchDownHandler ~= nil then
+			_InputService:DisconnectEvent(ScreenTouchEvent, self.inputTouchDownHandler)
+		end
+		self.inputTouchDownHandler = nil
+		if self.inputTouchHoldHandler ~= nil then
+			_InputService:DisconnectEvent(ScreenTouchHoldEvent, self.inputTouchHoldHandler)
+		end
+		self.inputTouchHoldHandler = nil
+		if self.inputTouchReleaseHandler ~= nil then
+			_InputService:DisconnectEvent(ScreenTouchReleaseEvent, self.inputTouchReleaseHandler)
+		end
+		self.inputTouchReleaseHandler = nil
+		if self.inputMouseMoveHandler ~= nil then
+			_InputService:DisconnectEvent(MouseMoveEvent, self.inputMouseMoveHandler)
+		end
+		self.inputMouseMoveHandler = nil
+
+		if self._T.handlers == nil then
+			return
+		end
+
+		for index, entry in ipairs(self._T.handlers) do
+			if entry ~= nil and entry.Entity ~= nil and entry.Handler ~= nil then
+				if entry.EventType == "DOWN" then
+					entry.Entity:DisconnectEvent(UITouchDownEvent, entry.Handler)
+				elseif entry.EventType == "DRAG" then
+					entry.Entity:DisconnectEvent(UITouchDragEvent, entry.Handler)
+				elseif entry.EventType == "UP" then
+					entry.Entity:DisconnectEvent(UITouchUpEvent, entry.Handler)
+				elseif entry.EventType == "ENTER" then
+					entry.Entity:DisconnectEvent(UITouchEnterEvent, entry.Handler)
+				elseif entry.EventType == "EXIT" then
+					entry.Entity:DisconnectEvent(UITouchExitEvent, entry.Handler)
+				end
+			end
+		end
+		self._T.handlers = {}
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnInputKeyDown(KeyDownEvent event)
+		if event == nil or event.key ~= KeyboardKey.Mouse1 then
+			return
+		end
+
+		local cursorPosition = _InputService:GetCursorPosition()
+		local slotIndex = self:GetSlotIndexAtScreenPoint(cursorPosition)
+		if slotIndex <= 0 then
+			slotIndex = self.hoverChainSlot
+		end
+		if slotIndex > 0 then
+			self:RequestClearSlot(slotIndex)
+			return
+		end
+
+		local bagIndex = self:GetBagIndexAtScreenPoint(cursorPosition)
+		if bagIndex <= 0 then
+			bagIndex = self.hoverBagIndex
+		end
+		if bagIndex > 0 then
+			self:ClearEquippedBagPart(bagIndex)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnInputKeyUp(KeyUpEvent event)
+		-- Completes an active drag even if the pointer left the original UI touch receiver.
+		if event == nil or event.key ~= KeyboardKey.Mouse0 then
+			return
+		end
+		if self.draggingInstanceId <= 0 then
+			return
+		end
+		self:EndPartDragAtScreen(_InputService:GetCursorPosition())
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnScreenTouchDown(ScreenTouchEvent event)
+		-- Starts dragging from the global screen input path when UI raycasts are blocked by another group.
+		if event == nil or self.draggingInstanceId > 0 then
+			return
+		end
+
+		local screenPoint = event.TouchPoint
+		local slotIndex = self:GetSlotIndexAtScreenPoint(screenPoint)
+		if slotIndex > 0 then
+			if self:BeginChainSlotDragAtScreen(slotIndex, screenPoint) == true then
+				self:Log("screen drag begin slot=" .. tostring(slotIndex))
+			end
+			return
+		end
+
+		local bagIndex = self:GetBagIndexAtScreenPoint(screenPoint)
+		if bagIndex > 0 then
+			if self:BeginBagPartDragAtScreen(bagIndex, screenPoint) == true then
+				self:Log("screen drag begin bag=" .. tostring(bagIndex))
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnScreenTouchHold(ScreenTouchHoldEvent event)
+		-- Keeps the drag ghost attached to the pointer after leaving the source slot.
+		if event == nil or self.draggingInstanceId <= 0 then
+			return
+		end
+		self:MovePartDragAtScreen(event.TouchPoint)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnScreenTouchRelease(ScreenTouchReleaseEvent event)
+		-- Completes touch dragging from anywhere on the screen.
+		if event == nil or self.draggingInstanceId <= 0 then
+			return
+		end
+		self:EndPartDragAtScreen(event.TouchPoint)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnMouseMove(MouseMoveEvent event)
+		-- Tracks PC mouse dragging between UI touch events.
+		if self.draggingInstanceId <= 0 then
+			return
+		end
+		if _InputService:IsKeyPressed(KeyboardKey.Mouse0) == false then
+			return
+		end
+		self:MovePartDragAtScreen(_InputService:GetCursorPosition())
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnTouchDown(string kind, number index, UITouchDownEvent event)
+		if event == nil then
+			return
+		end
+
+		self:Log("touch down kind=" .. self:ReadString(kind, "") .. " index=" .. tostring(index) .. " touchId=" .. tostring(event.TouchId))
+		if kind == "CHAIN" then
+			self.hoverChainSlot = math.floor(self:ReadNumber(index, 0))
+			if self:IsRightClick(event.TouchId) == true then
+				self:RequestClearSlot(index)
+				return
+			end
+			self:BeginChainSlotDrag(index, event)
+		elseif kind == "BAG" then
+			self.hoverBagIndex = math.floor(self:ReadNumber(index, 0))
+			if self:IsRightClick(event.TouchId) == true then
+				self:ClearEquippedBagPart(index)
+				return
+			end
+			self:BeginBagPartDrag(index, event)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnTouchDrag(string kind, number index, UITouchDragEvent event)
+		if event == nil then
+			return
+		end
+		self:MovePartDragAtScreen(event.TouchPoint)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnTouchUp(string kind, number index, UITouchUpEvent event)
+		self:EndPartDrag(event)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnTouchEnter(string kind, number index, UITouchEnterEvent event)
+		if kind == "CHAIN" then
+			self.hoverChainSlot = math.floor(self:ReadNumber(index, 0))
+		elseif kind == "BAG" then
+			self.hoverBagIndex = math.floor(self:ReadNumber(index, 0))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnTouchExit(string kind, number index, UITouchExitEvent event)
+		local safeIndex = math.floor(self:ReadNumber(index, 0))
+		if kind == "CHAIN" and self.hoverChainSlot == safeIndex then
+			self.hoverChainSlot = 0
+		elseif kind == "BAG" and self.hoverBagIndex == safeIndex then
+			self.hoverBagIndex = 0
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void BeginBagPartDrag(number bagIndex, UITouchDownEvent event)
+		local part = self:GetBagPart(bagIndex)
+		if part == nil then
+			return
+		end
+
+		if self:BeginBagPartDragAtScreen(bagIndex, event.TouchPoint) ~= true then
+			return
+		end
+		self:Log("drag begin bag=" .. tostring(bagIndex) .. " instance=" .. tostring(self.draggingInstanceId))
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean BeginBagPartDragAtScreen(number bagIndex, Vector2 screenPoint)
+		-- Starts dragging a spare inventory part from the given screen position.
+		local part = self:GetBagPart(bagIndex)
+		if part == nil then
+			return false
+		end
+
+		self.draggingInstanceId = math.floor(self:ReadNumber(part.InstanceId, 0))
+		self.draggingSourceSlot = 0
+		self.draggingSourceBagIndex = math.floor(self:ReadNumber(bagIndex, 0))
+		self.draggingStartX = screenPoint.x
+		self.draggingStartY = screenPoint.y
+		self.draggingMoved = false
+		self.draggingLabel = self:FormatSkillIconText(self:ReadString(part.Short, "S"), 1)
+		self:SetChainTextByPath("DragGhost/Label", self.draggingLabel)
+		self:SetDragGhostActive(true)
+		self:MoveGhostToTouch(screenPoint)
+		return true
+	end
+
+	@ExecSpace("ClientOnly")
+	method void BeginChainSlotDrag(number slotIndex, UITouchDownEvent event)
+		local record = self:GetChainSlot(slotIndex)
+		if record == nil or self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) <= 0 then
+			return
+		end
+
+		if self:BeginChainSlotDragAtScreen(slotIndex, event.TouchPoint) ~= true then
+			return
+		end
+		self:Log("drag begin slot=" .. tostring(slotIndex) .. " instance=" .. tostring(self.draggingInstanceId))
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean BeginChainSlotDragAtScreen(number slotIndex, Vector2 screenPoint)
+		-- Starts dragging an equipped chain slot from the given screen position.
+		local record = self:GetChainSlot(slotIndex)
+		if record == nil or self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) <= 0 then
+			return false
+		end
+
+		self.draggingInstanceId = math.floor(self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0))
+		self.draggingSourceSlot = math.floor(self:ReadNumber(slotIndex, 0))
+		self.draggingSourceBagIndex = 0
+		self.draggingStartX = screenPoint.x
+		self.draggingStartY = screenPoint.y
+		self.draggingMoved = false
+		self.draggingLabel = self:FormatSkillIconText(self:ReadString(self:ReadRecordValue(record, "Short"), "S"), self:ReadRecordValue(record, "Tier"))
+		self:SetChainTextByPath("DragGhost/Label", self.draggingLabel)
+		self:SetDragGhostActive(true)
+		self:MoveGhostToTouch(screenPoint)
+		return true
+	end
+
+	@ExecSpace("ClientOnly")
+	method void MovePartDrag(UITouchDragEvent event)
+		if event == nil or self.draggingInstanceId <= 0 then
+			return
+		end
+		self:MovePartDragAtScreen(event.TouchPoint)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void MovePartDragAtScreen(Vector2 screenPoint)
+		-- Moves the drag ghost to the current pointer position.
+		if self.draggingInstanceId <= 0 then
+			return
+		end
+		self:UpdateDragMoved(screenPoint)
+		self:MoveGhostToTouch(screenPoint)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EndPartDrag(UITouchUpEvent event)
+		if event == nil or self.draggingInstanceId <= 0 then
+			self:ResetDrag()
+			self:SetDragGhostActive(false)
+			return
+		end
+		self:EndPartDragAtScreen(event.TouchPoint)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EndPartDragAtScreen(Vector2 screenPoint)
+		-- Resolves a drag release into chain, spare bag, or world drop behavior.
+		if self.draggingInstanceId <= 0 then
+			return
+		end
+		self:MoveGhostToTouch(screenPoint)
+		self:UpdateDragMoved(screenPoint)
+		local targetSlot = self:GetSlotIndexAtScreenPoint(screenPoint)
+		local targetBagIndex = self:GetBagIndexAtScreenPoint(screenPoint)
+		local instanceId = self.draggingInstanceId
+		local sourceSlot = self.draggingSourceSlot
+		local sourceBagIndex = self.draggingSourceBagIndex
+		local wasClick = self.draggingMoved == false
+		self:ResetDrag()
+		self:SetDragGhostActive(false)
+
+		if _BRSkillSystem == nil then
+			return
+		end
+
+		if targetSlot > 0 and sourceSlot > 0 then
+			if sourceSlot == targetSlot then
+				self:Log("chain click sourceSlot=" .. tostring(sourceSlot) .. " instance=" .. tostring(instanceId))
+			else
+				_BRSkillSystem:RequestMoveChainSlotToChainSlot(self:GetLocalUserId(), sourceSlot, targetSlot)
+				self:ApplyLocalMoveChainSlot(sourceSlot, targetSlot)
+			end
+		elseif targetSlot > 0 then
+			self:RequestEquipPartToSlot(instanceId, targetSlot, "drop")
+		elseif targetBagIndex > 0 then
+			if sourceSlot > 0 then
+				self:RequestMovePartToBagSlot(instanceId, targetBagIndex, "drop")
+			elseif sourceBagIndex > 0 then
+				if wasClick == true and sourceBagIndex == targetBagIndex then
+					self:HandleBagPartClick(instanceId, sourceBagIndex)
+				elseif sourceBagIndex ~= targetBagIndex then
+					self:RequestMovePartToBagSlot(instanceId, targetBagIndex, "bag")
+				end
+			end
+		elseif wasClick == true and sourceBagIndex > 0 then
+			self:HandleBagPartClick(instanceId, sourceBagIndex)
+		elseif wasClick == false and (sourceSlot > 0 or sourceBagIndex > 0) then
+			self:RequestDropPartToWorld(instanceId, "outside")
+		else
+			self:Log("drop ignored instance=" .. tostring(instanceId) .. " sourceSlot=" .. tostring(sourceSlot))
+		end
+
+		self.nextRequestAt = 0
+		self:Log("drop instance=" .. tostring(instanceId) .. " sourceSlot=" .. tostring(sourceSlot) .. " sourceBag=" .. tostring(sourceBagIndex) .. " targetSlot=" .. tostring(targetSlot) .. " targetBag=" .. tostring(targetBagIndex))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void UpdateDragMoved(Vector2 screenPoint)
+		local dx = math.abs(screenPoint.x - self.draggingStartX)
+		local dy = math.abs(screenPoint.y - self.draggingStartY)
+		if dx >= self:GetClickDragThreshold() or dy >= self:GetClickDragThreshold() then
+			self.draggingMoved = true
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method number GetSlotIndexAtScreenPoint(Vector2 screenPoint)
+		for slotIndex = 1, self:GetChainSlotCount() do
+			local slot = self:GetChainEntity("Panel/Chain/Slot_" .. tostring(slotIndex))
+			if self:IsScreenPointInsideEntity(screenPoint, slot) == true then
+				return slotIndex
+			end
+		end
+		return 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method number GetBagIndexAtScreenPoint(Vector2 screenPoint)
+		for bagIndex = 1, self:GetBagSlotCount() do
+			local tile = self:GetInventoryEntity("Panel/Inventory/Item_" .. tostring(bagIndex))
+			if self:IsScreenPointInsideEntity(screenPoint, tile) == true then
+				return bagIndex
+			end
+		end
+		return 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsScreenPointInsideEntity(Vector2 screenPoint, Entity entity)
+		if entity == nil or entity.UITransformComponent == nil then
+			return false
+		end
+
+		local localPosition = _UILogic:ScreenToLocalUIPosition(screenPoint, entity.UITransformComponent)
+		local rectSize = entity.UITransformComponent.RectSize
+		return math.abs(localPosition.x) <= rectSize.x * 0.5 and math.abs(localPosition.y) <= rectSize.y * 0.5
+	end
+
+	@ExecSpace("ClientOnly")
+	method void MoveGhostToTouch(Vector2 screenPoint)
+		local ghost = self:GetChainEntity("DragGhost")
+		if ghost == nil or ghost.UITransformComponent == nil then
+			return
+		end
+
+		local uiPosition = _UILogic:ScreenToUIPosition(screenPoint)
+		ghost.UITransformComponent.anchoredPosition = uiPosition
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderChain()
+		local slots = self._T.chainSlots
+		for slotIndex = 1, self:GetChainSlotCount() do
+			local slot = self:GetChainEntity("Panel/Chain/Slot_" .. tostring(slotIndex))
+			local labelPath = "Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Label"
+			local tierPath = "Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Tier"
+			local record = nil
+			if slots ~= nil then
+				record = slots[slotIndex]
+			end
+
+			if record ~= nil and self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0 then
+				self:SetChainTextByPath(labelPath, self:ReadString(self:ReadRecordValue(record, "DisplayName"), "Skill"))
+				self:SetChainTextByPath(tierPath, tostring(math.max(1, math.floor(self:ReadNumber(self:ReadRecordValue(record, "Tier"), 1)))) .. "차")
+				self:SetSpriteColor(slot, Color(0.16, 0.48, 0.88, 0.94))
+			else
+				self:SetChainTextByPath(labelPath, "+")
+				self:SetChainTextByPath(tierPath, "")
+				self:SetSpriteColor(slot, Color(0.07, 0.1, 0.15, 0.86))
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderBag()
+		for index = 1, self:GetBagSlotCount() do
+			local tile = self:GetInventoryEntity("Panel/Inventory/Item_" .. tostring(index))
+			local part = self:GetBagPart(index)
+			if part == nil then
+				self:SetInventoryItemActive(index, true)
+				if tile ~= nil then
+					self:SetSpriteColor(tile, Color(0.06, 0.07, 0.09, 0.72))
+				end
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Label", "+")
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Name", "EMPTY")
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "")
+			else
+				self:SetInventoryItemActive(index, true)
+				local equippedSlot = math.floor(self:ReadNumber(part.EquippedSlot, 0))
+				if tile ~= nil then
+					if equippedSlot > 0 then
+						self:SetSpriteColor(tile, Color(0.18, 0.38, 0.25, 0.96))
+					else
+						self:SetSpriteColor(tile, Color(0.12, 0.15, 0.22, 0.96))
+					end
+				end
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Label", self:ReadString(part.Short, "S") .. "#" .. tostring(math.floor(self:ReadNumber(part.InstanceId, 0))))
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Name", self:FormatSkillTierText(self:ReadString(part.DisplayName, "Skill"), 1))
+				if equippedSlot > 0 then
+					self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "S" .. tostring(equippedSlot))
+				else
+					self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "")
+				end
+			end
+		end
+	end
+
+	method any ParseChainText(string text)
+		local result = {}
+		for record in string.gmatch(self:ReadString(text, ""), "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local slotIndex = math.floor(self:ReadNumber(parts[1], 0))
+			if slotIndex > 0 then
+				result[slotIndex] = {
+					Slot = slotIndex,
+					InstanceId = math.floor(self:ReadNumber(parts[2], 0)),
+					Short = self:ReadString(parts[3], "-"),
+					Tier = math.floor(self:ReadNumber(parts[4], 0)),
+					DisplayName = self:ReadString(parts[5], "-")
+				}
+			end
+		end
+		return result
+	end
+
+	method any ParseBagText(string text)
+		local result = {}
+		for record in string.gmatch(self:ReadString(text, ""), "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local slotIndex = #result + 1
+			local instanceId = math.floor(self:ReadNumber(parts[1], 0))
+			local shortIndex = 2
+			local tierIndex = 4
+			local displayIndex = 5
+			if tonumber(parts[2]) ~= nil then
+				slotIndex = math.floor(self:ReadNumber(parts[1], 0))
+				instanceId = math.floor(self:ReadNumber(parts[2], 0))
+				shortIndex = 3
+				tierIndex = 4
+				displayIndex = 5
+			end
+			if instanceId > 0 then
+				result[slotIndex] = {
+					InstanceId = instanceId,
+					Short = self:ReadString(parts[shortIndex], "P"),
+					EquippedSlot = 0,
+					Tier = math.floor(self:ReadNumber(parts[tierIndex], 0)),
+					DisplayName = self:ReadString(parts[displayIndex], "Skill")
+				}
+			end
+		end
+		return result
+	end
+
+	method any GetChainSlot(number slotIndex)
+		local slots = self._T.chainSlots
+		if slots == nil then
+			return nil
+		end
+		return slots[math.floor(self:ReadNumber(slotIndex, 0))]
+	end
+
+	method any ReadRecordValue(any record, string key)
+		if record == nil then
+			return nil
+		end
+		return record[key]
+	end
+
+	method any GetBagPart(number bagIndex)
+		local parts = self._T.bagParts
+		if parts == nil then
+			return nil
+		end
+		local part = parts[math.floor(self:ReadNumber(bagIndex, 0))]
+		if part == nil or math.floor(self:ReadNumber(part.InstanceId, 0)) <= 0 then
+			return nil
+		end
+		return part
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetInventoryItemActive(number bagIndex, boolean active)
+		local indexText = tostring(math.floor(self:ReadNumber(bagIndex, 0)))
+		local tile = self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText)
+		local touch = self:GetBagTouchEntity(bagIndex)
+		if tile ~= nil then
+			tile.Enable = active == true
+		end
+		if touch ~= nil then
+			touch.Enable = active == true
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ClearEquippedBagPart(number bagIndex)
+		local part = self:GetBagPart(bagIndex)
+		if part == nil then
+			return
+		end
+		local equippedSlot = self:GetLocalEquippedSlotForBagPart(part)
+		if equippedSlot > 0 then
+			self:RequestClearSlot(equippedSlot)
+			return
+		end
+		self:Log("bag right click ignored bag=" .. tostring(math.floor(self:ReadNumber(bagIndex, 0))) .. " reason=alreadySpare")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestClearSlot(number slotIndex)
+		local index = math.floor(self:ReadNumber(slotIndex, 0))
+		if index <= 0 or _BRSkillSystem == nil then
+			return
+		end
+		if self:FindFirstEmptyLocalBagSlot() <= 0 then
+			self:Log("clear slot skipped slot=" .. tostring(index) .. " reason=noInventorySpace")
+			return
+		end
+		_BRSkillSystem:RequestClearChainSlot(self:GetLocalUserId(), index)
+		self:ApplyLocalClearSlot(index)
+		self.nextRequestAt = 0
+		self:Log("clear slot=" .. tostring(index))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestClearPartInstance(number instanceId)
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 or _BRSkillSystem == nil then
+			return
+		end
+		_BRSkillSystem:RequestClearPartInstanceFromChain(self:GetLocalUserId(), safeInstanceId)
+		self:ApplyLocalClearPartInstance(safeInstanceId)
+		self.nextRequestAt = 0
+		self:Log("clear instance=" .. tostring(safeInstanceId))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void HandleBagPartClick(number instanceId, number sourceBagIndex)
+		local bagIndex = math.floor(self:ReadNumber(sourceBagIndex, 0))
+		local part = self:GetBagPart(bagIndex)
+		local equippedSlot = self:GetLocalEquippedSlotForBagPart(part)
+		if equippedSlot > 0 then
+			self:RequestClearSlot(equippedSlot)
+			self:Log("bag click clear bag=" .. tostring(bagIndex) .. " slot=" .. tostring(equippedSlot))
+			return
+		end
+		self:RequestEquipPartToFirstEmptySlot(instanceId, bagIndex)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestEquipPartToFirstEmptySlot(number instanceId, number sourceBagIndex)
+		local targetSlot = self:FindFirstEmptyLocalChainSlot()
+		if targetSlot <= 0 then
+			self:Log("click insert skipped instance=" .. tostring(instanceId) .. " bag=" .. tostring(sourceBagIndex) .. " reason=chainFull")
+			return
+		end
+		self:RequestEquipPartToSlot(instanceId, targetSlot, "click")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestEquipPartToSlot(number instanceId, number targetSlot, string reason)
+		if _BRSkillSystem == nil then
+			return
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local safeSlot = math.floor(self:ReadNumber(targetSlot, 0))
+		if safeInstanceId <= 0 or safeSlot <= 0 then
+			return
+		end
+		_BRSkillSystem:RequestEquipPartToChainSlot(self:GetLocalUserId(), safeInstanceId, safeSlot)
+		self:ApplyLocalEquipPartToSlot(safeInstanceId, safeSlot)
+		self.nextRequestAt = 0
+		self:Log("insert " .. self:ReadString(reason, "request") .. " instance=" .. tostring(safeInstanceId) .. " targetSlot=" .. tostring(safeSlot))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestMovePartToBagSlot(number instanceId, number targetBagSlot, string reason)
+		if _BRSkillSystem == nil then
+			return
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local safeBagSlot = math.floor(self:ReadNumber(targetBagSlot, 0))
+		if safeInstanceId <= 0 or safeBagSlot <= 0 then
+			return
+		end
+		_BRSkillSystem:RequestMovePartToBagSlot(self:GetLocalUserId(), safeInstanceId, safeBagSlot)
+		self:ApplyLocalMovePartToBagSlot(safeInstanceId, safeBagSlot)
+		self.nextRequestAt = 0
+		self:Log("bag move " .. self:ReadString(reason, "request") .. " instance=" .. tostring(safeInstanceId) .. " targetBag=" .. tostring(safeBagSlot))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestDropPartToWorld(number instanceId, string reason)
+		-- Requests a Maple-style world drop when a skill part is released outside valid slots.
+		if _BRSkillSystem == nil then
+			return
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return
+		end
+		_BRSkillSystem:RequestDropPartToWorld(self:GetLocalUserId(), safeInstanceId)
+		self:ApplyLocalDropPart(safeInstanceId)
+		self.nextRequestAt = 0
+		self:Log("world drop " .. self:ReadString(reason, "request") .. " instance=" .. tostring(safeInstanceId))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalEquipPartToSlot(number instanceId, number targetSlot)
+		-- Moves one visible bag part into a local chain slot while waiting for the server snapshot.
+		self:EnsureRuntime()
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local safeSlot = math.floor(self:ReadNumber(targetSlot, 0))
+		if safeInstanceId <= 0 or safeSlot <= 0 then
+			return
+		end
+
+		if self._T.chainSlots == nil then
+			self._T.chainSlots = {}
+		end
+
+		local sourceBagIndex = self:FindLocalBagIndexByInstanceId(safeInstanceId)
+		local bagPart = self:FindLocalBagPartByInstanceId(safeInstanceId)
+		if bagPart == nil then
+			local existingSlot = self:FindLocalChainSlotByInstanceId(safeInstanceId)
+			if existingSlot > 0 then
+				bagPart = self:BuildBagPartFromChainRecord(self:GetChainSlot(existingSlot))
+			end
+		end
+
+		local previousRecord = self._T.chainSlots[safeSlot]
+		if previousRecord ~= nil then
+			local previousInstanceId = math.floor(self:ReadNumber(self:ReadRecordValue(previousRecord, "InstanceId"), 0))
+			if previousInstanceId > 0 and previousInstanceId ~= safeInstanceId then
+				if sourceBagIndex > 0 then
+					self._T.bagParts[sourceBagIndex] = self:BuildBagPartFromChainRecord(previousRecord)
+				else
+					self:AppendLocalBagPart(self:BuildBagPartFromChainRecord(previousRecord))
+				end
+			end
+		end
+
+		for slotIndex = 1, self:GetChainSlotCount() do
+			local record = self._T.chainSlots[slotIndex]
+			if record ~= nil and math.floor(self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0)) == safeInstanceId then
+				self._T.chainSlots[slotIndex] = nil
+			end
+		end
+
+		self._T.chainSlots[safeSlot] = {
+			Slot = safeSlot,
+			InstanceId = safeInstanceId,
+			Short = self:ReadString(self:ReadRecordValue(bagPart, "Short"), "S"),
+			Tier = 1,
+			DisplayName = self:ReadString(self:ReadRecordValue(bagPart, "DisplayName"), "Skill")
+		}
+		self:RemoveLocalBagPartByInstanceId(safeInstanceId)
+		self:RenderChain()
+		self:RenderBag()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalClearSlot(number slotIndex)
+		-- Moves one local chain slot back into the visible spare bag.
+		self:EnsureRuntime()
+		local safeSlot = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlot <= 0 or self._T.chainSlots == nil then
+			return
+		end
+
+		local record = self._T.chainSlots[safeSlot]
+		if record ~= nil then
+			self:AppendLocalBagPart(self:BuildBagPartFromChainRecord(record))
+		end
+		self._T.chainSlots[safeSlot] = nil
+		self:RenderChain()
+		self:RenderBag()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalMovePartToBagSlot(number instanceId, number targetBagSlot)
+		-- Moves one local chain or bag part into a spare bag slot while waiting for the server snapshot.
+		self:EnsureRuntime()
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local safeBagSlot = math.floor(self:ReadNumber(targetBagSlot, 0))
+		if safeInstanceId <= 0 or safeBagSlot <= 0 then
+			return
+		end
+		if safeBagSlot > self:GetBagSlotCount() then
+			safeBagSlot = self:GetBagSlotCount()
+		end
+
+		local sourceChainSlot = self:FindLocalChainSlotByInstanceId(safeInstanceId)
+		local sourceBagSlot = self:FindLocalBagIndexByInstanceId(safeInstanceId)
+		local sourceBagPart = self:GetBagPart(sourceBagSlot)
+		local targetBagPart = self:GetBagPart(safeBagSlot)
+		if sourceChainSlot > 0 then
+			local sourceRecord = self:GetChainSlot(sourceChainSlot)
+			if targetBagPart ~= nil then
+				self._T.chainSlots[sourceChainSlot] = self:BuildChainRecordFromBagPart(targetBagPart, sourceChainSlot)
+			else
+				self._T.chainSlots[sourceChainSlot] = nil
+			end
+			self._T.bagParts[safeBagSlot] = self:BuildBagPartFromChainRecord(sourceRecord)
+		elseif sourceBagSlot > 0 and sourceBagSlot ~= safeBagSlot then
+			self._T.bagParts[sourceBagSlot] = targetBagPart
+			self._T.bagParts[safeBagSlot] = sourceBagPart
+		else
+			return
+		end
+		self:RenderChain()
+		self:RenderBag()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalClearPartInstance(number instanceId)
+		-- Clears one local chain record by part instance id.
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return
+		end
+
+		local slotIndex = self:FindLocalChainSlotByInstanceId(safeInstanceId)
+		if slotIndex > 0 then
+			self:ApplyLocalClearSlot(slotIndex)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalDropPart(number instanceId)
+		-- Removes a locally visible part after a world-drop request.
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return
+		end
+		local slotIndex = self:FindLocalChainSlotByInstanceId(safeInstanceId)
+		if slotIndex > 0 and self._T.chainSlots ~= nil then
+			self._T.chainSlots[slotIndex] = nil
+		end
+		self:RemoveLocalBagPartByInstanceId(safeInstanceId)
+		self:RenderChain()
+		self:RenderBag()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalMoveChainSlot(number fromSlot, number toSlot)
+		-- Moves or swaps two local chain slots while waiting for the server snapshot.
+		self:EnsureRuntime()
+		local fromIndex = math.floor(self:ReadNumber(fromSlot, 0))
+		local toIndex = math.floor(self:ReadNumber(toSlot, 0))
+		if fromIndex <= 0 or toIndex <= 0 or fromIndex == toIndex then
+			return
+		end
+		if self._T.chainSlots == nil then
+			self._T.chainSlots = {}
+		end
+
+		local sourceRecord = self._T.chainSlots[fromIndex]
+		if sourceRecord == nil then
+			return
+		end
+
+		local targetRecord = self._T.chainSlots[toIndex]
+		self._T.chainSlots[toIndex] = sourceRecord
+		self._T.chainSlots[toIndex].Slot = toIndex
+		self._T.chainSlots[fromIndex] = targetRecord
+		if self._T.chainSlots[fromIndex] ~= nil then
+			self._T.chainSlots[fromIndex].Slot = fromIndex
+		end
+		self:RenderChain()
+	end
+
+	method number FindFirstEmptyLocalChainSlot()
+		local slots = self._T.chainSlots
+		for slotIndex = 1, self:GetChainSlotCount() do
+			local record = nil
+			if slots ~= nil then
+				record = slots[slotIndex]
+			end
+			if record == nil or self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) <= 0 then
+				return slotIndex
+			end
+		end
+		return 0
+	end
+
+	method any FindLocalBagPartByInstanceId(number instanceId)
+		-- Finds one visible spare bag record by instance id.
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local parts = self._T.bagParts
+		if safeInstanceId <= 0 or parts == nil then
+			return nil
+		end
+		for index = 1, self:GetBagSlotCount() do
+			local part = parts[index]
+			if part ~= nil and math.floor(self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0)) == safeInstanceId then
+				return part
+			end
+		end
+		return nil
+	end
+
+	method number FindLocalBagIndexByInstanceId(number instanceId)
+		-- Finds the visible spare bag slot index for one part instance.
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local parts = self._T.bagParts
+		if safeInstanceId <= 0 or parts == nil then
+			return 0
+		end
+		for index = 1, self:GetBagSlotCount() do
+			local part = parts[index]
+			if part ~= nil and math.floor(self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0)) == safeInstanceId then
+				return index
+			end
+		end
+		return 0
+	end
+
+	method void RemoveLocalBagPartByInstanceId(number instanceId)
+		-- Removes one visible spare bag record by instance id.
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local parts = self._T.bagParts
+		if safeInstanceId <= 0 or parts == nil then
+			return
+		end
+		for index = 1, self:GetBagSlotCount() do
+			local part = parts[index]
+			if part ~= nil and math.floor(self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0)) == safeInstanceId then
+				parts[index] = nil
+			end
+		end
+	end
+
+	method void AppendLocalBagPart(any part)
+		-- Appends one unequipped part to the visible spare bag if it is not already present.
+		if part == nil then
+			return
+		end
+		self:EnsureRuntime()
+		local instanceId = math.floor(self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0))
+		if instanceId <= 0 or self:FindLocalBagPartByInstanceId(instanceId) ~= nil then
+			return
+		end
+		local bagSlot = self:FindFirstEmptyLocalBagSlot()
+		if bagSlot <= 0 then
+			self:Log("append bag skipped instance=" .. tostring(instanceId) .. " reason=noInventorySpace")
+			return
+		end
+		self._T.bagParts[bagSlot] = {
+			InstanceId = instanceId,
+			Short = self:ReadString(self:ReadRecordValue(part, "Short"), "S"),
+			EquippedSlot = 0,
+			Tier = 1,
+			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill")
+		}
+	end
+
+	method any BuildBagPartFromChainRecord(any record)
+		-- Converts one chain slot record into an unequipped bag record.
+		if record == nil then
+			return nil
+		end
+		local instanceId = math.floor(self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0))
+		if instanceId <= 0 then
+			return nil
+		end
+		return {
+			InstanceId = instanceId,
+			Short = self:ReadString(self:ReadRecordValue(record, "Short"), "S"),
+			EquippedSlot = 0,
+			Tier = 1,
+			DisplayName = self:ReadString(self:ReadRecordValue(record, "DisplayName"), "Skill")
+		}
+	end
+
+	method any BuildChainRecordFromBagPart(any part, number slotIndex)
+		-- Converts one spare bag record into a chain slot record.
+		if part == nil then
+			return nil
+		end
+		local instanceId = math.floor(self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0))
+		if instanceId <= 0 then
+			return nil
+		end
+		return {
+			Slot = math.floor(self:ReadNumber(slotIndex, 0)),
+			InstanceId = instanceId,
+			Short = self:ReadString(self:ReadRecordValue(part, "Short"), "S"),
+			Tier = 1,
+			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill")
+		}
+	end
+
+	method number FindFirstEmptyLocalBagSlot()
+		-- Finds the first empty visible spare slot.
+		self:EnsureRuntime()
+		for index = 1, self:GetBagSlotCount() do
+			if self:GetBagPart(index) == nil then
+				return index
+			end
+		end
+		return 0
+	end
+
+	method number GetLocalEquippedSlotForBagPart(any part)
+		if part == nil then
+			return 0
+		end
+		local equippedSlot = math.floor(self:ReadNumber(part.EquippedSlot, 0))
+		if equippedSlot > 0 then
+			return equippedSlot
+		end
+		local instanceId = math.floor(self:ReadNumber(part.InstanceId, 0))
+		return self:FindLocalChainSlotByInstanceId(instanceId)
+	end
+
+	method number FindLocalChainSlotByInstanceId(number instanceId)
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return 0
+		end
+		local slots = self._T.chainSlots
+		if slots == nil then
+			return 0
+		end
+		for slotIndex = 1, self:GetChainSlotCount() do
+			local record = slots[slotIndex]
+			if record ~= nil and math.floor(self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0)) == safeInstanceId then
+				return slotIndex
+			end
+		end
+		return 0
+	end
+
+	method void ResetDrag()
+		self.draggingInstanceId = 0
+		self.draggingSourceSlot = 0
+		self.draggingSourceBagIndex = 0
+		self.draggingStartX = 0
+		self.draggingStartY = 0
+		self.draggingMoved = false
+		self.draggingLabel = ""
+	end
+
+	method boolean IsRightClick(number touchId)
+		return math.floor(self:ReadNumber(touchId, 0)) == -3
+	end
+
+	method string FormatSkillTierText(string displayName, number tier)
+		local order = math.max(1, math.floor(self:ReadNumber(tier, 1)))
+		return self:ReadString(displayName, "Skill") .. " " .. tostring(order) .. "차"
+	end
+
+	method string FormatSkillIconText(string shortText, number tier)
+		-- Returns compact text that fits inside one square skill icon.
+		local order = math.max(1, math.floor(self:ReadNumber(tier, 1)))
+		return self:ReadString(shortText, "S") .. "\n" .. tostring(order) .. "차"
+	end
+
+	method any SplitCommaRecord(string record)
+		local parts = {}
+		for part in string.gmatch(self:ReadString(record, ""), "([^,]+)") do
+			table.insert(parts, part)
+		end
+		return parts
+	end
+
+	method Entity GetChainTouchEntity(number slotIndex)
+		local indexText = tostring(math.floor(self:ReadNumber(slotIndex, 0)))
+		local touch = self:GetChainEntity("Panel/Chain/SlotTouch_" .. indexText)
+		if touch ~= nil then
+			return touch
+		end
+		touch = self:GetChainEntity("Panel/Chain/Slot_" .. indexText .. "/Touch")
+		if touch ~= nil then
+			return touch
+		end
+		return self:GetChainEntity("Panel/Chain/Slot_" .. indexText)
+	end
+
+	method Entity GetBagTouchEntity(number bagIndex)
+		local indexText = tostring(math.floor(self:ReadNumber(bagIndex, 0)))
+		local touch = self:GetInventoryEntity("Panel/Inventory/ItemTouch_" .. indexText)
+		if touch ~= nil then
+			return touch
+		end
+		touch = self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText .. "/Touch")
+		if touch ~= nil then
+			return touch
+		end
+		touch = self:GetEntityFromRoot(self:GetChainRootPath(), "Panel/Bag/Part_" .. indexText)
+		if touch ~= nil then
+			return touch
+		end
+		return self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText)
+	end
+
+	method Entity GetEntity(string relativePath)
+		return self:GetChainEntity(relativePath)
+	end
+
+	method Entity GetChainEntity(string relativePath)
+		return self:GetEntityFromRoot(self:GetChainRootPath(), relativePath)
+	end
+
+	method Entity GetInventoryEntity(string relativePath)
+		return self:GetEntityFromRoot(self:GetInventoryRootPath(), relativePath)
+	end
+
+	method Entity GetEntityFromRoot(string rootPath, string relativePath)
+		local path = self:ReadString(relativePath, "")
+		if path == "" then
+			return nil
+		end
+		if string.sub(path, 1, 1) ~= "/" then
+			path = self:ReadString(rootPath, self:GetChainRootPath()) .. "/" .. path
+		end
+		return _EntityService:GetEntityByPath(path)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetChainTextByPath(string relativePath, string text)
+		local entity = self:GetChainEntity(relativePath)
+		if entity ~= nil and entity.TextComponent ~= nil then
+			entity.TextComponent.Text = self:ReadString(text, "")
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetInventoryTextByPath(string relativePath, string text)
+		local entity = self:GetInventoryEntity(relativePath)
+		if entity ~= nil and entity.TextComponent ~= nil then
+			entity.TextComponent.Text = self:ReadString(text, "")
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetSpriteColor(Entity entity, Color color)
+		if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
+			entity.SpriteGUIRendererComponent.Color = color
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetChainPanelActive(boolean active)
+		local panel = self:GetChainEntity("Panel")
+		if panel ~= nil then
+			panel.Enable = active == true
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetInventoryPanelActive(boolean active)
+		local panel = self:GetInventoryEntity("Panel")
+		if panel ~= nil then
+			panel.Enable = active == true
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetDragGhostActive(boolean active)
+		local ghost = self:GetChainEntity("DragGhost")
+		local root = _EntityService:GetEntityByPath(self:GetChainRootPath())
+		if root ~= nil and root.UIGroupComponent ~= nil then
+			if active == true then
+				if self.dragGroupOrderBefore <= -1000 then
+					self.dragGroupOrderBefore = self:ReadNumber(root.UIGroupComponent.GroupOrder, 4)
+				end
+				root.UIGroupComponent.GroupOrder = math.floor(self:ReadNumber(self.DragGroupOrder, 90))
+			elseif self.dragGroupOrderBefore > -1000 then
+				root.UIGroupComponent.GroupOrder = math.floor(self.dragGroupOrderBefore)
+				self.dragGroupOrderBefore = -1000
+			end
+		end
+		if ghost ~= nil then
+			ghost.Enable = active == true
+			if active == true and ghost.UITransformComponent ~= nil then
+				_UILogic:SetSiblingIndex(ghost.UITransformComponent, 1000000)
+			end
+		end
+	end
+
+	method void EnsureRuntime()
+		if self._T.chainSlots == nil then
+			self._T.chainSlots = {}
+		end
+		if self._T.bagParts == nil then
+			self._T.bagParts = {}
+		end
+		if self._T.handlers == nil then
+			self._T.handlers = {}
+		end
+	end
+
+	method number GetRefreshSeconds()
+		return math.max(0.05, self:ReadNumber(self.RefreshSeconds, 0.15))
+	end
+
+	method number GetRequestSeconds()
+		return math.max(self:GetRefreshSeconds(), self:ReadNumber(self.RequestSeconds, 0.75))
+	end
+
+	method number GetBagSlotCount()
+		local count = math.floor(self:ReadNumber(self.BagSlotCount, 2))
+		if _BRSkillSystem ~= nil then
+			count = math.floor(self:ReadNumber(_BRSkillSystem:GetBagSlotCount(), count))
+		end
+		return math.max(1, count)
+	end
+
+	method number GetChainSlotCount()
+		-- Returns the visible chain slot count.
+		local count = math.floor(self:ReadNumber(self.ChainSlotCount, 5))
+		if _BRSkillSystem ~= nil then
+			count = math.floor(self:ReadNumber(_BRSkillSystem:GetChainSlotCount(), count))
+		end
+		return math.max(1, count)
+	end
+
+	method number GetClickDragThreshold()
+		return math.max(1, self:ReadNumber(self.ClickDragThreshold, 8))
+	end
+
+	method string GetChainRootPath()
+		return self:ReadString(self.ChainRootPath, self:ReadString(self.RootPath, "/ui/BRSkillChainGroup"))
+	end
+
+	method string GetInventoryRootPath()
+		return self:ReadString(self.InventoryRootPath, "/ui/BRSkillInventoryGroup")
+	end
+
+	method string GetLocalUserId()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return ""
+		end
+		return self:ReadString(localPlayer.PlayerComponent.UserId, "")
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRSkillChainUI] " .. message)
+		end
+	end
+
+end

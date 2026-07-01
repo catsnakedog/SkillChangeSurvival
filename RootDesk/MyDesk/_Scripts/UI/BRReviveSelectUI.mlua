@@ -1,0 +1,568 @@
+@Component
+script BRReviveSelectUI extends Component
+
+	property string RootPath = "/ui/BRReviveSelectGroup"
+
+	property number MaxRows = 5
+
+	property number MaxColumns = 5
+
+	property number RefreshSeconds = 0.15
+
+	property number RequestSeconds = 0.35
+
+	property boolean VerboseLog = true
+
+	property number refreshTimerId = 0
+
+	property number nextRequestAt = 0
+
+	property string lastRenderKey = ""
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		self:EnsureRuntime()
+		self:ConnectHandlers()
+		self:SetPanelActive(false)
+		self:Refresh()
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds(), 0.1)
+		self:Log("ready")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+		self:DisconnectHandlers()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void Refresh()
+		local battleLogic = self:GetBattleLogic()
+		if battleLogic == nil or self:IsLocalPlayerReviving(battleLogic) ~= true then
+			self:SetPanelActive(false)
+			self.lastRenderKey = ""
+			return
+		end
+
+		self:SetPanelActive(true)
+		local now = _UtilLogic.ElapsedSeconds
+		if now >= self.nextRequestAt then
+			self.nextRequestAt = now + self:GetRequestSeconds()
+			battleLogic:RequestReviveOptions()
+		end
+
+		local renderKey = self:GetRenderKey(battleLogic)
+		if renderKey ~= self.lastRenderKey then
+			self.lastRenderKey = renderKey
+			self:Render(battleLogic)
+		else
+			self:UpdateHeader(battleLogic)
+		end
+	end
+
+	method void ConnectHandlers()
+		self:EnsureRuntime()
+		self:DisconnectHandlers()
+		self._T.handlers = {}
+		for row = 1, self:GetMaxRows() do
+			for column = 1, self:GetMaxColumns() do
+				local cell = self:GetGridChild(self:GetCellName(row, column))
+				if cell ~= nil then
+					local clickHandler = cell:ConnectEvent(ButtonClickEvent, self.OnCellClick)
+					table.insert(self._T.handlers, { Entity = cell, Handler = clickHandler })
+				end
+			end
+		end
+	end
+
+	method void DisconnectHandlers()
+		if self._T.handlers == nil then
+			return
+		end
+		for index, entry in ipairs(self._T.handlers) do
+			if entry ~= nil and entry.Entity ~= nil and entry.Handler ~= nil then
+				entry.Entity:DisconnectEvent(ButtonClickEvent, entry.Handler)
+			end
+		end
+		self._T.handlers = {}
+	end
+
+	method void OnCellClick(ButtonClickEvent event)
+		local cell = { Row = 0, Column = 0 }
+		if event ~= nil and event.Entity ~= nil then
+			cell = self:GetCellCoordinateFromName(event.Entity.Name)
+		end
+		if cell.Row <= 0 or cell.Column <= 0 then
+			return
+		end
+		self:SelectCell(cell.Row, cell.Column)
+	end
+
+	method void SelectCell(number row, number column)
+		local key = self:GetRoomKey(row, column)
+		local candidate = self._T.candidates[key]
+		local battleLogic = self:GetBattleLogic()
+		if battleLogic == nil or candidate == nil then
+			return
+		end
+
+		local remaining = battleLogic:GetLocalReviveRemainingSeconds()
+		if remaining > 0 then
+			self:SetTextByPath("Panel/Message", "Revive preparing... " .. tostring(math.ceil(remaining)) .. "s")
+			return
+		end
+		if self:ReadNumber(candidate.State, 0) ~= 1 then
+			self:SetTextByPath("Panel/Message", self:GetCandidateReason(candidate))
+			return
+		end
+
+		battleLogic:RequestReviveAt(row, column)
+		self:SetTextByPath("Panel/Message", "Reviving...")
+	end
+
+	method void Render(any battleLogic)
+		local rows = math.min(self:GetMaxRows(), math.max(1, math.floor(self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapRows, 0))))
+		local columns = math.min(self:GetMaxColumns(), math.max(1, math.floor(self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapColumns, 0))))
+		local roomSet = self:ParseRoomSet(self:ReadString(_BRRoomGraphGenerator.LastMiniMapRooms, ""))
+		local connections = self:ParseConnections(self:ReadString(_BRRoomGraphGenerator.LastMiniMapConnections, ""))
+		local playerCounts = self:ParsePlayerCounts(self:ReadString(_BRRoomGraphGenerator.LastMiniMapPlayerCounts, ""))
+		self._T.candidates = self:ParseCandidateText(battleLogic:GetLocalReviveOptionsText())
+
+		self:HideAllCellsAndLinks()
+		for row = 1, rows do
+			for column = 1, columns do
+				self:RenderCell(row, column, rows, columns, roomSet, playerCounts, battleLogic)
+			end
+		end
+		self:RenderConnections(rows, columns, connections)
+		self:UpdateHeader(battleLogic)
+	end
+
+	method void RenderCell(number row, number column, number rows, number columns, any roomSet, any playerCounts, any battleLogic)
+		local key = self:GetRoomKey(row, column)
+		local cell = self:GetGridChild(self:GetCellName(row, column))
+		if cell == nil then
+			return
+		end
+
+		local active = roomSet[key] == true
+		local candidate = self._T.candidates[key]
+		if active ~= true or candidate == nil then
+			cell.Enable = false
+			return
+		end
+
+		self:PositionCell(cell, row, column, rows, columns)
+		local remaining = battleLogic:GetLocalReviveRemainingSeconds()
+		local state = math.floor(self:ReadNumber(candidate.State, 0))
+		local count = math.max(self:ReadNumber(candidate.Count, 0), self:ReadNumber(playerCounts[key], 0))
+		cell.Enable = true
+		if cell.ButtonComponent ~= nil then
+			cell.ButtonComponent.Enable = state == 1 and remaining <= 0
+		end
+		self:SetCellColor(cell, state, remaining)
+		self:SetTextByPath("Panel/Grid/" .. self:GetCellName(row, column) .. "/Label", self:GetCellLabel(candidate, remaining))
+		self:SetTextByPath("Panel/Grid/" .. self:GetCellName(row, column) .. "/Count", self:GetCountLabel(count))
+	end
+
+	method void RenderConnections(number rows, number columns, any connections)
+		for index, connection in ipairs(connections) do
+			local row = self:ReadNumber(connection.Row, 0)
+			local column = self:ReadNumber(connection.Column, 0)
+			local linkName = self:GetLinkName(row, column, self:ReadString(connection.Direction, ""))
+			local link = self:GetGridChild(linkName)
+			if link ~= nil and self:IsLinkInsideGrid(row, column, self:ReadString(connection.Direction, ""), rows, columns) == true then
+				self:PositionLink(link, row, column, self:ReadString(connection.Direction, ""), rows, columns)
+				link.Enable = true
+				if link.SpriteGUIRendererComponent ~= nil then
+					link.SpriteGUIRendererComponent.Color = Color(0.28, 0.88, 1, 0.95)
+				end
+			end
+		end
+	end
+
+	method void UpdateHeader(any battleLogic)
+		local remaining = 0
+		local message = ""
+		if battleLogic ~= nil then
+			remaining = battleLogic:GetLocalReviveRemainingSeconds()
+			message = battleLogic:GetLocalReviveMessage()
+		end
+		if remaining > 0 then
+			self:SetTextByPath("Panel/Title", "SELECT REVIVE POINT")
+			self:SetTextByPath("Panel/Message", "Revive available in " .. tostring(math.ceil(remaining)) .. "s")
+		else
+			self:SetTextByPath("Panel/Title", "SELECT REVIVE POINT")
+			if message == "" then
+				message = "Choose an empty room. Death room and occupied rooms are locked."
+			end
+			self:SetTextByPath("Panel/Message", message)
+		end
+	end
+
+	method boolean IsLocalPlayerReviving(any battleLogic)
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil or battleLogic == nil then
+			return false
+		end
+		if self:ReadString(localPlayer.CurrentMapName, "") ~= self:ReadString(battleLogic.LifeMapName, self:ReadString(localPlayer.CurrentMapName, "")) then
+			return false
+		end
+
+		local userId = self:ReadString(localPlayer.PlayerComponent.UserId, "")
+		for record in string.gmatch(self:ReadString(battleLogic.LifeSummary, ""), "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			if self:ReadString(parts[1], "") == userId then
+				return self:ReadString(parts[4], "") == "REVIVE"
+			end
+		end
+		return false
+	end
+
+	method string GetRenderKey(any battleLogic)
+		if _BRRoomGraphGenerator == nil then
+			return "missing"
+		end
+		return tostring(self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapVersion, 0))
+			.. ":" .. tostring(self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapPlayerVersion, 0))
+			.. ":" .. tostring(self:ReadNumber(battleLogic:GetLocalReviveOptionsVersion(), 0))
+			.. ":" .. tostring(math.ceil(self:ReadNumber(battleLogic:GetLocalReviveRemainingSeconds(), 0)))
+	end
+
+	method any GetBattleLogic()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return nil
+		end
+		local mapName = self:ReadString(localPlayer.CurrentMapName, "")
+		if mapName == "" then
+			return nil
+		end
+		local entity = _EntityService:GetEntityByPath("/maps/" .. mapName .. "/BattleLogic")
+		if entity == nil then
+			return nil
+		end
+		---@type BRBattleLogic
+		return entity:GetComponent("script.BRBattleLogic")
+	end
+
+	method any ParseRoomSet(string roomsText)
+		local result = {}
+		for record in string.gmatch(self:ReadString(roomsText, ""), "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local row = math.floor(self:ReadNumber(parts[1], 0))
+			local column = math.floor(self:ReadNumber(parts[2], 0))
+			if row > 0 and column > 0 then
+				result[self:GetRoomKey(row, column)] = true
+			end
+		end
+		return result
+	end
+
+	method any ParseConnections(string connectionsText)
+		local result = {}
+		for record in string.gmatch(self:ReadString(connectionsText, ""), "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local row = math.floor(self:ReadNumber(parts[1], 0))
+			local column = math.floor(self:ReadNumber(parts[2], 0))
+			local direction = string.upper(self:ReadString(parts[3], ""))
+			if row > 0 and column > 0 and direction ~= "" then
+				table.insert(result, { Row = row, Column = column, Direction = direction })
+			end
+		end
+		return result
+	end
+
+	method any ParsePlayerCounts(string countsText)
+		local result = {}
+		for record in string.gmatch(self:ReadString(countsText, ""), "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local row = math.floor(self:ReadNumber(parts[1], 0))
+			local column = math.floor(self:ReadNumber(parts[2], 0))
+			local count = math.max(0, math.floor(self:ReadNumber(parts[3], 0)))
+			if row > 0 and column > 0 and count > 0 then
+				result[self:GetRoomKey(row, column)] = count
+			end
+		end
+		return result
+	end
+
+	method any ParseCandidateText(string optionsText)
+		local result = {}
+		for record in string.gmatch(self:ReadString(optionsText, ""), "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local row = math.floor(self:ReadNumber(parts[1], 0))
+			local column = math.floor(self:ReadNumber(parts[2], 0))
+			if row > 0 and column > 0 then
+				result[self:GetRoomKey(row, column)] = {
+					Row = row,
+					Column = column,
+					State = math.floor(self:ReadNumber(parts[3], 0)),
+					Count = math.max(0, math.floor(self:ReadNumber(parts[4], 0)))
+				}
+			end
+		end
+		return result
+	end
+
+	method string GetCellName(number row, number column)
+		return "Cell_" .. tostring(math.floor(row)) .. "_" .. tostring(math.floor(column))
+	end
+
+	method any GetCellCoordinateFromName(string name)
+		local safeName = self:ReadString(name, "")
+		local values = {}
+		for value in string.gmatch(safeName, "(%d+)") do
+			table.insert(values, value)
+		end
+		return {
+			Row = math.floor(self:ReadNumber(values[1], 0)),
+			Column = math.floor(self:ReadNumber(values[2], 0))
+		}
+	end
+
+	method string GetHorizontalLinkName(number row, number column)
+		return "LinkH_" .. tostring(math.floor(row)) .. "_" .. tostring(math.floor(column))
+	end
+
+	method string GetVerticalLinkName(number row, number column)
+		return "LinkV_" .. tostring(math.floor(row)) .. "_" .. tostring(math.floor(column))
+	end
+
+	method string GetLinkName(number row, number column, string direction)
+		local safeRow = math.floor(self:ReadNumber(row, 0))
+		local safeColumn = math.floor(self:ReadNumber(column, 0))
+		if direction == "E" then
+			return self:GetHorizontalLinkName(safeRow, safeColumn)
+		elseif direction == "W" then
+			return self:GetHorizontalLinkName(safeRow, safeColumn - 1)
+		elseif direction == "S" then
+			return self:GetVerticalLinkName(safeRow, safeColumn)
+		elseif direction == "N" then
+			return self:GetVerticalLinkName(safeRow - 1, safeColumn)
+		end
+		return ""
+	end
+
+	method boolean IsLinkInsideGrid(number row, number column, string direction, number rows, number columns)
+		if direction == "E" then
+			return row >= 1 and row <= rows and column >= 1 and column < columns
+		elseif direction == "W" then
+			return row >= 1 and row <= rows and column > 1 and column <= columns
+		elseif direction == "S" then
+			return row >= 1 and row < rows and column >= 1 and column <= columns
+		elseif direction == "N" then
+			return row > 1 and row <= rows and column >= 1 and column <= columns
+		end
+		return false
+	end
+
+	method string GetRoomKey(number row, number column)
+		return tostring(math.floor(row)) .. ":" .. tostring(math.floor(column))
+	end
+
+	method string GetCellLabel(any candidate, number remaining)
+		if remaining > 0 then
+			return "WAIT"
+		end
+		local state = math.floor(self:ReadNumber(candidate.State, 0))
+		if state == 1 then
+			return "OK"
+		elseif state == 2 then
+			return "DEAD"
+		elseif state == 3 then
+			return "BUSY"
+		end
+		return "-"
+	end
+
+	method string GetCandidateReason(any candidate)
+		local state = math.floor(self:ReadNumber(candidate.State, 0))
+		if state == 2 then
+			return "Cannot revive where you died."
+		elseif state == 3 then
+			return "Cannot revive on another player."
+		end
+		return "That room is not available."
+	end
+
+	method string GetCountLabel(number count)
+		local safeCount = math.max(0, math.floor(self:ReadNumber(count, 0)))
+		if safeCount <= 0 then
+			return ""
+		end
+		return "P " .. tostring(safeCount)
+	end
+
+	method void SetCellColor(Entity cell, number state, number remaining)
+		if cell == nil or cell.SpriteGUIRendererComponent == nil then
+			return
+		end
+		if remaining > 0 then
+			cell.SpriteGUIRendererComponent.Color = Color(0.94, 0.62, 0.16, 0.95)
+		elseif state == 1 then
+			cell.SpriteGUIRendererComponent.Color = Color(0.2, 0.72, 0.46, 0.98)
+		elseif state == 2 then
+			cell.SpriteGUIRendererComponent.Color = Color(0.92, 0.16, 0.18, 0.98)
+		elseif state == 3 then
+			cell.SpriteGUIRendererComponent.Color = Color(0.28, 0.31, 0.37, 0.95)
+		else
+			cell.SpriteGUIRendererComponent.Color = Color(0.08, 0.1, 0.14, 0.72)
+		end
+	end
+
+	method void PositionCell(Entity cell, number row, number column, number rows, number columns)
+		if cell == nil or cell.UITransformComponent == nil then
+			return
+		end
+		local spacing = self:GetGridSpacing()
+		local x = (self:ReadNumber(column, 1) - (columns + 1) * 0.5) * spacing
+		local y = ((rows + 1) * 0.5 - self:ReadNumber(row, 1)) * spacing
+		cell.UITransformComponent.anchoredPosition = Vector2(x, y)
+	end
+
+	method void PositionLink(Entity link, number row, number column, string direction, number rows, number columns)
+		if link == nil or link.UITransformComponent == nil then
+			return
+		end
+		local spacing = self:GetGridSpacing()
+		local x = (self:ReadNumber(column, 1) - (columns + 1) * 0.5) * spacing
+		local y = ((rows + 1) * 0.5 - self:ReadNumber(row, 1)) * spacing
+		if direction == "E" then
+			x = x + spacing * 0.5
+		elseif direction == "W" then
+			x = x - spacing * 0.5
+		elseif direction == "S" then
+			y = y - spacing * 0.5
+		elseif direction == "N" then
+			y = y + spacing * 0.5
+		end
+		link.UITransformComponent.anchoredPosition = Vector2(x, y)
+	end
+
+	method Entity GetGridChild(string childName)
+		local grid = self:GetEntity("Panel/Grid")
+		if grid == nil then
+			return nil
+		end
+		return grid:GetChildByName(self:ReadString(childName, ""), false)
+	end
+
+	method void HideAllCellsAndLinks()
+		for row = 1, self:GetMaxRows() do
+			for column = 1, self:GetMaxColumns() do
+				self:SetGridChildActive(self:GetCellName(row, column), false)
+				if column < self:GetMaxColumns() then
+					self:SetGridChildActive(self:GetHorizontalLinkName(row, column), false)
+				end
+				if row < self:GetMaxRows() then
+					self:SetGridChildActive(self:GetVerticalLinkName(row, column), false)
+				end
+			end
+		end
+	end
+
+	method void SetGridChildActive(string childName, boolean active)
+		local child = self:GetGridChild(childName)
+		if child ~= nil then
+			child.Enable = active == true
+		end
+	end
+
+	method Entity GetEntity(string relativePath)
+		local path = self:ReadString(relativePath, "")
+		if path == "" then
+			return nil
+		end
+		if string.sub(path, 1, 1) ~= "/" then
+			path = self:ReadString(self.RootPath, "/ui/BRReviveSelectGroup") .. "/" .. path
+		end
+		return _EntityService:GetEntityByPath(path)
+	end
+
+	method void SetTextByPath(string relativePath, string text)
+		local entity = self:GetEntity(relativePath)
+		if entity ~= nil and entity.TextComponent ~= nil then
+			entity.TextComponent.Text = self:ReadString(text, "")
+		end
+	end
+
+	method void SetPanelActive(boolean active)
+		local panel = self:GetEntity("Panel")
+		if panel ~= nil then
+			panel.Enable = active == true
+		end
+		self:SetRootRaycastBlocked(active == true)
+	end
+
+	method void SetRootRaycastBlocked(boolean blocked)
+		-- Blocks the game and lower HUD only while revive selection is open.
+		local root = _EntityService:GetEntityByPath(self:ReadString(self.RootPath, "/ui/BRReviveSelectGroup"))
+		if root ~= nil and root.CanvasGroupComponent ~= nil then
+			root.CanvasGroupComponent.BlocksRaycasts = blocked == true
+			root.CanvasGroupComponent.Interactable = blocked == true
+		end
+	end
+
+	method any SplitCommaRecord(string record)
+		local parts = {}
+		for part in string.gmatch(self:ReadString(record, ""), "([^,]+)") do
+			table.insert(parts, part)
+		end
+		return parts
+	end
+
+	method void EnsureRuntime()
+		if self._T.handlers == nil then
+			self._T.handlers = {}
+		end
+		if self._T.candidates == nil then
+			self._T.candidates = {}
+		end
+	end
+
+	method number GetMaxRows()
+		return math.max(1, math.floor(self:ReadNumber(self.MaxRows, 5)))
+	end
+
+	method number GetMaxColumns()
+		return math.max(1, math.floor(self:ReadNumber(self.MaxColumns, 5)))
+	end
+
+	method number GetRefreshSeconds()
+		return math.max(0.05, self:ReadNumber(self.RefreshSeconds, 0.15))
+	end
+
+	method number GetRequestSeconds()
+		return math.max(self:GetRefreshSeconds(), self:ReadNumber(self.RequestSeconds, 0.35))
+	end
+
+	method number GetGridSpacing()
+		return 112
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRReviveSelectUI] " .. message)
+		end
+	end
+
+end

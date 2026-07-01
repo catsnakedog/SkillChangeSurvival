@@ -1,0 +1,380 @@
+@Component
+script BRDroppedSkillPart extends Component
+
+	property string PartId = "slash_part"
+
+	property string DisplayName = "Skill"
+
+	property string ShortKey = "SK"
+
+	property string SourceUserId = ""
+
+	property number SourceInstanceId = 0
+
+	property number TouchRadius = 0.75
+
+	property number PollSeconds = 0.08
+
+	property number PickupDelaySeconds = 0.35
+
+	property number OwnerPickupDelaySeconds = 1.25
+
+	property number LifeSeconds = 45
+
+	property boolean VerboseLog = false
+
+	property boolean FloatEnabled = true
+
+	property number FloatAmplitude = 0.08
+
+	property number FloatSpeed = 3.2
+
+	property boolean active = true
+
+	property boolean initialized = false
+
+	property boolean beginPlayed = false
+
+	property boolean floatBaseCaptured = false
+
+	property number floatBaseX = 0
+
+	property number floatBaseY = 0
+
+	property number floatBaseZ = 0
+
+	property number spawnedAt = 0
+
+	property number nextPickupAttemptAt = 0
+
+	property number pollTimerId = 0
+
+	property number lifeTimerId = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		-- Starts the pickup scan for a dropped skill part.
+		self.beginPlayed = true
+		self.active = true
+		self.spawnedAt = _UtilLogic.ElapsedSeconds
+		self.nextPickupAttemptAt = self.spawnedAt + self:GetOwnerPickupDelaySeconds()
+		self:ConfigureVisual()
+		if self.initialized == true then
+			self:StartTimers()
+		end
+		self:Log("begin part=" .. self:GetPartId() .. " name=" .. self:GetDisplayName())
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnEndPlay()
+		-- Clears timers when the dropped part is removed.
+		self:ClearTimers()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnUpdate(number delta)
+		-- Applies a Maple-style idle float without moving the server pickup center.
+		if self.FloatEnabled ~= true or self.Entity == nil or self.Entity.TransformComponent == nil then
+			return
+		end
+		if self.floatBaseCaptured ~= true then
+			self:CaptureFloatBasePosition()
+		end
+		local time = _UtilLogic.ElapsedSeconds - self.spawnedAt
+		local offsetY = math.sin(time * self:GetFloatSpeed()) * self:GetFloatAmplitude()
+		self.Entity.TransformComponent.Position = Vector3(self.floatBaseX, self.floatBaseY + offsetY, self.floatBaseZ)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void InitializeDrop(string partId, string displayName, string shortKey, string sourceUserId, number sourceInstanceId)
+		-- Applies the exact skill part payload after runtime spawn.
+		self.PartId = self:ReadString(partId, self.PartId)
+		self.DisplayName = self:ReadString(displayName, self.DisplayName)
+		self.ShortKey = self:ReadString(shortKey, self.ShortKey)
+		self.SourceUserId = self:ReadString(sourceUserId, "")
+		self.SourceInstanceId = self:ReadNumber(sourceInstanceId, 0)
+		self.spawnedAt = _UtilLogic.ElapsedSeconds
+		self.nextPickupAttemptAt = self.spawnedAt + self:GetOwnerPickupDelaySeconds()
+		self.active = true
+		self.initialized = true
+		self:ConfigureVisual()
+		if self.beginPlayed == true then
+			self:StartTimers()
+		end
+		self:Log("init part=" .. self:GetPartId() .. " sourceInstance=" .. tostring(self.SourceInstanceId))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartTimers()
+		-- Starts polling and lifetime timers.
+		if self.pollTimerId == nil or self.pollTimerId <= 0 then
+			self.pollTimerId = _TimerService:SetTimerRepeat(function() self:ScanPlayers() end, self:GetPollSeconds(), 0.1)
+		end
+		if self.lifeTimerId == nil or self.lifeTimerId <= 0 then
+			local lifeSeconds = self:GetLifeSeconds()
+			if lifeSeconds > 0 then
+				self.lifeTimerId = _TimerService:SetTimerOnce(function() self:Expire() end, lifeSeconds)
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ClearTimers()
+		-- Clears active polling and lifetime timers.
+		if self.pollTimerId ~= nil and self.pollTimerId > 0 then
+			_TimerService:ClearTimer(self.pollTimerId)
+		end
+		self.pollTimerId = 0
+		if self.lifeTimerId ~= nil and self.lifeTimerId > 0 then
+			_TimerService:ClearTimer(self.lifeTimerId)
+		end
+		self.lifeTimerId = 0
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ScanPlayers()
+		-- Gives the part to the first nearby living player with available skill space.
+		if self.active == false then
+			return
+		end
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self.nextPickupAttemptAt then
+			return
+		end
+		local mapName = self:GetMapName()
+		if mapName == "" then
+			return
+		end
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users == nil then
+			return
+		end
+		local dropPosition = self:GetEntityPosition2(self.Entity)
+		local radius = self:GetTouchRadius()
+		for index, playerEntity in ipairs(users) do
+			if self:IsPlayerCloseEnough(playerEntity, dropPosition, radius) == true then
+				if self:PickupForPlayer(playerEntity) == true then
+					return
+				end
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean PickupForPlayer(Entity playerEntity)
+		-- Attempts to grant the dropped part to one player.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil or _BRSkillSystem == nil then
+			return false
+		end
+		local userId = tostring(self:ReadString(playerEntity.PlayerComponent.UserId, ""))
+		if userId == "" then
+			return false
+		end
+		if self:IsOwnerPickupBlocked(userId) == true then
+			return false
+		end
+		local part = _BRSkillSystem:GrantPart(userId, self:GetPartId(), _BRSkillSystem.AutoEquipDroppedParts, self.Entity.Id)
+		if part == nil then
+			self.nextPickupAttemptAt = _UtilLogic.ElapsedSeconds + 0.5
+			self:ShowPickupLabel(playerEntity, "SKILL BAG FULL")
+			self:Log("pickup failed user=" .. userId .. " reason=noSpace")
+			return false
+		end
+		self.active = false
+		self:ShowPickupLabel(playerEntity, _BRSkillSystem:GetPartSummary(part))
+		self:Log("pickup user=" .. userId .. " part=" .. self:GetPartId())
+		self:ClearTimers()
+		self.Entity:Destroy()
+		return true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void Expire()
+		-- Removes the dropped part after its lifetime.
+		if self.active == false then
+			return
+		end
+		self.active = false
+		self:Log("expire part=" .. self:GetPartId())
+		self:ClearTimers()
+		if self.Entity ~= nil then
+			self.Entity:Destroy()
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean IsPlayerCloseEnough(Entity playerEntity, Vector2 dropPosition, number radius)
+		-- Checks whether a living player can pick up this dropped part.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
+		end
+		if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+		local playerPosition = self:GetEntityPosition2(playerEntity)
+		local dx = playerPosition.x - dropPosition.x
+		local dy = playerPosition.y - dropPosition.y
+		return dx * dx + dy * dy <= radius * radius
+	end
+
+	method boolean IsOwnerPickupBlocked(string userId)
+		-- Gives the owner a short visible drop window before auto-pickup can reclaim it.
+		local sourceUserId = tostring(self:ReadString(self.SourceUserId, ""))
+		local targetUserId = tostring(self:ReadString(userId, ""))
+		if sourceUserId == "" or sourceUserId ~= targetUserId then
+			return false
+		end
+		return _UtilLogic.ElapsedSeconds < self.spawnedAt + self:GetOwnerPickupDelaySeconds()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ConfigureVisual()
+		-- Makes the cloned pickup look like a small dropped skill shard.
+		if self.Entity == nil then
+			return
+		end
+		self.Entity.Visible = true
+		if self.Entity.PolygonRendererComponent ~= nil then
+			local renderer = self.Entity.PolygonRendererComponent
+			renderer.Enable = true
+			renderer.SortingLayer = "MapLayer0"
+			renderer.IgnoreMapLayerCheck = true
+			renderer.OrderInLayer = 80
+			renderer.Color = self:GetPartColor()
+			renderer.Points:Clear()
+			renderer.Points:Add(Vector2(-0.18, -0.18))
+			renderer.Points:Add(Vector2(0.18, -0.18))
+			renderer.Points:Add(Vector2(0.18, 0.18))
+			renderer.Points:Add(Vector2(-0.18, 0.18))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void CaptureFloatBasePosition()
+		-- Stores the local render anchor for the floating icon motion.
+		if self.Entity == nil or self.Entity.TransformComponent == nil then
+			return
+		end
+		local position = self.Entity.TransformComponent.Position
+		self.floatBaseX = position.x
+		self.floatBaseY = position.y
+		self.floatBaseZ = position.z
+		self.floatBaseCaptured = true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ShowPickupLabel(Entity playerEntity, string message)
+		-- Shows a compact pickup result on the player's nametag.
+		if playerEntity == nil or playerEntity.NameTagComponent == nil then
+			return
+		end
+		playerEntity.NameTagComponent.Name = self:ReadString(message, "Skill Part")
+		playerEntity.NameTagComponent.FontColor = Color(0.85, 0.75, 1, 1)
+	end
+
+	method Color GetPartColor()
+		-- Returns a visible color based on the short skill key.
+		local shortKey = self:ReadString(self.ShortKey, "SK")
+		if shortKey == "SL" then
+			return Color(0.95, 0.32, 0.36, 0.95)
+		elseif shortKey == "SH" then
+			return Color(0.38, 0.7, 1, 0.95)
+		elseif shortKey == "BU" then
+			return Color(1, 0.7, 0.28, 0.95)
+		elseif shortKey == "DA" then
+			return Color(0.5, 1, 0.55, 0.95)
+		elseif shortKey == "GU" then
+			return Color(0.75, 0.62, 1, 0.95)
+		elseif shortKey == "FI" then
+			return Color(0.25, 1, 0.9, 0.95)
+		end
+		return Color(0.85, 0.85, 1, 0.95)
+	end
+
+	method string GetPartId()
+		-- Returns a valid skill part id.
+		return self:ReadString(self.PartId, "slash_part")
+	end
+
+	method string GetDisplayName()
+		-- Returns a readable skill part name.
+		return self:ReadString(self.DisplayName, "Skill")
+	end
+
+	method string GetMapName()
+		-- Returns the current map name for user lookup.
+		if self.Entity ~= nil and self.Entity.CurrentMapName ~= nil then
+			return self.Entity.CurrentMapName
+		end
+		return ""
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		-- Reads an entity world position as Vector2.
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method number GetTouchRadius()
+		-- Returns the pickup radius.
+		return math.max(0.1, self:ReadNumber(self.TouchRadius, 0.75))
+	end
+
+	method number GetPollSeconds()
+		-- Returns the pickup polling interval.
+		return math.max(0.033, self:ReadNumber(self.PollSeconds, 0.08))
+	end
+
+	method number GetPickupDelaySeconds()
+		-- Returns the delay before pickup is allowed.
+		return math.max(0, self:ReadNumber(self.PickupDelaySeconds, 0.35))
+	end
+
+	method number GetOwnerPickupDelaySeconds()
+		-- Returns the owner's extra reclaim delay after dropping a part.
+		return math.max(self:GetPickupDelaySeconds(), self:ReadNumber(self.OwnerPickupDelaySeconds, 1.25))
+	end
+
+	method number GetLifeSeconds()
+		-- Returns how long the dropped part stays in the world.
+		return math.max(0, self:ReadNumber(self.LifeSeconds, 45))
+	end
+
+	method number GetFloatAmplitude()
+		-- Returns the local visual float height in world units.
+		return math.max(0, self:ReadNumber(self.FloatAmplitude, 0.08))
+	end
+
+	method number GetFloatSpeed()
+		-- Returns the idle float wave speed.
+		return math.max(0.1, self:ReadNumber(self.FloatSpeed, 3.2))
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes dropped-part logs when enabled.
+		if self.VerboseLog == true then
+			log("[BRDroppedSkillPart] " .. message)
+		end
+	end
+
+end

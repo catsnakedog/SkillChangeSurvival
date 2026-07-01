@@ -3,11 +3,21 @@ script BRPortalConnectionSystem extends Logic
 
 	property boolean EnablePortalConnections = true
 
+	property boolean RequireInteractionKey = true
+
 	property number PollSeconds = 0.08
 
 	property number ActivationPadding = 0.18
 
+	property number PortalInteractReach = 5.5
+
+	property number PortalExitOffset = 1.75
+
 	property number ReuseCooldownSeconds = 0.85
+
+	property number ClientRequestCooldownSeconds = 0.15
+
+	property boolean InstantCameraFollow = true
 
 	property boolean BlockDeadPlayers = true
 
@@ -23,18 +33,34 @@ script BRPortalConnectionSystem extends Logic
 
 	property number pollTimerId = 0
 
-	@ExecSpace("ServerOnly")
+	property any inputKeyDownHandler = nil
+
+	property number clientNextPortalRequestAt = 0
+
 	method void OnBeginPlay()
-		-- Starts the server-side custom portal polling loop.
-		self:EnsureRuntime()
-		self:StartPolling()
-		self:Log("ready")
+		-- Initializes server portal state and client interaction-key input.
+		if self:IsServer() then
+			self:EnsureRuntime()
+			self:StartPolling()
+			if self.RequireInteractionKey == true then
+				self:Log("ready mode=interaction key=UpArrow")
+			else
+				self:Log("ready mode=auto")
+			end
+		end
+		if self:IsClient() then
+			self:StartClientInput()
+		end
 	end
 
-	@ExecSpace("ServerOnly")
 	method void OnEndPlay()
-		-- Clears the custom portal polling loop.
-		self:StopPolling()
+		-- Clears server polling and client input handlers.
+		if self:IsServer() then
+			self:StopPolling()
+		end
+		if self:IsClient() then
+			self:StopClientInput()
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -79,6 +105,9 @@ script BRPortalConnectionSystem extends Logic
 		if self.EnablePortalConnections ~= true then
 			return
 		end
+		if self.RequireInteractionKey == true then
+			return
+		end
 		if self.pollTimerId ~= nil and self.pollTimerId > 0 then
 			return
 		end
@@ -100,11 +129,61 @@ script BRPortalConnectionSystem extends Logic
 		if self.EnablePortalConnections ~= true then
 			return
 		end
+		if self.RequireInteractionKey == true then
+			return
+		end
 		self:EnsureRuntime()
 
 		for mapName, graph in pairs(self._T.graphsByMap) do
 			self:ScanMapPortals(mapName, graph)
 		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StartClientInput()
+		-- Hooks the local up-arrow key as the portal interaction command.
+		if self.EnablePortalConnections ~= true then
+			return
+		end
+		if self.RequireInteractionKey ~= true then
+			return
+		end
+		if self.inputKeyDownHandler ~= nil then
+			return
+		end
+
+		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnPortalInteractKeyDown)
+		self:ApplyInstantCameraFollow("client-ready")
+		log("[BRPortalConnection] client input ready key=UpArrow")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StopClientInput()
+		-- Unhooks the local portal interaction key handler.
+		if self.inputKeyDownHandler ~= nil then
+			_InputService:DisconnectEvent(KeyDownEvent, self.inputKeyDownHandler)
+		end
+		self.inputKeyDownHandler = nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnPortalInteractKeyDown(KeyDownEvent event)
+		-- Sends a portal-use request when the local player presses the up arrow.
+		if event == nil or event.key ~= KeyboardKey.UpArrow then
+			return
+		end
+		if self.EnablePortalConnections ~= true or self.RequireInteractionKey ~= true then
+			return
+		end
+
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self:ReadNumber(self.clientNextPortalRequestAt, 0) then
+			return
+		end
+
+		self.clientNextPortalRequestAt = now + self:GetClientRequestCooldownSeconds()
+		log("[BRPortalConnection] interact request key=UpArrow")
+		self:RequestUsePortal()
 	end
 
 	@ExecSpace("ServerOnly")
@@ -127,6 +206,53 @@ script BRPortalConnectionSystem extends Logic
 				end
 			end
 		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestUsePortal()
+		-- Handles a client interaction request after server-side portal validation.
+		if self.EnablePortalConnections ~= true then
+			return
+		end
+		self:EnsureRuntime()
+
+		local userId = self:ReadString(senderUserId, "")
+		if userId == "" then
+			self:Log("interact skipped: sender missing")
+			return
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(userId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			self:Log("interact skipped: player missing user=" .. userId)
+			return
+		end
+
+		local mapName = self:ReadString(playerEntity.CurrentMapName, "")
+		if mapName == "" then
+			self:Log("interact skipped: map missing user=" .. userId)
+			return
+		end
+
+		local graph = self._T.graphsByMap[mapName]
+		if graph == nil then
+			self:Log("interact skipped: graph missing user=" .. userId .. " map=" .. mapName)
+			return
+		end
+		if self:CanPlayerUsePortal(mapName, playerEntity) ~= true then
+			self:Log("interact blocked user=" .. userId .. " map=" .. mapName)
+			return
+		end
+
+		local link = self:FindPortalLinkForPlayer(graph, playerEntity)
+		if link == nil then
+			local position = self:GetEntityPosition2(playerEntity)
+			local root = self:GetPhysicalRoomRoot(mapName)
+			self:Log("interact no portal user=" .. userId .. " map=" .. mapName .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ") " .. self:BuildNearestPortalDebug(graph, root, position))
+			return
+		end
+
+		self:UsePortalLink(mapName, graph, playerEntity, link)
 	end
 
 	method boolean CanPlayerUsePortal(string mapName, Entity playerEntity)
@@ -194,23 +320,31 @@ script BRPortalConnectionSystem extends Logic
 			return
 		end
 
+		local pairedLink = self:ResolvePairedPortalLink(graph, link)
 		local destinationPortal = self:GetPhysicalPortal(mapName, root, link.ToRoomName, link.ToDirection)
 		if destinationPortal == nil then
 			self:Log("use skipped: destination missing map=" .. mapName .. " room=" .. self:ReadString(link.ToRoomName, "") .. " dir=" .. self:ReadString(link.ToDirection, ""))
 			return
 		end
 
-		local exitPosition = self:GetPortalExitPosition(destinationPortal)
+		if pairedLink == nil then
+			self:Log("pair missing key=" .. self:ReadString(link.Key, "") .. " pair=" .. self:GetArrivalPortalKey(link))
+		end
+
+		local exitPosition = self:GetPortalExitPosition(destinationPortal, link.ToDirection)
+		local boundsWarning = self:BuildMapBoundsWarning(mapName, exitPosition)
 		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
 		self._T.cooldownUntil[userId] = self:Now() + self:GetReuseCooldownSeconds()
-		self._T.arrivalPortalKeyByUser[userId] = self:BuildPortalKey(link.ToRoomName, link.ToDirection)
+		self._T.arrivalPortalKeyByUser[userId] = self:GetArrivalPortalKey(link)
 		self:SetPlayerWorldPosition(playerEntity, exitPosition)
 		self:ApplyLocalPortalPosition(exitPosition, "portal", userId)
 
 		self.LastPortalUseSummary = "user=" .. userId
 			.. " " .. self:ReadString(link.FromRoomName, "") .. ":" .. self:ReadString(link.FromDirection, "")
 			.. ">" .. self:ReadString(link.ToRoomName, "") .. ":" .. self:ReadString(link.ToDirection, "")
+			.. " pair=" .. self:GetArrivalPortalKey(link)
 			.. " pos=(" .. tostring(exitPosition.x) .. "," .. tostring(exitPosition.y) .. ")"
+			.. boundsWarning
 		self:Log("used " .. self.LastPortalUseSummary)
 	end
 
@@ -239,7 +373,31 @@ script BRPortalConnectionSystem extends Logic
 		if localPlayer.PlayerComponent ~= nil then
 			localPlayer.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
 		end
+		self:ApplyInstantCameraFollow(reason)
 		log("[BRPortalConnection] local move reason=" .. self:ReadString(reason, "") .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyInstantCameraFollow(string reason)
+		-- Makes the local follow camera snap to the teleported player instead of easing across rooms.
+		if self.InstantCameraFollow ~= true then
+			return
+		end
+
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.CameraComponent == nil then
+			return
+		end
+
+		localPlayer.CameraComponent.Damping = Vector2(0, 0)
+		local previousBlendTime = 0
+		if _CameraService ~= nil then
+			previousBlendTime = self:ReadNumber(_CameraService.TransitionBlendTime, 0)
+			_CameraService.TransitionBlendTime = 0
+			_CameraService:SwitchCameraTo(localPlayer.CameraComponent)
+			_CameraService.TransitionBlendTime = previousBlendTime
+		end
+		log("[BRPortalConnection] camera instant reason=" .. self:ReadString(reason, ""))
 	end
 
 	method boolean IsBattlePortalLocked(string mapName, Entity playerEntity)
@@ -280,13 +438,93 @@ script BRPortalConnectionSystem extends Logic
 		local boxSize = self:GetPortalBoxSize(direction)
 		local halfWidth = boxSize.x * 0.5 + self:GetActivationPadding()
 		local halfHeight = boxSize.y * 0.5 + self:GetActivationPadding()
+		local reach = self:GetPortalInteractReach()
+		if direction == "East" or direction == "West" then
+			halfWidth = math.max(halfWidth, 1.35)
+			halfHeight = math.max(halfHeight, math.min(reach, 2.2))
+		else
+			halfWidth = math.max(halfWidth, 2.6)
+			halfHeight = math.max(halfHeight, math.min(reach, 3.5))
+		end
 		return math.abs(playerPosition.x - portalPosition.x) <= halfWidth
 			and math.abs(playerPosition.y - portalPosition.y) <= halfHeight
 	end
 
-	method Vector2 GetPortalExitPosition(Entity destinationPortal)
-		-- Uses the connected destination portal marker's world position as the exact arrival point.
-		return self:GetEntityPosition2(destinationPortal)
+	method string BuildNearestPortalDebug(any graph, Entity root, Vector2 playerPosition)
+		-- Reports the closest active portal when interaction misses.
+		if graph == nil or graph.PortalLinks == nil or root == nil or playerPosition == nil then
+			return "nearest=none"
+		end
+
+		local bestLink = nil
+		local bestPortalPosition = nil
+		local bestDistance = nil
+		for index, link in ipairs(graph.PortalLinks) do
+			local portal = self:GetPhysicalPortal(graph.MapName, root, link.FromRoomName, link.FromDirection)
+			if portal ~= nil and portal.Visible == true then
+				local portalPosition = self:GetEntityPosition2(portal)
+				local dx = playerPosition.x - portalPosition.x
+				local dy = playerPosition.y - portalPosition.y
+				local distance = math.sqrt(dx * dx + dy * dy)
+				if bestDistance == nil or distance < bestDistance then
+					bestDistance = distance
+					bestLink = link
+					bestPortalPosition = portalPosition
+				end
+			end
+		end
+
+		if bestLink == nil or bestPortalPosition == nil then
+			return "nearest=none"
+		end
+
+		return "nearest=" .. self:ReadString(bestLink.FromRoomName, "") .. ":" .. self:ReadString(bestLink.FromDirection, "")
+			.. " dist=" .. tostring(bestDistance)
+			.. " portal=(" .. tostring(bestPortalPosition.x) .. "," .. tostring(bestPortalPosition.y) .. ")"
+	end
+
+	method Vector2 GetPortalExitPosition(Entity destinationPortal, string arrivalDirection)
+		-- Moves the player just inside the paired destination room instead of on top of the portal marker.
+		local portalPosition = self:GetEntityPosition2(destinationPortal)
+		local offset = self:GetPortalExitOffsetForDirection(arrivalDirection)
+		if arrivalDirection == "East" then
+			return Vector2(portalPosition.x - offset, portalPosition.y)
+		elseif arrivalDirection == "West" then
+			return Vector2(portalPosition.x + offset, portalPosition.y)
+		elseif arrivalDirection == "North" then
+			return Vector2(portalPosition.x, portalPosition.y - offset)
+		elseif arrivalDirection == "South" then
+			return Vector2(portalPosition.x, portalPosition.y + offset)
+		end
+		return portalPosition
+	end
+
+	method string BuildMapBoundsWarning(string mapName, Vector2 position)
+		-- Reports when a portal exit lands outside the map's custom playable bounds.
+		local safeMapName = self:ReadString(mapName, "")
+		if safeMapName == "" or position == nil then
+			return ""
+		end
+
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. safeMapName)
+		if mapEntity == nil or mapEntity.MapComponent == nil then
+			return ""
+		end
+		if mapEntity.MapComponent.UseCustomBound ~= true then
+			return ""
+		end
+
+		local leftBottom = mapEntity.MapComponent.LeftBottom
+		local rightTop = mapEntity.MapComponent.RightTop
+		if leftBottom == nil or rightTop == nil then
+			return ""
+		end
+		if position.x >= leftBottom.x and position.x <= rightTop.x
+			and position.y >= leftBottom.y and position.y <= rightTop.y then
+			return ""
+		end
+
+		return " outOfBound bounds=(" .. tostring(leftBottom.x) .. "," .. tostring(leftBottom.y) .. ")-(" .. tostring(rightTop.x) .. "," .. tostring(rightTop.y) .. ")"
 	end
 
 	method void SetPlayerWorldPosition(Entity playerEntity, Vector2 position)
@@ -399,6 +637,35 @@ script BRPortalConnectionSystem extends Logic
 		return self:ReadString(roomName, "") .. ":" .. self:ReadString(direction, "")
 	end
 
+	method string GetArrivalPortalKey(any link)
+		-- Reads the explicit paired portal key, with compatibility for older generated graphs.
+		if link == nil then
+			return ""
+		end
+		local toPortalKey = self:ReadString(link.ToPortalKey, "")
+		if toPortalKey ~= "" then
+			return toPortalKey
+		end
+		local pairKey = self:ReadString(link.PairKey, "")
+		if pairKey ~= "" then
+			return pairKey
+		end
+		return self:BuildPortalKey(link.ToRoomName, link.ToDirection)
+	end
+
+	method any ResolvePairedPortalLink(any graph, any link)
+		-- Resolves the reverse directed link for the physical portal pair.
+		if graph == nil or graph.PortalLinkByKey == nil or link == nil then
+			return nil
+		end
+
+		local pairKey = self:GetArrivalPortalKey(link)
+		if pairKey == "" then
+			return nil
+		end
+		return graph.PortalLinkByKey[pairKey]
+	end
+
 	method Vector2 GetPortalBoxSize(string direction)
 		-- Returns the activation box size used by generated portal markers.
 		if direction == "East" or direction == "West" then
@@ -439,9 +706,33 @@ script BRPortalConnectionSystem extends Logic
 		return math.max(0, self:ReadNumber(self.ActivationPadding, 0.18))
 	end
 
+	method number GetPortalInteractReach()
+		-- Returns the foot-position reach used for side-view portal interaction.
+		return math.max(1, self:ReadNumber(self.PortalInteractReach, 5.5))
+	end
+
+	method number GetPortalExitOffset()
+		-- Returns the inward arrival offset from the destination portal marker.
+		return math.max(0, self:ReadNumber(self.PortalExitOffset, 1.75))
+	end
+
+	method number GetPortalExitOffsetForDirection(string direction)
+		-- North/south markers have a taller interaction reach, so they need a larger exit push.
+		local offset = self:GetPortalExitOffset()
+		if direction == "North" or direction == "South" then
+			return math.max(offset, 3.8)
+		end
+		return offset
+	end
+
 	method number GetReuseCooldownSeconds()
 		-- Returns the per-player portal reuse cooldown.
 		return math.max(0.1, self:ReadNumber(self.ReuseCooldownSeconds, 0.85))
+	end
+
+	method number GetClientRequestCooldownSeconds()
+		-- Returns the local key-repeat throttle for portal interaction requests.
+		return math.max(0.03, self:ReadNumber(self.ClientRequestCooldownSeconds, 0.15))
 	end
 
 	method number Now()

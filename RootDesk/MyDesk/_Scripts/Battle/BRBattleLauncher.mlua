@@ -31,6 +31,41 @@ script BRBattleLauncher extends Logic
 
 	property number FallbackStartOriginY = 3
 
+	property number MatchLoadingSeconds = 3
+
+	property number ResultPopupDelaySeconds = 0.75
+
+	property string MatchLoadingMessage = "MATCH LOADING..."
+
+	property string MatchStartMessage = "START!"
+
+	property string MatchResultVictoryTitle = "VICTORY"
+
+	property string MatchResultDefeatTitle = "DEFEAT"
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		-- Initializes server-side match flow runtime tables.
+		self:ResetRuntime()
+		log("[BRBattleLauncher] ready loading=" .. tostring(self:GetMatchLoadingSeconds(nil)))
+	end
+
+	method void ResetRuntime()
+		-- Clears active match registries for a fresh world session.
+		self._T.activeMatchesByMap = {}
+		self._T.activeMatchesById = {}
+	end
+
+	method void EnsureRuntimeTables()
+		-- Creates active match registries when another method runs before OnBeginPlay.
+		if self._T.activeMatchesByMap == nil then
+			self._T.activeMatchesByMap = {}
+		end
+		if self._T.activeMatchesById == nil then
+			self._T.activeMatchesById = {}
+		end
+	end
+
 	@ExecSpace("ServerOnly")
 	method any StartMatchRoom(any matchRoom, any owner)
 		-- Starts a match on a fixed physical map and prepares its logical room graph.
@@ -50,12 +85,16 @@ script BRBattleLauncher extends Logic
 			return self:CreateResult(false, targetMapName, 0, "Room graph generation failed")
 		end
 
+		local loadingSeconds = self:GetMatchLoadingSeconds(owner)
+		self:NotifyMatchLoading(matchRoom, loadingSeconds)
 		self:PrepareSupplies(matchRoom, roomGraph, targetMapName)
 
 		local movedCount = self:MovePlayersToMatchRoom(matchRoom, owner)
 		if movedCount > 0 then
-			self:StartBattleTimer(matchRoom, owner, targetMapName)
-			self:StartMagneticZone(matchRoom, owner, targetMapName)
+			self:RegisterActiveMatch(matchRoom, owner, targetMapName, loadingSeconds)
+			self:ScheduleBattleSystems(matchRoom.MatchId, loadingSeconds)
+		else
+			self:NotifyMatchLoadingClosed(matchRoom)
 		end
 
 		local result = self:CreateResult(true, targetMapName, movedCount, "")
@@ -96,6 +135,131 @@ script BRBattleLauncher extends Logic
 		result.RoomGraphRoomCount = self:ReadNumber(roomGraph.RoomCount, #roomGraph.Rooms)
 		result.RoomGraphConnectionCount = self:ReadNumber(roomGraph.ConnectionCount, 0)
 		result.RoomGraphAssignmentCount = self:ReadNumber(roomGraph.AssignmentCount, 0)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RegisterActiveMatch(any matchRoom, any owner, string targetMapName, number loadingSeconds)
+		-- Stores the active match so map-local battle logic can finish it later.
+		if matchRoom == nil then
+			return
+		end
+
+		self:EnsureRuntimeTables()
+		local matchId = self:ReadString(matchRoom.MatchId, "")
+		local safeMapName = self:ReadString(targetMapName, "")
+		if matchId == "" or safeMapName == "" then
+			return
+		end
+
+		local entry = {
+			MatchId = matchId,
+			MatchRoom = matchRoom,
+			Owner = owner,
+			TargetMapName = safeMapName,
+			LoadingSeconds = self:ReadNumber(loadingSeconds, 0),
+			LoadingTimerId = 0,
+			RegisteredAt = _UtilLogic.ServerElapsedSeconds,
+			Started = false,
+			Finished = false
+		}
+		self._T.activeMatchesByMap[safeMapName] = entry
+		self._T.activeMatchesById[matchId] = entry
+		log("[BRBattleLauncher] active match registered id=" .. matchId .. " map=" .. safeMapName .. " loading=" .. tostring(entry["LoadingSeconds"]))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UnregisterActiveMatch(string matchId, string targetMapName)
+		-- Removes a match from the active runtime registries.
+		self:EnsureRuntimeTables()
+		local safeMatchId = self:ReadString(matchId, "")
+		local safeMapName = self:ReadString(targetMapName, "")
+
+		local entry = nil
+		if safeMatchId ~= "" then
+			entry = self._T.activeMatchesById[safeMatchId]
+		end
+		if entry == nil and safeMapName ~= "" then
+			entry = self._T.activeMatchesByMap[safeMapName]
+		end
+		if entry ~= nil then
+			if entry["LoadingTimerId"] ~= nil and entry["LoadingTimerId"] > 0 then
+				_TimerService:ClearTimer(entry["LoadingTimerId"])
+				entry["LoadingTimerId"] = 0
+			end
+			safeMatchId = self:ReadString(entry["MatchId"], safeMatchId)
+			safeMapName = self:ReadString(entry["TargetMapName"], safeMapName)
+		end
+
+		if safeMatchId ~= "" then
+			self._T.activeMatchesById[safeMatchId] = nil
+		end
+		if safeMapName ~= "" then
+			self._T.activeMatchesByMap[safeMapName] = nil
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean IsActiveMatchForMap(string targetMapName)
+		-- Lets map-scoped battle logic ignore direct editor/map tests.
+		self:EnsureRuntimeTables()
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeMapName == "" then
+			return false
+		end
+
+		local entry = self._T.activeMatchesByMap[safeMapName]
+		return entry ~= nil and entry["Finished"] ~= true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ScheduleBattleSystems(string matchId, number loadingSeconds)
+		-- Defers timer and magnetic-zone start until the loading overlay has had time to show.
+		self:EnsureRuntimeTables()
+		local safeMatchId = self:ReadString(matchId, "")
+		local entry = self._T.activeMatchesById[safeMatchId]
+		if entry == nil then
+			return
+		end
+
+		local delay = math.max(0, self:ReadNumber(loadingSeconds, 0))
+		if delay <= 0 then
+			self:StartRegisteredBattleSystems(safeMatchId)
+			return
+		end
+
+		entry["LoadingTimerId"] = _TimerService:SetTimerOnce(function() self:StartRegisteredBattleSystems(safeMatchId) end, delay)
+		log("[BRBattleLauncher] battle systems scheduled id=" .. safeMatchId .. " delay=" .. tostring(delay))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartRegisteredBattleSystems(string matchId)
+		-- Starts gameplay systems for a registered match after loading finishes.
+		self:EnsureRuntimeTables()
+		local safeMatchId = self:ReadString(matchId, "")
+		local entry = self._T.activeMatchesById[safeMatchId]
+		if entry == nil or entry["Finished"] == true then
+			return
+		end
+		if entry["Started"] == true then
+			return
+		end
+
+		entry["LoadingTimerId"] = 0
+		entry["Started"] = true
+		self:StartBattleTimer(entry["MatchRoom"], entry["Owner"], entry["TargetMapName"])
+		self:StartMagneticZone(entry["MatchRoom"], entry["Owner"], entry["TargetMapName"])
+		self:MarkMatchPlaying(entry["MatchRoom"], entry["Owner"])
+		self:NotifyMatchStarted(entry["MatchRoom"])
+		log("[BRBattleLauncher] battle systems started id=" .. safeMatchId .. " map=" .. self:ReadString(entry["TargetMapName"], ""))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void MarkMatchPlaying(any matchRoom, any owner)
+		-- Marks the lobby room state as Playing once the loading gate opens.
+		if matchRoom == nil or owner == nil then
+			return
+		end
+		owner:MarkMatchPlaying(matchRoom)
 	end
 
 	method string ResolveTargetMapForRoom(any matchRoom, any owner)
@@ -343,8 +507,184 @@ script BRBattleLauncher extends Logic
 			self:StopMagneticZone()
 			self:ClearPortalConnections(matchRoom)
 			self:ClearSupplies(matchRoom, lobbyMapName)
+			self:NotifyMatchLoadingClosed(matchRoom)
+			self:UnregisterActiveMatch(self:ReadString(matchRoom.MatchId, ""), self:ReadString(matchRoom.TargetMapName, ""))
 		end
 		return movedCount
+	end
+
+	@ExecSpace("ServerOnly")
+	method void FinishMatchByMap(string targetMapName, string winnerUserId, string reason)
+		-- Ends the active match for a map, returns players, and schedules result popups.
+		self:EnsureRuntimeTables()
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeMapName == "" then
+			return
+		end
+
+		local entry = self._T.activeMatchesByMap[safeMapName]
+		if entry == nil then
+			log("[BRBattleLauncher] finish skipped: active match missing map=" .. safeMapName .. " winner=" .. self:ReadString(winnerUserId, ""))
+			return
+		end
+		if entry["Finished"] == true then
+			return
+		end
+
+		entry["Finished"] = true
+		if entry["LoadingTimerId"] ~= nil and entry["LoadingTimerId"] > 0 then
+			_TimerService:ClearTimer(entry["LoadingTimerId"])
+			entry["LoadingTimerId"] = 0
+		end
+
+		local elapsedSeconds = math.max(0, math.floor(_UtilLogic.ServerElapsedSeconds - self:ReadNumber(entry["RegisteredAt"], _UtilLogic.ServerElapsedSeconds)))
+		self:NotifyMatchResults(entry["MatchRoom"], self:ReadString(winnerUserId, ""), self:ReadString(reason, "last-man"), elapsedSeconds)
+		local returnedCount = self:ReturnPlayersToLobby(entry["MatchRoom"], entry["Owner"])
+		self:CompleteMatchRoom(entry["MatchRoom"], entry["Owner"], self:ReadString(winnerUserId, ""), self:ReadString(reason, "last-man"))
+		self:UnregisterActiveMatch(self:ReadString(entry["MatchId"], ""), safeMapName)
+		log("[BRBattleLauncher] match finished id=" .. self:ReadString(entry["MatchId"], "") .. " map=" .. safeMapName .. " winner=" .. self:ReadString(winnerUserId, "") .. " returned=" .. tostring(returnedCount) .. " reason=" .. self:ReadString(reason, ""))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void CompleteMatchRoom(any matchRoom, any owner, string winnerUserId, string reason)
+		-- Notifies the lobby matchmaker that this match has ended.
+		if owner == nil or matchRoom == nil then
+			return
+		end
+		owner:CompleteMatch(matchRoom, self:ReadString(winnerUserId, ""), self:ReadString(reason, ""))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void NotifyMatchLoading(any matchRoom, number loadingSeconds)
+		-- Shows the loading overlay to every selected player.
+		if matchRoom == nil or matchRoom.Players == nil then
+			return
+		end
+
+		local message = self:ReadString(self.MatchLoadingMessage, "MATCH LOADING...")
+		local seconds = self:GetMatchLoadingSeconds(nil)
+		if loadingSeconds ~= nil then
+			seconds = self:ReadNumber(loadingSeconds, seconds)
+		end
+		for index, player in ipairs(matchRoom.Players) do
+			local userId = self:ReadString(player.UserId, "")
+			if userId ~= "" then
+				self:ShowMatchLoading(message, seconds, userId)
+			end
+		end
+		log("[BRBattleLauncher] loading shown match=" .. self:ReadString(matchRoom.MatchId, "") .. " seconds=" .. tostring(seconds))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void NotifyMatchStarted(any matchRoom)
+		-- Hides loading overlays and announces actual gameplay start.
+		if matchRoom == nil or matchRoom.Players == nil then
+			return
+		end
+
+		local message = self:ReadString(self.MatchStartMessage, "START!")
+		for index, player in ipairs(matchRoom.Players) do
+			local userId = self:ReadString(player.UserId, "")
+			if userId ~= "" then
+				self:HideMatchLoading(message, userId)
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void NotifyMatchLoadingClosed(any matchRoom)
+		-- Hides loading overlays without showing a start toast.
+		if matchRoom == nil or matchRoom.Players == nil then
+			return
+		end
+
+		for index, player in ipairs(matchRoom.Players) do
+			local userId = self:ReadString(player.UserId, "")
+			if userId ~= "" then
+				self:HideMatchLoading("", userId)
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void NotifyMatchResults(any matchRoom, string winnerUserId, string reason, number elapsedSeconds)
+		-- Schedules a result popup for every match participant after lobby return starts.
+		if matchRoom == nil or matchRoom.Players == nil then
+			return
+		end
+
+		local delay = self:GetResultPopupDelaySeconds()
+		for index, player in ipairs(matchRoom.Players) do
+			local userId = self:ReadString(player.UserId, "")
+			if userId ~= "" then
+				local title = self:GetResultTitle(userId, winnerUserId)
+				local body = self:BuildResultBody(matchRoom, userId, winnerUserId, reason, elapsedSeconds)
+				_TimerService:SetTimerOnce(function() self:ShowMatchResult(title, body, userId) end, delay)
+			end
+		end
+	end
+
+	method string GetResultTitle(string viewerUserId, string winnerUserId)
+		-- Returns the result popup title for one participant.
+		if self:ReadString(viewerUserId, "") ~= "" and self:ReadString(viewerUserId, "") == self:ReadString(winnerUserId, "") then
+			return self:ReadString(self.MatchResultVictoryTitle, "VICTORY")
+		end
+		return self:ReadString(self.MatchResultDefeatTitle, "DEFEAT")
+	end
+
+	method string BuildResultBody(any matchRoom, string viewerUserId, string winnerUserId, string reason, number elapsedSeconds)
+		-- Builds the compact battle result text shown after returning to lobby.
+		local winnerName = self:GetPlayerDisplayName(winnerUserId)
+		local rankText = "#2"
+		if self:ReadString(winnerUserId, "") == "" then
+			rankText = "N/A"
+			winnerName = "NONE"
+		elseif self:ReadString(viewerUserId, "") == self:ReadString(winnerUserId, "") then
+			rankText = "#1"
+		end
+
+		return "RANK " .. rankText
+			.. "\nWINNER " .. winnerName
+			.. "\nMATCH " .. self:GetShortMatchId(matchRoom)
+			.. "\nTIME " .. self:FormatSeconds(elapsedSeconds)
+			.. "\nREASON " .. self:ReadString(reason, "last-man")
+	end
+
+	method string GetPlayerDisplayName(string userId)
+		-- Returns nickname when available, otherwise falls back to the user id.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return "NONE"
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+			local nickname = self:ReadString(playerEntity.PlayerComponent.Nickname, "")
+			if nickname ~= "" then
+				return nickname
+			end
+		end
+		return safeUserId
+	end
+
+	method string GetShortMatchId(any matchRoom)
+		-- Returns a short readable match id for the result popup.
+		if matchRoom == nil then
+			return "-"
+		end
+		local matchId = self:ReadString(matchRoom.MatchId, "")
+		if string.len(matchId) <= 8 then
+			return matchId
+		end
+		return string.sub(matchId, 1, 8)
+	end
+
+	method string FormatSeconds(number elapsedSeconds)
+		-- Formats elapsed seconds as MM:SS.
+		local total = math.max(0, math.floor(self:ReadNumber(elapsedSeconds, 0)))
+		local minutes = math.floor(total / 60)
+		local seconds = total - minutes * 60
+		return string.format("%02d:%02d", minutes, seconds)
 	end
 
 	@ExecSpace("ServerOnly")
@@ -408,6 +748,89 @@ script BRBattleLauncher extends Logic
 			value = owner.BattleTimerLabel
 		end
 		return self:ReadString(value, "BOSS")
+	end
+
+	method number GetMatchLoadingSeconds(any owner)
+		-- Reads the loading overlay duration from owner override or launcher default.
+		local value = self.MatchLoadingSeconds
+		if owner ~= nil and owner.MatchLoadingSeconds ~= nil then
+			value = owner.MatchLoadingSeconds
+		end
+		return math.max(0, self:ReadNumber(value, 3))
+	end
+
+	method number GetResultPopupDelaySeconds()
+		-- Returns the delay before result popups open after lobby return starts.
+		return math.max(0, self:ReadNumber(self.ResultPopupDelaySeconds, 0.75))
+	end
+
+	@ExecSpace("Client")
+	method void ShowMatchLoading(string message, number seconds)
+		-- Opens a modal loading overlay and blocks local player input.
+		self:SetLocalPlayerInputEnabled(false)
+		local matchFlowUI = self:GetMatchFlowUI()
+		if matchFlowUI ~= nil then
+			matchFlowUI:ShowLoading(self:ReadString(message, "MATCH LOADING..."), seconds)
+		elseif _UIPopup ~= nil then
+			_UIPopup:OpenBlockingMessage(self:ReadString(message, "MATCH LOADING..."))
+		elseif _UIToast ~= nil then
+			_UIToast:ShowMessage(self:ReadString(message, "MATCH LOADING..."))
+		end
+	end
+
+	@ExecSpace("Client")
+	method void HideMatchLoading(string message)
+		-- Closes the loading overlay and restores local player input.
+		self:SetLocalPlayerInputEnabled(true)
+		local matchFlowUI = self:GetMatchFlowUI()
+		if matchFlowUI ~= nil then
+			matchFlowUI:HideLoading(self:ReadString(message, ""))
+			return
+		end
+		if _UIPopup ~= nil then
+			_UIPopup:Close()
+		end
+		local safeMessage = self:ReadString(message, "")
+		if safeMessage ~= "" and _UIToast ~= nil then
+			_UIToast:ShowMessage(safeMessage)
+		end
+	end
+
+	@ExecSpace("Client")
+	method void ShowMatchResult(string title, string body)
+		-- Shows the final match result popup on the local client.
+		self:SetLocalPlayerInputEnabled(true)
+		local safeTitle = self:ReadString(title, "RESULT")
+		local safeBody = self:ReadString(body, "")
+		local matchFlowUI = self:GetMatchFlowUI()
+		if matchFlowUI ~= nil then
+			matchFlowUI:ShowResult(safeTitle, safeBody)
+		elseif _UIPopup ~= nil then
+			_UIPopup.OkText = "LOBBY"
+			_UIPopup:OpenAlert(safeTitle .. "\n\n" .. safeBody, nil)
+		elseif _UIToast ~= nil then
+			_UIToast:ShowMessage(safeTitle)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetLocalPlayerInputEnabled(boolean enabled)
+		-- Toggles local input while loading or result UI is active.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerControllerComponent == nil then
+			return
+		end
+		localPlayer.PlayerControllerComponent.Enable = enabled == true
+	end
+
+	@ExecSpace("ClientOnly")
+	method any GetMatchFlowUI()
+		-- Finds the dedicated match flow UI component without relying on a generated global alias.
+		local controller = _EntityService:GetEntityByPath("/ui/BRMatchFlowGroup/Controller")
+		if controller == nil then
+			return nil
+		end
+		return controller:GetComponent("script.BRMatchFlowUI")
 	end
 
 	@ExecSpace("ServerOnly")

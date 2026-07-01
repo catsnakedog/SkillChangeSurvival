@@ -34,12 +34,12 @@
               "Gravity": 1.8,
               "IsInstanceMap": false,
               "LeftBottom": {
-                "x": -40,
-                "y": -24
+                "x": -41,
+                "y": -49
               },
               "RightTop": {
-                "x": 40,
-                "y": 30
+                "x": 41,
+                "y": 29
               },
               "TileMapMode": 0,
               "UseCustomBound": true,
@@ -9027,7 +9027,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 9.65,
+                "x": 4.65,
                 "y": 0,
                 "z": -0.002
               },
@@ -9209,7 +9209,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": -9.65,
+                "x": -4.65,
                 "y": 0,
                 "z": -0.002
               },
@@ -9575,7 +9575,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 9.65,
+                "x": 4.65,
                 "y": 0,
                 "z": -0.002
               },
@@ -9757,7 +9757,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": -9.65,
+                "x": -4.65,
                 "y": 0,
                 "z": -0.002
               },
@@ -10123,7 +10123,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 9.65,
+                "x": 4.65,
                 "y": 0,
                 "z": -0.002
               },
@@ -10305,7 +10305,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": -9.65,
+                "x": -4.65,
                 "y": 0,
                 "z": -0.002
               },
@@ -10671,7 +10671,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 9.65,
+                "x": 4.65,
                 "y": 0,
                 "z": -0.002
               },
@@ -10853,7 +10853,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": -9.65,
+                "x": -4.65,
                 "y": 0,
                 "z": -0.002
               },
@@ -11219,7 +11219,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 9.65,
+                "x": 4.65,
                 "y": 0,
                 "z": -0.002
               },
@@ -11401,7 +11401,7 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": -9.65,
+                "x": -4.65,
                 "y": 0,
                 "z": -0.002
               },

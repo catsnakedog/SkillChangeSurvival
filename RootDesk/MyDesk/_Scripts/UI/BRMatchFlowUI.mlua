@@ -1,0 +1,164 @@
+@Component
+script BRMatchFlowUI extends Component
+
+	property string RootPath = "/ui/BRMatchFlowGroup"
+
+	property number refreshTimerId = 0
+
+	property number loadingEndAt = 0
+
+	property any closeHandler = nil
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		-- Initializes modal panels as hidden and non-blocking.
+		self:HideLoading("")
+		self:HideResult()
+		self:ConnectButtons()
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshLoadingCountdown() end, 0.1, 0.1)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+		self:DisconnectButtons()
+	end
+
+	@ExecSpace("Client")
+	method void ShowLoading(string message, number seconds)
+		-- Opens a full-screen loading curtain.
+		self:SetEntityActive("Loading", true)
+		self:SetEntityActive("Result", false)
+		self:SetRootRaycastBlocked(true)
+		self:SetTextByPath("Loading/Message", self:ReadString(message, "MATCH LOADING..."))
+		local duration = math.max(0, self:ReadNumber(seconds, 0))
+		if duration > 0 then
+			self.loadingEndAt = _UtilLogic.ElapsedSeconds + duration
+		else
+			self.loadingEndAt = 0
+		end
+		self:RefreshLoadingCountdown()
+	end
+
+	@ExecSpace("Client")
+	method void HideLoading(string message)
+		-- Closes the loading curtain.
+		self:SetEntityActive("Loading", false)
+		self:RefreshRootRaycastBlocked()
+		self.loadingEndAt = 0
+		local safeMessage = self:ReadString(message, "")
+		if safeMessage ~= "" and _UIToast ~= nil then
+			_UIToast:ShowMessage(safeMessage)
+		end
+	end
+
+	@ExecSpace("Client")
+	method void ShowResult(string title, string body)
+		-- Opens the large match-result panel.
+		self:SetEntityActive("Loading", false)
+		self:SetEntityActive("Result", true)
+		self:SetRootRaycastBlocked(true)
+		self:SetTextByPath("Result/Title", self:ReadString(title, "RESULT"))
+		self:SetTextByPath("Result/Body", self:ReadString(body, ""))
+	end
+
+	@ExecSpace("Client")
+	method void HideResult()
+		-- Hides the result panel and releases full-screen input blocking.
+		self:SetEntityActive("Result", false)
+		self:RefreshRootRaycastBlocked()
+	end
+
+	method void ConnectButtons()
+		self:DisconnectButtons()
+		local closeButton = self:GetEntity("Result/CloseButton")
+		if closeButton ~= nil then
+			self.closeHandler = closeButton:ConnectEvent(ButtonClickEvent, self.OnClickClose)
+		end
+	end
+
+	method void DisconnectButtons()
+		local closeButton = self:GetEntity("Result/CloseButton")
+		if self.closeHandler ~= nil and closeButton ~= nil then
+			closeButton:DisconnectEvent(ButtonClickEvent, self.closeHandler)
+		end
+		self.closeHandler = nil
+	end
+
+	method void OnClickClose(ButtonClickEvent event)
+		self:HideResult()
+	end
+
+	method void RefreshLoadingCountdown()
+		if self.loadingEndAt <= 0 then
+			self:SetTextByPath("Loading/Countdown", "")
+			return
+		end
+		local remaining = math.max(0, math.ceil(self.loadingEndAt - _UtilLogic.ElapsedSeconds))
+		self:SetTextByPath("Loading/Countdown", tostring(remaining))
+	end
+
+	method Entity GetEntity(string relativePath)
+		local path = self:ReadString(relativePath, "")
+		if path == "" then
+			return nil
+		end
+		if string.sub(path, 1, 1) ~= "/" then
+			path = self:ReadString(self.RootPath, "/ui/BRMatchFlowGroup") .. "/" .. path
+		end
+		return _EntityService:GetEntityByPath(path)
+	end
+
+	method void SetEntityActive(string relativePath, boolean active)
+		local entity = self:GetEntity(relativePath)
+		if entity ~= nil then
+			entity.Enable = active == true
+		end
+	end
+
+	method boolean IsEntityActive(string relativePath)
+		-- Returns whether a modal child is currently enabled.
+		local entity = self:GetEntity(relativePath)
+		return entity ~= nil and entity.Enable == true
+	end
+
+	method void RefreshRootRaycastBlocked()
+		-- Blocks background input only while a modal child is visible.
+		self:SetRootRaycastBlocked(self:IsEntityActive("Loading") == true or self:IsEntityActive("Result") == true)
+	end
+
+	method void SetRootRaycastBlocked(boolean blocked)
+		-- Toggles full-screen raycast blocking for match-flow modal states.
+		local root = _EntityService:GetEntityByPath(self:ReadString(self.RootPath, "/ui/BRMatchFlowGroup"))
+		if root ~= nil and root.CanvasGroupComponent ~= nil then
+			root.CanvasGroupComponent.BlocksRaycasts = blocked == true
+			root.CanvasGroupComponent.Interactable = blocked == true
+		end
+	end
+
+	method void SetTextByPath(string relativePath, string text)
+		local entity = self:GetEntity(relativePath)
+		if entity ~= nil and entity.TextComponent ~= nil then
+			entity.TextComponent.Text = self:ReadString(text, "")
+		end
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

@@ -37,7 +37,165 @@
             },
             {
               "@type": "MOD.Core.FootholdComponent",
-              "FootholdsByLayer": {},
+              "FootholdsByLayer": {
+                "1": [
+                  {
+                    "Length": 30.0,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 1,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "03f4321f-aede-43c9-8a02-f72a2706e0f6",
+                    "Id": 1,
+                    "StartPoint": {
+                      "x": -15.0,
+                      "y": 0.0
+                    },
+                    "EndPoint": {
+                      "x": 15.0,
+                      "y": 0.0
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 6.39999962,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 2,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "f8166232-6a90-474f-a733-959435f163b8",
+                    "Id": 2,
+                    "StartPoint": {
+                      "x": -10.4,
+                      "y": 1.85
+                    },
+                    "EndPoint": {
+                      "x": -4.0,
+                      "y": 1.85
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 6.39999962,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 3,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "1dc00d4c-f615-4ba3-b94c-3235833a7bb4",
+                    "Id": 3,
+                    "StartPoint": {
+                      "x": 4.0,
+                      "y": 1.85
+                    },
+                    "EndPoint": {
+                      "x": 10.4,
+                      "y": 1.85
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 5.2,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 4,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "edd0b9d3-ebb2-4a4e-976b-631cca43d734",
+                    "Id": 4,
+                    "StartPoint": {
+                      "x": -2.6,
+                      "y": 3.25
+                    },
+                    "EndPoint": {
+                      "x": 2.6,
+                      "y": 3.25
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 3.39999986,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 5,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "45f87a5d-4f7c-4c17-b929-d9f72cf7626e",
+                    "Id": 5,
+                    "StartPoint": {
+                      "x": 2.7,
+                      "y": 0.95
+                    },
+                    "EndPoint": {
+                      "x": 6.1,
+                      "y": 0.95
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  }
+                ]
+              },
               "Enable": true
             },
             {
@@ -225,6 +383,1810 @@
               "RoomGraphRows": 3.0,
               "RoomGraphMapPartCount": 9.0,
               "RoomGraphExtraConnectionChancePercent": 0.0
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "03f4321f-aede-43c9-8a02-f72a2706e0f6",
+        "path": "/maps/StartMap/LobbyRunwayFloor",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.CustomFootholdComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyRunwayFloor",
+          "path": "/maps/StartMap/LobbyRunwayFloor",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 4,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 999.998
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "FootholdDrag": 1.0,
+              "FootholdForce": 0.0,
+              "FootholdWalkSpeedFactor": 1.0,
+              "IsBlockVerticalLine": false,
+              "IsDynamicFoothold": false,
+              "PhysicsInteractable": true,
+              "RigidbodyMovementOption": 0,
+              "edgeLists": [
+                [
+                  {
+                    "x": -15.0,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 15.0,
+                    "y": 0.0
+                  }
+                ]
+              ],
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.17,
+                "g": 0.2,
+                "b": 0.19,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 10,
+              "Points": [
+                {
+                  "x": -15.0,
+                  "y": 0.0
+                },
+                {
+                  "x": 15.0,
+                  "y": 0.0
+                },
+                {
+                  "x": 15.0,
+                  "y": -0.45
+                },
+                {
+                  "x": -15.0,
+                  "y": -0.45
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "f8166232-6a90-474f-a733-959435f163b8",
+        "path": "/maps/StartMap/LobbyLeftDeck",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.CustomFootholdComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyLeftDeck",
+          "path": "/maps/StartMap/LobbyLeftDeck",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 5,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": -7.2,
+                "y": 1.85,
+                "z": 999.998
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "FootholdDrag": 1.0,
+              "FootholdForce": 0.0,
+              "FootholdWalkSpeedFactor": 1.0,
+              "IsBlockVerticalLine": false,
+              "IsDynamicFoothold": false,
+              "PhysicsInteractable": false,
+              "RigidbodyMovementOption": 0,
+              "edgeLists": [
+                [
+                  {
+                    "x": -3.2,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 3.2,
+                    "y": 0.0
+                  }
+                ]
+              ],
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.26,
+                "g": 0.34,
+                "b": 0.27,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 13,
+              "Points": [
+                {
+                  "x": -3.2,
+                  "y": 0.0
+                },
+                {
+                  "x": 3.2,
+                  "y": 0.0
+                },
+                {
+                  "x": 3.2,
+                  "y": -0.26
+                },
+                {
+                  "x": -3.2,
+                  "y": -0.26
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "1dc00d4c-f615-4ba3-b94c-3235833a7bb4",
+        "path": "/maps/StartMap/LobbyRightDeck",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.CustomFootholdComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyRightDeck",
+          "path": "/maps/StartMap/LobbyRightDeck",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 6,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 7.2,
+                "y": 1.85,
+                "z": 999.998
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "FootholdDrag": 1.0,
+              "FootholdForce": 0.0,
+              "FootholdWalkSpeedFactor": 1.0,
+              "IsBlockVerticalLine": false,
+              "IsDynamicFoothold": false,
+              "PhysicsInteractable": false,
+              "RigidbodyMovementOption": 0,
+              "edgeLists": [
+                [
+                  {
+                    "x": -3.2,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 3.2,
+                    "y": 0.0
+                  }
+                ]
+              ],
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.25,
+                "g": 0.31,
+                "b": 0.36,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 13,
+              "Points": [
+                {
+                  "x": -3.2,
+                  "y": 0.0
+                },
+                {
+                  "x": 3.2,
+                  "y": 0.0
+                },
+                {
+                  "x": 3.2,
+                  "y": -0.26
+                },
+                {
+                  "x": -3.2,
+                  "y": -0.26
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "edd0b9d3-ebb2-4a4e-976b-631cca43d734",
+        "path": "/maps/StartMap/LobbyTowerDeck",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.CustomFootholdComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyTowerDeck",
+          "path": "/maps/StartMap/LobbyTowerDeck",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 7,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 0.0,
+                "y": 3.25,
+                "z": 999.998
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "FootholdDrag": 1.0,
+              "FootholdForce": 0.0,
+              "FootholdWalkSpeedFactor": 1.0,
+              "IsBlockVerticalLine": false,
+              "IsDynamicFoothold": false,
+              "PhysicsInteractable": false,
+              "RigidbodyMovementOption": 0,
+              "edgeLists": [
+                [
+                  {
+                    "x": -2.6,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 2.6,
+                    "y": 0.0
+                  }
+                ]
+              ],
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.34,
+                "g": 0.36,
+                "b": 0.32,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 14,
+              "Points": [
+                {
+                  "x": -2.6,
+                  "y": 0.0
+                },
+                {
+                  "x": 2.6,
+                  "y": 0.0
+                },
+                {
+                  "x": 2.6,
+                  "y": -0.24
+                },
+                {
+                  "x": -2.6,
+                  "y": -0.24
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "45f87a5d-4f7c-4c17-b929-d9f72cf7626e",
+        "path": "/maps/StartMap/LobbyContainerTop",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.CustomFootholdComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyContainerTop",
+          "path": "/maps/StartMap/LobbyContainerTop",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 8,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 4.4,
+                "y": 0.95,
+                "z": 999.998
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "FootholdDrag": 1.0,
+              "FootholdForce": 0.0,
+              "FootholdWalkSpeedFactor": 1.0,
+              "IsBlockVerticalLine": false,
+              "IsDynamicFoothold": false,
+              "PhysicsInteractable": false,
+              "RigidbodyMovementOption": 0,
+              "edgeLists": [
+                [
+                  {
+                    "x": -1.7,
+                    "y": 0.0
+                  },
+                  {
+                    "x": 1.7,
+                    "y": 0.0
+                  }
+                ]
+              ],
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.49,
+                "g": 0.35,
+                "b": 0.22,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 16,
+              "Points": [
+                {
+                  "x": -1.7,
+                  "y": 0.0
+                },
+                {
+                  "x": 1.7,
+                  "y": 0.0
+                },
+                {
+                  "x": 1.7,
+                  "y": -0.22
+                },
+                {
+                  "x": -1.7,
+                  "y": -0.22
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "93653f3f-b456-4607-8eac-9db55a536c0f",
+        "path": "/maps/StartMap/LobbyBackdropSky",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyBackdropSky",
+          "path": "/maps/StartMap/LobbyBackdropSky",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 9,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 0.0,
+                "y": 2.65,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.08,
+                "g": 0.12,
+                "b": 0.13,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": -30,
+              "Points": [
+                {
+                  "x": -16.0,
+                  "y": -3.2
+                },
+                {
+                  "x": 16.0,
+                  "y": -3.2
+                },
+                {
+                  "x": 16.0,
+                  "y": 4.4
+                },
+                {
+                  "x": -16.0,
+                  "y": 4.4
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "b3d4a3a0-b0b6-4566-864d-4b5ed2c56f42",
+        "path": "/maps/StartMap/LobbyDistantSmoke",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyDistantSmoke",
+          "path": "/maps/StartMap/LobbyDistantSmoke",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 10,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": -5.5,
+                "y": 2.1,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.16,
+                "g": 0.22,
+                "b": 0.21,
+                "a": 0.86
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": -20,
+              "Points": [
+                {
+                  "x": -3.8,
+                  "y": -0.2
+                },
+                {
+                  "x": 4.8,
+                  "y": -0.2
+                },
+                {
+                  "x": 4.2,
+                  "y": 1.1
+                },
+                {
+                  "x": -3.1,
+                  "y": 0.85
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "4f1f359c-2d21-43d7-a03e-162b3a00b235",
+        "path": "/maps/StartMap/LobbyHangarSilhouette",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyHangarSilhouette",
+          "path": "/maps/StartMap/LobbyHangarSilhouette",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 11,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 1.41562879,
+                "y": -0.03438182,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.11,
+                "g": 0.15,
+                "b": 0.14,
+                "a": 0.96
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": -15,
+              "Points": [
+                {
+                  "x": -8.6,
+                  "y": 0.0
+                },
+                {
+                  "x": 8.4,
+                  "y": 0.0
+                },
+                {
+                  "x": 7.1,
+                  "y": 2.35
+                },
+                {
+                  "x": 4.2,
+                  "y": 3.05
+                },
+                {
+                  "x": -4.7,
+                  "y": 3.05
+                },
+                {
+                  "x": -7.5,
+                  "y": 2.35
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "4f2540c5-1b02-4a6e-aaca-cfca730cf47a",
+        "path": "/maps/StartMap/LobbyAmberSkyBand",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyAmberSkyBand",
+          "path": "/maps/StartMap/LobbyAmberSkyBand",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 12,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 4.8,
+                "y": 4.3,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.83,
+                "g": 0.54,
+                "b": 0.25,
+                "a": 0.72
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": -12,
+              "Points": [
+                {
+                  "x": -10.5,
+                  "y": -0.06
+                },
+                {
+                  "x": 10.5,
+                  "y": -0.06
+                },
+                {
+                  "x": 10.5,
+                  "y": 0.06
+                },
+                {
+                  "x": -10.5,
+                  "y": 0.06
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "492aedb5-c3e1-4927-ac96-bcfa5d5abdda",
+        "path": "/maps/StartMap/LobbyRunwayStripeA",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyRunwayStripeA",
+          "path": "/maps/StartMap/LobbyRunwayStripeA",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 13,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": -3.5,
+                "y": -0.08,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.86,
+                "g": 0.73,
+                "b": 0.35,
+                "a": 0.95
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 18,
+              "Points": [
+                {
+                  "x": -0.45,
+                  "y": 0.03
+                },
+                {
+                  "x": 0.45,
+                  "y": 0.03
+                },
+                {
+                  "x": 0.45,
+                  "y": -0.04
+                },
+                {
+                  "x": -0.45,
+                  "y": -0.04
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "7d60bd87-34f4-448a-a937-03077a0b772a",
+        "path": "/maps/StartMap/LobbyRunwayStripeB",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyRunwayStripeB",
+          "path": "/maps/StartMap/LobbyRunwayStripeB",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 14,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 0.0,
+                "y": -0.08,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.86,
+                "g": 0.73,
+                "b": 0.35,
+                "a": 0.95
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 18,
+              "Points": [
+                {
+                  "x": -0.45,
+                  "y": 0.03
+                },
+                {
+                  "x": 0.45,
+                  "y": 0.03
+                },
+                {
+                  "x": 0.45,
+                  "y": -0.04
+                },
+                {
+                  "x": -0.45,
+                  "y": -0.04
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "329cb73f-db8c-431b-82b9-30d093fb35a9",
+        "path": "/maps/StartMap/LobbyRunwayStripeC",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyRunwayStripeC",
+          "path": "/maps/StartMap/LobbyRunwayStripeC",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 15,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 3.5,
+                "y": -0.08,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.86,
+                "g": 0.73,
+                "b": 0.35,
+                "a": 0.95
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 18,
+              "Points": [
+                {
+                  "x": -0.45,
+                  "y": 0.03
+                },
+                {
+                  "x": 0.45,
+                  "y": 0.03
+                },
+                {
+                  "x": 0.45,
+                  "y": -0.04
+                },
+                {
+                  "x": -0.45,
+                  "y": -0.04
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "9c22283d-806b-44a9-8754-93c8876f09d8",
+        "path": "/maps/StartMap/LobbySkillBench",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbySkillBench",
+          "path": "/maps/StartMap/LobbySkillBench",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 16,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": -5.1,
+                "y": 0.25,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.2,
+                "g": 0.42,
+                "b": 0.42,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 22,
+              "Points": [
+                {
+                  "x": -1.7,
+                  "y": 0.0
+                },
+                {
+                  "x": 1.7,
+                  "y": 0.0
+                },
+                {
+                  "x": 1.45,
+                  "y": 0.42
+                },
+                {
+                  "x": -1.45,
+                  "y": 0.42
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "43e2e692-af50-408f-b4db-4ddb479ca049",
+        "path": "/maps/StartMap/LobbyAirdropCrateA",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyAirdropCrateA",
+          "path": "/maps/StartMap/LobbyAirdropCrateA",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 17,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": -8.8,
+                "y": 0.42,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.31,
+                "g": 0.45,
+                "b": 0.27,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 24,
+              "Points": [
+                {
+                  "x": -0.68,
+                  "y": -0.42
+                },
+                {
+                  "x": 0.68,
+                  "y": -0.42
+                },
+                {
+                  "x": 0.68,
+                  "y": 0.42
+                },
+                {
+                  "x": -0.68,
+                  "y": 0.42
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "4bad0a08-7543-4fc8-b60c-c003ea99d7bc",
+        "path": "/maps/StartMap/LobbyAirdropCrateB",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyAirdropCrateB",
+          "path": "/maps/StartMap/LobbyAirdropCrateB",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 18,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 4.4,
+                "y": 0.45,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.44,
+                "g": 0.29,
+                "b": 0.18,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 24,
+              "Points": [
+                {
+                  "x": -1.25,
+                  "y": -0.45
+                },
+                {
+                  "x": 1.25,
+                  "y": -0.45
+                },
+                {
+                  "x": 1.25,
+                  "y": 0.45
+                },
+                {
+                  "x": -1.25,
+                  "y": 0.45
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "f516d936-504b-45bb-addc-9173327af3ad",
+        "path": "/maps/StartMap/LobbyTargetLaneMark",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyTargetLaneMark",
+          "path": "/maps/StartMap/LobbyTargetLaneMark",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 19,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 8.2,
+                "y": 0.08,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.62,
+                "g": 0.26,
+                "b": 0.2,
+                "a": 0.85
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 19,
+              "Points": [
+                {
+                  "x": -1.9,
+                  "y": -0.08
+                },
+                {
+                  "x": 1.9,
+                  "y": -0.08
+                },
+                {
+                  "x": 1.9,
+                  "y": 0.08
+                },
+                {
+                  "x": -1.9,
+                  "y": 0.08
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "742169eb-93a5-4304-9744-6de6efe65ea5",
+        "path": "/maps/StartMap/LobbyRadioTower",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "LobbyRadioTower",
+          "path": "/maps/StartMap/LobbyRadioTower",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 20,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": -10.8,
+                "y": 1.35,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.18,
+                "g": 0.22,
+                "b": 0.2,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 21,
+              "Points": [
+                {
+                  "x": -0.12,
+                  "y": -1.35
+                },
+                {
+                  "x": 0.12,
+                  "y": -1.35
+                },
+                {
+                  "x": 0.42,
+                  "y": 1.35
+                },
+                {
+                  "x": -0.42,
+                  "y": 1.35
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "8301f115-c149-4952-9620-b7b9334a1524",
+        "path": "/maps/StartMap/LobbySkillPartBoxA",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,script.BRPartBox",
+        "jsonString": {
+          "name": "LobbySkillPartBoxA",
+          "path": "/maps/StartMap/LobbySkillPartBoxA",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 21,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": -6.2,
+                "y": 0.62,
+                "z": 999.997
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.42,
+                "g": 0.68,
+                "b": 0.62,
+                "a": 0.95
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 30,
+              "Points": [
+                {
+                  "x": -0.42,
+                  "y": -0.42
+                },
+                {
+                  "x": 0.42,
+                  "y": -0.42
+                },
+                {
+                  "x": 0.42,
+                  "y": 0.42
+                },
+                {
+                  "x": -0.42,
+                  "y": 0.42
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRPartBox",
+              "Enable": true,
+              "EnablePartBox": true,
+              "TouchRadius": 1.1,
+              "PollSeconds": 0.1,
+              "RespawnSeconds": 4.0,
+              "DropCount": 1.0,
+              "AutoEquipOnDrop": true,
+              "VerboseLog": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "76a4defb-e5da-45ac-ac1c-ad6d1d92c50d",
+        "path": "/maps/StartMap/LobbySkillPartBoxB",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,script.BRPartBox",
+        "jsonString": {
+          "name": "LobbySkillPartBoxB",
+          "path": "/maps/StartMap/LobbySkillPartBoxB",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 22,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": -5.05,
+                "y": 0.62,
+                "z": 999.997
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.55,
+                "g": 0.45,
+                "b": 0.82,
+                "a": 0.95
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 30,
+              "Points": [
+                {
+                  "x": -0.42,
+                  "y": -0.42
+                },
+                {
+                  "x": 0.42,
+                  "y": -0.42
+                },
+                {
+                  "x": 0.42,
+                  "y": 0.42
+                },
+                {
+                  "x": -0.42,
+                  "y": 0.42
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRPartBox",
+              "Enable": true,
+              "EnablePartBox": true,
+              "TouchRadius": 1.1,
+              "PollSeconds": 0.1,
+              "RespawnSeconds": 4.0,
+              "DropCount": 1.0,
+              "AutoEquipOnDrop": true,
+              "VerboseLog": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "46f3b89b-5593-453d-b010-c177eea82f84",
+        "path": "/maps/StartMap/LobbySkillPartBoxC",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,script.BRPartBox",
+        "jsonString": {
+          "name": "LobbySkillPartBoxC",
+          "path": "/maps/StartMap/LobbySkillPartBoxC",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 23,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": -3.9,
+                "y": 0.62,
+                "z": 999.997
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.82,
+                "g": 0.55,
+                "b": 0.35,
+                "a": 0.95
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 30,
+              "Points": [
+                {
+                  "x": -0.42,
+                  "y": -0.42
+                },
+                {
+                  "x": 0.42,
+                  "y": -0.42
+                },
+                {
+                  "x": 0.42,
+                  "y": 0.42
+                },
+                {
+                  "x": -0.42,
+                  "y": 0.42
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRPartBox",
+              "Enable": true,
+              "EnablePartBox": true,
+              "TouchRadius": 1.1,
+              "PollSeconds": 0.1,
+              "RespawnSeconds": 4.0,
+              "DropCount": 1.0,
+              "AutoEquipOnDrop": true,
+              "VerboseLog": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "3d98e143-525f-4be9-b105-1034cd11f209",
+        "path": "/maps/StartMap/TrainingDummy",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
+        "jsonString": {
+          "name": "TrainingDummy",
+          "path": "/maps/StartMap/TrainingDummy",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 24,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 9.4,
+                "y": 0.0,
+                "z": 999.997
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.87,
+                "g": 0.68,
+                "b": 0.32,
+                "a": 1.0
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 34,
+              "Points": [
+                {
+                  "x": -0.42,
+                  "y": 0.0
+                },
+                {
+                  "x": 0.42,
+                  "y": 0.0
+                },
+                {
+                  "x": 0.34,
+                  "y": 1.45
+                },
+                {
+                  "x": -0.34,
+                  "y": 1.45
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.NameTagComponent",
+              "Bold": true,
+              "FontColor": {
+                "r": 1.0,
+                "g": 0.92,
+                "b": 0.58,
+                "a": 1.0
+              },
+              "FontOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
+              "FontSize": 0.75,
+              "Name": "TRAINING DUMMY\nReady",
+              "NameTagRUID": {
+                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
+              },
+              "OffsetY": 1.62,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRTrainingDummy",
+              "Enable": true,
+              "EnableTrainingDummy": true,
+              "MaxHp": 500.0,
+              "ResetDelaySeconds": 3.0,
+              "DamageFlashSeconds": 0.12,
+              "VerboseLog": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "b19ee416-6489-48f8-a87b-c9dac6926c0f",
+        "path": "/maps/StartMap/LobbyTrainingController",
+        "componentNames": "MOD.Core.TransformComponent,script.BRLobbyTrainingController",
+        "jsonString": {
+          "name": "LobbyTrainingController",
+          "path": "/maps/StartMap/LobbyTrainingController",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 25,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "Position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 999.999
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "ZRotation": 0.0,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRLobbyTrainingController",
+              "Enable": true,
+              "EnableTrainingLobby": true,
+              "AttackActionName": "Attack",
+              "DummyEntityName": "TrainingDummy",
+              "PlayerScanSeconds": 0.15,
+              "BasicAttackDamage": 20.0,
+              "AttackCooldownSeconds": 0.45,
+              "AttackBoxWidth": 1.8,
+              "AttackBoxHeight": 1.15,
+              "AttackOffsetX": 0.9,
+              "AttackOffsetY": 0.35,
+              "AttackOffsetYFromFeet": 0.35,
+              "DummyHitRadiusX": 0.55,
+              "DummyHitRadiusY": 1.1,
+              "GrantStarterPartsOnEnter": true,
+              "ResetSkillOnEnter": false,
+              "StarterPartCount": 5.0,
+              "AutoEquipStarterParts": true,
+              "ApplySkillStatsInLobby": true,
+              "VerboseLog": true
             }
           ],
           "@version": 1

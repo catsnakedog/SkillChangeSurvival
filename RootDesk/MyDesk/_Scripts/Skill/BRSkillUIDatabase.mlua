@@ -1,0 +1,179 @@
+@Logic
+script BRSkillUIDatabase extends Logic
+
+	property string PlaceholderIconRUID = "4fea64a3307cda641809ad8be0d4890b"
+
+	property boolean VerboseLog = false
+
+	method string GetSlotIconRUID(string skillKey, number tier, boolean isLeadSlot)
+		-- Returns the temporary UI icon RUID for a skill slot.
+		local data = self:GetIconData(skillKey)
+		local order = self:ClampTier(tier)
+		if data == nil then
+			data = self:GetIconData("Default")
+		end
+		if data == nil then
+			return self:ReadString(self.PlaceholderIconRUID, "")
+		end
+
+		if isLeadSlot == true and order > 1 and data.LeadByTier ~= nil then
+			local leadRuid = self:ReadString(data.LeadByTier[order], "")
+			if leadRuid ~= "" then
+				return leadRuid
+			end
+		end
+		if data.ByTier ~= nil then
+			local tierRuid = self:ReadString(data.ByTier[order], "")
+			if tierRuid ~= "" then
+				return tierRuid
+			end
+		end
+		return self:ReadString(data.IconRUID, self.PlaceholderIconRUID)
+	end
+
+	method Color GetSlotBaseColor(boolean occupied, number tier, boolean equipped)
+		-- Returns the square background tint for one UI slot.
+		if occupied ~= true then
+			return Color(0.055, 0.07, 0.1, 0.72)
+		end
+		if equipped == true then
+			return Color(0.09, 0.16, 0.14, 0.92)
+		end
+		local order = self:ClampTier(tier)
+		if order >= 4 then
+			return Color(0.18, 0.09, 0.25, 0.96)
+		elseif order == 3 then
+			return Color(0.2, 0.11, 0.08, 0.96)
+		elseif order == 2 then
+			return Color(0.18, 0.15, 0.06, 0.96)
+		end
+		return Color(0.08, 0.12, 0.18, 0.94)
+	end
+
+	method Color GetSlotBorderColor(number tier, boolean occupied, boolean isLeadSlot)
+		-- Returns the visible tier frame color around one skill slot.
+		if occupied ~= true then
+			return Color(0.28, 0.34, 0.43, 0.42)
+		end
+		local order = self:ClampTier(tier)
+		if order >= 4 then
+			return Color(0.94, 0.3, 1.0, 1.0)
+		elseif order == 3 then
+			return Color(1.0, 0.36, 0.12, 1.0)
+		elseif order == 2 then
+			return Color(1.0, 0.82, 0.22, 1.0)
+		elseif isLeadSlot == true then
+			return Color(0.42, 0.84, 1.0, 0.98)
+		end
+		return Color(0.34, 0.48, 0.68, 0.82)
+	end
+
+	method Color GetIconColor(number tier, boolean occupied)
+		-- Returns icon tint for occupied and empty slots.
+		if occupied ~= true then
+			return Color(1, 1, 1, 0)
+		end
+		local order = self:ClampTier(tier)
+		if order >= 4 then
+			return Color(1.0, 0.88, 1.0, 1.0)
+		elseif order == 3 then
+			return Color(1.0, 0.9, 0.72, 1.0)
+		elseif order == 2 then
+			return Color(1.0, 0.96, 0.62, 1.0)
+		end
+		return Color(1, 1, 1, 0.96)
+	end
+
+	method any GetIconData(string skillKey)
+		-- Looks up icon data by base skill key.
+		local catalog = self:GetIconCatalog()
+		return catalog[self:GetBaseSkillKey(skillKey)]
+	end
+
+	method any GetIconCatalog()
+		-- Creates the temporary icon data table used by the skill-chain UI.
+		if self._T.iconCatalog == nil then
+			local slash = "0706dac96b694cd699b87e602ba74f42"
+			local shot = "4a7a78ed206847748a65a46e5f5ae206"
+			local burst = "9194c22af1dc423a9b23eb4de171a137"
+			local guard = "8a31de9dc1634e3bbd3d083f7deadf47"
+			local field = "9df237754ee44c90bb4602f55d29ff9b"
+			self._T.iconCatalog = {
+				Default = { IconRUID = self.PlaceholderIconRUID },
+				Slash = {
+					IconRUID = slash,
+					ByTier = { [1] = slash, [2] = slash, [3] = burst, [4] = burst },
+					LeadByTier = { [2] = slash, [3] = burst, [4] = burst }
+				},
+				Shot = {
+					IconRUID = shot,
+					ByTier = { [1] = shot, [2] = shot, [3] = shot, [4] = burst },
+					LeadByTier = { [2] = shot, [3] = shot, [4] = burst }
+				},
+				Burst = {
+					IconRUID = burst,
+					ByTier = { [1] = burst, [2] = burst, [3] = burst, [4] = field },
+					LeadByTier = { [2] = burst, [3] = burst, [4] = field }
+				},
+				Dash = {
+					IconRUID = slash,
+					ByTier = { [1] = slash, [2] = shot, [3] = burst, [4] = burst },
+					LeadByTier = { [2] = shot, [3] = burst, [4] = burst }
+				},
+				Guard = {
+					IconRUID = guard,
+					ByTier = { [1] = guard, [2] = guard, [3] = field, [4] = field },
+					LeadByTier = { [2] = guard, [3] = field, [4] = field }
+				},
+				Field = {
+					IconRUID = field,
+					ByTier = { [1] = field, [2] = field, [3] = burst, [4] = burst },
+					LeadByTier = { [2] = field, [3] = burst, [4] = burst }
+				}
+			}
+			self:Log("icon db ready")
+		end
+		return self._T.iconCatalog
+	end
+
+	method string GetBaseSkillKey(string skillKey)
+		-- Normalizes tiered runtime keys back to their base catalog key.
+		local key = self:ReadString(skillKey, "Default")
+		key = string.gsub(key, "%d+$", "")
+		if key == "" or key == "-" then
+			return "Default"
+		end
+		return key
+	end
+
+	method number ClampTier(number tier)
+		-- Clamps visible skill order.
+		local order = math.max(1, math.floor(self:ReadNumber(tier, 1)))
+		return math.min(order, 4)
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes icon-db logs when enabled.
+		if self.VerboseLog == true then
+			log("[BRSkillUIDB] " .. message)
+		end
+	end
+
+end

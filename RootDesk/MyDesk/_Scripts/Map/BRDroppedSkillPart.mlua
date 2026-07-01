@@ -23,6 +23,8 @@ script BRDroppedSkillPart extends Component
 
 	property boolean VerboseLog = false
 
+	property boolean RequirePickupKey = true
+
 	property boolean FloatEnabled = true
 
 	property number FloatAmplitude = 0.08
@@ -54,6 +56,7 @@ script BRDroppedSkillPart extends Component
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
 		-- Starts the pickup scan for a dropped skill part.
+		self:ForcePickupKeyMode()
 		self.beginPlayed = true
 		self.active = true
 		self.spawnedAt = _UtilLogic.ElapsedSeconds
@@ -88,6 +91,7 @@ script BRDroppedSkillPart extends Component
 	@ExecSpace("ServerOnly")
 	method void InitializeDrop(string partId, string displayName, string shortKey, string sourceUserId, number sourceInstanceId)
 		-- Applies the exact skill part payload after runtime spawn.
+		self:ForcePickupKeyMode()
 		self.PartId = self:ReadString(partId, self.PartId)
 		self.DisplayName = self:ReadString(displayName, self.DisplayName)
 		self.ShortKey = self:ReadString(shortKey, self.ShortKey)
@@ -106,10 +110,9 @@ script BRDroppedSkillPart extends Component
 
 	@ExecSpace("ServerOnly")
 	method void StartTimers()
-		-- Starts polling and lifetime timers.
-		if self.pollTimerId == nil or self.pollTimerId <= 0 then
-			self.pollTimerId = _TimerService:SetTimerRepeat(function() self:ScanPlayers() end, self:GetPollSeconds(), 0.1)
-		end
+		-- Starts lifetime timers only; pickup requires the explicit pickup key.
+		self:ForcePickupKeyMode()
+		self.pollTimerId = 0
 		if self.lifeTimerId == nil or self.lifeTimerId <= 0 then
 			local lifeSeconds = self:GetLifeSeconds()
 			if lifeSeconds > 0 then
@@ -133,31 +136,35 @@ script BRDroppedSkillPart extends Component
 
 	@ExecSpace("ServerOnly")
 	method void ScanPlayers()
-		-- Gives the part to the first nearby living player with available skill space.
+		-- Auto pickup is intentionally disabled; use TryPickupForPlayer from the pickup key system.
+		self:ForcePickupKeyMode()
+		return
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ForcePickupKeyMode()
+		-- Keeps old placed-map values from re-enabling automatic proximity pickup.
+		self.RequirePickupKey = true
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean TryPickupForPlayer(Entity playerEntity)
+		-- Gives this dropped part only when the requesting player is inside pickup range.
 		if self.active == false then
-			return
+			return false
 		end
 		local now = _UtilLogic.ElapsedSeconds
 		if now < self.nextPickupAttemptAt then
-			return
+			return false
 		end
-		local mapName = self:GetMapName()
-		if mapName == "" then
-			return
-		end
-		local users = _UserService:GetUsersByMapName(mapName)
-		if users == nil then
-			return
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
 		end
 		local dropPosition = self:GetEntityPosition2(self.Entity)
-		local radius = self:GetTouchRadius()
-		for index, playerEntity in ipairs(users) do
-			if self:IsPlayerCloseEnough(playerEntity, dropPosition, radius) == true then
-				if self:PickupForPlayer(playerEntity) == true then
-					return
-				end
-			end
+		if self:IsPlayerCloseEnough(playerEntity, dropPosition, self:GetTouchRadius()) ~= true then
+			return false
 		end
+		return self:PickupForPlayer(playerEntity)
 	end
 
 	@ExecSpace("ServerOnly")
@@ -218,7 +225,7 @@ script BRDroppedSkillPart extends Component
 	end
 
 	method boolean IsOwnerPickupBlocked(string userId)
-		-- Gives the owner a short visible drop window before auto-pickup can reclaim it.
+		-- Gives the owner a short visible drop window before reclaiming it.
 		local sourceUserId = tostring(self:ReadString(self.SourceUserId, ""))
 		local targetUserId = tostring(self:ReadString(userId, ""))
 		if sourceUserId == "" or sourceUserId ~= targetUserId then

@@ -1,0 +1,213 @@
+@Logic
+script BRItemPickupSystem extends Logic
+
+	property boolean EnablePickupKey = true
+
+	property number ClientRequestCooldownSeconds = 0.12
+
+	property boolean VerboseLog = true
+
+	property any inputKeyDownHandler = nil
+
+	property number clientNextPickupRequestAt = 0
+
+	method void OnBeginPlay()
+		-- Initializes client pickup input and server-side pickup request handling.
+		if self:IsClient() then
+			self:StartClientInput()
+		end
+		if self:IsServer() then
+			self:Log("ready key=Z")
+		end
+	end
+
+	method void OnEndPlay()
+		-- Disconnects the client pickup key handler.
+		if self:IsClient() then
+			self:StopClientInput()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StartClientInput()
+		-- Hooks the local item pickup key.
+		if self.EnablePickupKey ~= true then
+			return
+		end
+		if self.inputKeyDownHandler ~= nil then
+			return
+		end
+		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnPickupKeyDown)
+		log("[BRItemPickup] client input ready key=Z")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StopClientInput()
+		-- Unhooks the local item pickup key.
+		if self.inputKeyDownHandler ~= nil then
+			_InputService:DisconnectEvent(KeyDownEvent, self.inputKeyDownHandler)
+		end
+		self.inputKeyDownHandler = nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnPickupKeyDown(KeyDownEvent event)
+		-- Sends a pickup request when the local player presses Z.
+		if event == nil or event.key ~= KeyboardKey.Z then
+			return
+		end
+		if self.EnablePickupKey ~= true then
+			return
+		end
+
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self:ReadNumber(self.clientNextPickupRequestAt, 0) then
+			return
+		end
+
+		self.clientNextPickupRequestAt = now + self:GetClientRequestCooldownSeconds()
+		log("[BRItemPickup] request key=Z")
+		self:RequestPickupNearest()
+	end
+
+	@ExecSpace("Server")
+	method void RequestPickupNearest()
+		-- Finds and claims the nearest valid pickup target for the requesting player.
+		if self.EnablePickupKey ~= true then
+			return
+		end
+
+		local userId = self:ReadString(senderUserId, "")
+		if userId == "" then
+			self:Log("request skipped: sender missing")
+			return
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(userId)
+		if self:IsPlayerValid(playerEntity) ~= true then
+			self:Log("request skipped: player invalid user=" .. userId)
+			return
+		end
+
+		local mapEntity = self:GetCurrentMapEntity(playerEntity)
+		if mapEntity == nil then
+			self:Log("request skipped: map missing user=" .. userId)
+			return
+		end
+
+		if self:TryPickupDroppedPart(mapEntity, playerEntity) == true then
+			self:Log("picked dropped user=" .. userId)
+			return
+		end
+		if self:TryOpenPartBox(mapEntity, playerEntity) == true then
+			self:Log("picked box user=" .. userId)
+			return
+		end
+
+		self:Log("request no target user=" .. userId .. " map=" .. self:ReadString(playerEntity.CurrentMapName, ""))
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean TryPickupDroppedPart(Entity mapEntity, Entity playerEntity)
+		-- Attempts nearby dropped skill parts before supply boxes.
+		if mapEntity == nil or playerEntity == nil then
+			return false
+		end
+
+		local components = mapEntity:GetChildComponentsByTypeName("script.BRDroppedSkillPart", true)
+		if components == nil or components[1] == nil then
+			components = mapEntity:GetChildComponentsByTypeName("BRDroppedSkillPart", true)
+		end
+		if components == nil then
+			return false
+		end
+
+		for index, component in ipairs(components) do
+			---@type BRDroppedSkillPart
+			local dropped = component
+			if dropped ~= nil and dropped:TryPickupForPlayer(playerEntity) == true then
+				return true
+			end
+		end
+		return false
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean TryOpenPartBox(Entity mapEntity, Entity playerEntity)
+		-- Attempts nearby skill part boxes.
+		if mapEntity == nil or playerEntity == nil then
+			return false
+		end
+
+		local components = mapEntity:GetChildComponentsByTypeName("script.BRPartBox", true)
+		if components == nil or components[1] == nil then
+			components = mapEntity:GetChildComponentsByTypeName("BRPartBox", true)
+		end
+		if components == nil then
+			return false
+		end
+
+		for index, component in ipairs(components) do
+			---@type BRPartBox
+			local box = component
+			if box ~= nil and box:TryOpenForPlayer(playerEntity) == true then
+				return true
+			end
+		end
+		return false
+	end
+
+	method boolean IsPlayerValid(Entity playerEntity)
+		-- Checks whether a player entity can request item pickup.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
+		end
+		if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+		return true
+	end
+
+	method Entity GetCurrentMapEntity(Entity playerEntity)
+		-- Resolves the player's current map entity by name.
+		if playerEntity == nil then
+			return nil
+		end
+
+		local mapName = self:ReadString(playerEntity.CurrentMapName, "")
+		if mapName == "" then
+			return nil
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. mapName)
+	end
+
+	method number GetClientRequestCooldownSeconds()
+		-- Returns the local pickup-key request throttle.
+		return math.max(0.03, self:ReadNumber(self.ClientRequestCooldownSeconds, 0.12))
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes pickup-system logs when enabled.
+		if self.VerboseLog == true then
+			log("[BRItemPickup] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

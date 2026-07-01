@@ -69,6 +69,7 @@ script BRSkillChainUI extends Component
 	method void OnBeginPlay()
 		self:EnsureRuntime()
 		self:ApplyAttachedInventoryLayout()
+		self:ApplySlotOnlyLayout()
 		self:ConnectHandlers()
 		self:SetDragGhostActive(false)
 		self:Refresh()
@@ -103,7 +104,8 @@ script BRSkillChainUI extends Component
 		end
 
 		if _BRSkillSystem == nil then
-			self:SetChainTextByPath("Panel/Stats", "SKILL SYSTEM OFF")
+			self:RenderChain()
+			self:RenderBag()
 			return
 		end
 
@@ -117,7 +119,6 @@ script BRSkillChainUI extends Component
 		self._T.bagParts = self:ParseBagText(_BRSkillSystem:GetLocalBagText())
 		self:RenderChain()
 		self:RenderBag()
-		self:SetChainTextByPath("Panel/Stats", _BRSkillSystem:GetLocalRecipeText())
 	end
 
 	@ExecSpace("ClientOnly")
@@ -429,7 +430,7 @@ script BRSkillChainUI extends Component
 		self.draggingStartY = screenPoint.y
 		self.draggingMoved = false
 		self.draggingLabel = self:FormatSkillIconText(self:ReadString(part.Short, "S"), 1)
-		self:SetChainTextByPath("DragGhost/Label", self.draggingLabel)
+		self:RenderDragGhostVisual(part, 1, false)
 		self:SetDragGhostActive(true)
 		self:MoveGhostToTouch(screenPoint)
 		return true
@@ -463,7 +464,7 @@ script BRSkillChainUI extends Component
 		self.draggingStartY = screenPoint.y
 		self.draggingMoved = false
 		self.draggingLabel = self:FormatSkillIconText(self:ReadString(self:ReadRecordValue(record, "Short"), "S"), self:ReadRecordValue(record, "Tier"))
-		self:SetChainTextByPath("DragGhost/Label", self.draggingLabel)
+		self:RenderDragGhostVisual(record, self:GetChainDisplayTier(slotIndex, record), self:IsLeadChainSlot(slotIndex, record))
 		self:SetDragGhostActive(true)
 		self:MoveGhostToTouch(screenPoint)
 		return true
@@ -604,60 +605,268 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void RenderChain()
+		-- Renders the chain as icon-only slots with tier frames.
 		local slots = self._T.chainSlots
 		for slotIndex = 1, self:GetChainSlotCount() do
-			local slot = self:GetChainEntity("Panel/Chain/Slot_" .. tostring(slotIndex))
 			local labelPath = "Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Label"
 			local tierPath = "Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Tier"
 			local record = nil
 			if slots ~= nil then
 				record = slots[slotIndex]
 			end
-
-			if record ~= nil and self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0 then
-				self:SetChainTextByPath(labelPath, self:ReadString(self:ReadRecordValue(record, "DisplayName"), "Skill"))
-				self:SetChainTextByPath(tierPath, tostring(math.max(1, math.floor(self:ReadNumber(self:ReadRecordValue(record, "Tier"), 1)))) .. "차")
-				self:SetSpriteColor(slot, Color(0.16, 0.48, 0.88, 0.94))
-			else
-				self:SetChainTextByPath(labelPath, "+")
-				self:SetChainTextByPath(tierPath, "")
-				self:SetSpriteColor(slot, Color(0.07, 0.1, 0.15, 0.86))
-			end
+			self:SetChainTextByPath(labelPath, "")
+			self:SetChainTextByPath(tierPath, "")
+			self:RenderChainSlotVisual(slotIndex, record)
 		end
 	end
 
 	@ExecSpace("ClientOnly")
 	method void RenderBag()
+		-- Renders spare skill parts as icon-only inventory slots.
 		for index = 1, self:GetBagSlotCount() do
-			local tile = self:GetInventoryEntity("Panel/Inventory/Item_" .. tostring(index))
 			local part = self:GetBagPart(index)
 			if part == nil then
 				self:SetInventoryItemActive(index, true)
-				if tile ~= nil then
-					self:SetSpriteColor(tile, Color(0.06, 0.07, 0.09, 0.72))
-				end
-				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Label", "+")
-				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Name", "EMPTY")
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Label", "")
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Name", "")
 				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "")
+				self:RenderBagSlotVisual(index, nil, false)
 			else
 				self:SetInventoryItemActive(index, true)
 				local equippedSlot = math.floor(self:ReadNumber(part.EquippedSlot, 0))
-				if tile ~= nil then
-					if equippedSlot > 0 then
-						self:SetSpriteColor(tile, Color(0.18, 0.38, 0.25, 0.96))
-					else
-						self:SetSpriteColor(tile, Color(0.12, 0.15, 0.22, 0.96))
-					end
-				end
-				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Label", self:ReadString(part.Short, "S") .. "#" .. tostring(math.floor(self:ReadNumber(part.InstanceId, 0))))
-				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Name", self:FormatSkillTierText(self:ReadString(part.DisplayName, "Skill"), 1))
-				if equippedSlot > 0 then
-					self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "S" .. tostring(equippedSlot))
-				else
-					self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "")
-				end
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Label", "")
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Name", "")
+				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "")
+				self:RenderBagSlotVisual(index, part, equippedSlot > 0)
 			end
 		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderChainSlotVisual(number slotIndex, any record)
+		-- Applies icon, base tint, and tier frame to one chain slot.
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		local occupied = record ~= nil and self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0
+		local isLead = false
+		local displayTier = 1
+		local skillKey = "Default"
+		if occupied == true then
+			isLead = self:IsLeadChainSlot(safeSlotIndex, record)
+			displayTier = self:GetChainDisplayTier(safeSlotIndex, record)
+			skillKey = self:GetRecordSkillKey(record)
+		else
+			displayTier = 0
+		end
+		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Slot_" .. tostring(safeSlotIndex), skillKey, displayTier, occupied, isLead, false)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderBagSlotVisual(number bagIndex, any part, boolean equipped)
+		-- Applies icon, base tint, and equipped frame to one spare slot.
+		local safeBagIndex = math.floor(self:ReadNumber(bagIndex, 0))
+		local occupied = part ~= nil and self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0) > 0
+		local skillKey = "Default"
+		if occupied == true then
+			skillKey = self:GetRecordSkillKey(part)
+		end
+		self:SetSkillSlotVisual("BAG", "Panel/Inventory/Item_" .. tostring(safeBagIndex), skillKey, 1, occupied, false, equipped == true)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderDragGhostVisual(any record, number tier, boolean isLeadSlot)
+		-- Applies the dragged skill icon to the floating ghost.
+		local occupied = record ~= nil and self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0
+		local skillKey = "Default"
+		if occupied == true then
+			skillKey = self:GetRecordSkillKey(record)
+		end
+		self:SetChainTextByPath("DragGhost/Label", "")
+		self:SetSkillSlotVisual("CHAIN", "DragGhost", skillKey, self:ReadNumber(tier, 1), occupied, isLeadSlot == true, false)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetSkillSlotVisual(string rootKind, string basePath, string skillKey, number tier, boolean occupied, boolean isLeadSlot, boolean equipped)
+		-- Updates the visual entities under a skill slot.
+		local safeRootKind = self:ReadString(rootKind, "CHAIN")
+		local safeBasePath = self:ReadString(basePath, "")
+		local safeTier = math.max(1, math.floor(self:ReadNumber(tier, 1)))
+		local iconRuid = self:GetSlotIconRUID(skillKey, safeTier, isLeadSlot == true)
+		local baseColor = self:GetSlotBaseColor(occupied == true, safeTier, equipped == true)
+		local borderColor = self:GetSlotBorderColor(safeTier, occupied == true, isLeadSlot == true)
+		local iconColor = self:GetSlotIconColor(safeTier, occupied == true)
+
+		self:SetVisualSpriteColor(safeRootKind, safeBasePath, baseColor)
+		self:SetVisualSpriteImage(safeRootKind, safeBasePath .. "/Icon", iconRuid)
+		self:SetVisualSpriteColor(safeRootKind, safeBasePath .. "/Icon", iconColor)
+		self:SetSlotFrameColor(safeRootKind, safeBasePath, borderColor)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetSlotFrameColor(string rootKind, string basePath, Color color)
+		-- Colors the four thin frame sprites around a slot.
+		self:SetVisualSpriteColor(rootKind, basePath .. "/FrameTop", color)
+		self:SetVisualSpriteColor(rootKind, basePath .. "/FrameBottom", color)
+		self:SetVisualSpriteColor(rootKind, basePath .. "/FrameLeft", color)
+		self:SetVisualSpriteColor(rootKind, basePath .. "/FrameRight", color)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetVisualSpriteImage(string rootKind, string relativePath, string ruid)
+		-- Assigns a UI sprite RUID through the correct root group.
+		local entity = self:GetVisualEntity(rootKind, relativePath)
+		if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
+			entity.SpriteGUIRendererComponent.ImageRUID = DataRef(self:ReadString(ruid, self:GetFallbackIconRUID()))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetVisualSpriteColor(string rootKind, string relativePath, Color color)
+		-- Assigns a UI sprite tint through the correct root group.
+		local entity = self:GetVisualEntity(rootKind, relativePath)
+		self:SetSpriteColor(entity, color)
+	end
+
+	method Entity GetVisualEntity(string rootKind, string relativePath)
+		-- Resolves a visual entity from the chain or inventory group.
+		if self:ReadString(rootKind, "CHAIN") == "BAG" then
+			return self:GetInventoryEntity(relativePath)
+		end
+		return self:GetChainEntity(relativePath)
+	end
+
+	method string GetSlotIconRUID(string skillKey, number tier, boolean isLeadSlot)
+		-- Reads icon RUID data from the temporary skill UI database.
+		if _BRSkillUIDatabase ~= nil then
+			return _BRSkillUIDatabase:GetSlotIconRUID(self:GetBaseSkillKey(skillKey), tier, isLeadSlot == true)
+		end
+		return self:GetFallbackIconRUID()
+	end
+
+	method Color GetSlotBaseColor(boolean occupied, number tier, boolean equipped)
+		-- Reads slot base tint data from the temporary skill UI database.
+		if _BRSkillUIDatabase ~= nil then
+			return _BRSkillUIDatabase:GetSlotBaseColor(occupied == true, tier, equipped == true)
+		end
+		if occupied ~= true then
+			return Color(0.055, 0.07, 0.1, 0.72)
+		end
+		if equipped == true then
+			return Color(0.09, 0.16, 0.14, 0.92)
+		end
+		return Color(0.08, 0.12, 0.18, 0.94)
+	end
+
+	method Color GetSlotBorderColor(number tier, boolean occupied, boolean isLeadSlot)
+		-- Reads tier frame color data from the temporary skill UI database.
+		if _BRSkillUIDatabase ~= nil then
+			return _BRSkillUIDatabase:GetSlotBorderColor(tier, occupied == true, isLeadSlot == true)
+		end
+		if occupied ~= true then
+			return Color(0.28, 0.34, 0.43, 0.42)
+		end
+		if tier >= 2 then
+			return Color(1.0, 0.82, 0.22, 1.0)
+		end
+		return Color(0.34, 0.48, 0.68, 0.82)
+	end
+
+	method Color GetSlotIconColor(number tier, boolean occupied)
+		-- Reads icon tint data from the temporary skill UI database.
+		if _BRSkillUIDatabase ~= nil then
+			return _BRSkillUIDatabase:GetIconColor(tier, occupied == true)
+		end
+		if occupied ~= true then
+			return Color(1, 1, 1, 0)
+		end
+		return Color(1, 1, 1, 0.96)
+	end
+
+	method boolean IsLeadChainSlot(number slotIndex, any record)
+		-- Returns true for the first visible slot in a folded same-skill run.
+		if record == nil or self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) <= 0 then
+			return false
+		end
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlotIndex <= 1 then
+			return true
+		end
+		local previous = self:GetChainSlot(safeSlotIndex - 1)
+		if previous == nil or self:ReadNumber(self:ReadRecordValue(previous, "InstanceId"), 0) <= 0 then
+			return true
+		end
+		return self:GetBaseSkillKey(self:GetRecordSkillKey(previous)) ~= self:GetBaseSkillKey(self:GetRecordSkillKey(record))
+	end
+
+	method number GetChainDisplayTier(number slotIndex, any record)
+		-- Uses the final folded tier on a run's first slot, and the local tier on follower slots.
+		if record == nil then
+			return 1
+		end
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		local tier = math.max(1, math.floor(self:ReadNumber(self:ReadRecordValue(record, "Tier"), 1)))
+		if self:IsLeadChainSlot(safeSlotIndex, record) ~= true then
+			return tier
+		end
+
+		local baseKey = self:GetBaseSkillKey(self:GetRecordSkillKey(record))
+		local maxTier = tier
+		for nextSlot = safeSlotIndex + 1, self:GetChainSlotCount() do
+			local nextRecord = self:GetChainSlot(nextSlot)
+			if nextRecord == nil or self:ReadNumber(self:ReadRecordValue(nextRecord, "InstanceId"), 0) <= 0 then
+				break
+			end
+			if self:GetBaseSkillKey(self:GetRecordSkillKey(nextRecord)) ~= baseKey then
+				break
+			end
+			local nextTier = math.max(1, math.floor(self:ReadNumber(self:ReadRecordValue(nextRecord, "Tier"), 1)))
+			if nextTier > maxTier then
+				maxTier = nextTier
+			end
+		end
+		return maxTier
+	end
+
+	method string GetRecordSkillKey(any record)
+		-- Reads the base skill key from a chain or bag record.
+		if record == nil then
+			return "Default"
+		end
+		return self:GetBaseSkillKey(self:ReadString(self:ReadRecordValue(record, "SkillKey"), self:InferSkillKey(self:ReadRecordValue(record, "Short"), self:ReadRecordValue(record, "DisplayName"))))
+	end
+
+	method string InferSkillKey(any shortText, any displayName)
+		-- Infers a skill key for old snapshots that did not include SkillKey.
+		local short = self:ReadString(shortText, "")
+		local display = self:ReadString(displayName, "")
+		if short == "SL" or string.find(display, "Slash") ~= nil then
+			return "Slash"
+		elseif short == "SH" or string.find(display, "Shot") ~= nil then
+			return "Shot"
+		elseif short == "BU" or string.find(display, "Burst") ~= nil then
+			return "Burst"
+		elseif short == "DA" or string.find(display, "Dash") ~= nil then
+			return "Dash"
+		elseif short == "GU" or string.find(display, "Guard") ~= nil or string.find(display, "Barrier") ~= nil or string.find(display, "Fortress") ~= nil or string.find(display, "Aegis") ~= nil then
+			return "Guard"
+		elseif short == "FI" or string.find(display, "Field") ~= nil then
+			return "Field"
+		end
+		return "Default"
+	end
+
+	method string GetBaseSkillKey(string skillKey)
+		-- Normalizes tiered runtime keys back to their base catalog key.
+		local key = self:ReadString(skillKey, "Default")
+		key = string.gsub(key, "%d+$", "")
+		if key == "" or key == "-" then
+			return "Default"
+		end
+		return key
+	end
+
+	method string GetFallbackIconRUID()
+		-- Returns a safe placeholder RUID when the icon database is unavailable.
+		return "4fea64a3307cda641809ad8be0d4890b"
 	end
 
 	method any ParseChainText(string text)
@@ -671,7 +880,8 @@ script BRSkillChainUI extends Component
 					InstanceId = math.floor(self:ReadNumber(parts[2], 0)),
 					Short = self:ReadString(parts[3], "-"),
 					Tier = math.floor(self:ReadNumber(parts[4], 0)),
-					DisplayName = self:ReadString(parts[5], "-")
+					DisplayName = self:ReadString(parts[5], "-"),
+					SkillKey = self:ReadString(parts[6], self:InferSkillKey(parts[3], parts[5]))
 				}
 			end
 		end
@@ -687,12 +897,14 @@ script BRSkillChainUI extends Component
 			local shortIndex = 2
 			local tierIndex = 4
 			local displayIndex = 5
+			local skillKeyIndex = 6
 			if tonumber(parts[2]) ~= nil then
 				slotIndex = math.floor(self:ReadNumber(parts[1], 0))
 				instanceId = math.floor(self:ReadNumber(parts[2], 0))
 				shortIndex = 3
 				tierIndex = 4
 				displayIndex = 5
+				skillKeyIndex = 6
 			end
 			if instanceId > 0 then
 				result[slotIndex] = {
@@ -700,7 +912,8 @@ script BRSkillChainUI extends Component
 					Short = self:ReadString(parts[shortIndex], "P"),
 					EquippedSlot = 0,
 					Tier = math.floor(self:ReadNumber(parts[tierIndex], 0)),
-					DisplayName = self:ReadString(parts[displayIndex], "Skill")
+					DisplayName = self:ReadString(parts[displayIndex], "Skill"),
+					SkillKey = self:ReadString(parts[skillKeyIndex], self:InferSkillKey(parts[shortIndex], parts[displayIndex]))
 				}
 			end
 		end
@@ -907,7 +1120,8 @@ script BRSkillChainUI extends Component
 			InstanceId = safeInstanceId,
 			Short = self:ReadString(self:ReadRecordValue(bagPart, "Short"), "S"),
 			Tier = 1,
-			DisplayName = self:ReadString(self:ReadRecordValue(bagPart, "DisplayName"), "Skill")
+			DisplayName = self:ReadString(self:ReadRecordValue(bagPart, "DisplayName"), "Skill"),
+			SkillKey = self:GetRecordSkillKey(bagPart)
 		}
 		self:RemoveLocalBagPartByInstanceId(safeInstanceId)
 		self:RenderChain()
@@ -1106,7 +1320,8 @@ script BRSkillChainUI extends Component
 			Short = self:ReadString(self:ReadRecordValue(part, "Short"), "S"),
 			EquippedSlot = 0,
 			Tier = 1,
-			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill")
+			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill"),
+			SkillKey = self:GetRecordSkillKey(part)
 		}
 	end
 
@@ -1124,7 +1339,8 @@ script BRSkillChainUI extends Component
 			Short = self:ReadString(self:ReadRecordValue(record, "Short"), "S"),
 			EquippedSlot = 0,
 			Tier = 1,
-			DisplayName = self:ReadString(self:ReadRecordValue(record, "DisplayName"), "Skill")
+			DisplayName = self:ReadString(self:ReadRecordValue(record, "DisplayName"), "Skill"),
+			SkillKey = self:GetRecordSkillKey(record)
 		}
 	end
 
@@ -1142,7 +1358,8 @@ script BRSkillChainUI extends Component
 			InstanceId = instanceId,
 			Short = self:ReadString(self:ReadRecordValue(part, "Short"), "S"),
 			Tier = 1,
-			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill")
+			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill"),
+			SkillKey = self:GetRecordSkillKey(part)
 		}
 	end
 
@@ -1293,6 +1510,54 @@ script BRSkillChainUI extends Component
 	method void SetSpriteColor(Entity entity, Color color)
 		if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
 			entity.SpriteGUIRendererComponent.Color = color
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplySlotOnlyLayout()
+		-- Hides static labels so the skill-chain UI is composed only of slots.
+		self:SetChainTextByPath("Panel/Title", "")
+		self:SetChainTextByPath("Panel/Stats", "")
+		self:SetChainTextByPath("DragGhost/Label", "")
+		self:SetChainEntityEnabled("Panel/Bg", false)
+		self:SetChainEntityEnabled("Panel/Title", false)
+		self:SetChainEntityEnabled("Panel/Stats", false)
+		self:SetChainEntityEnabled("DragGhost/Label", false)
+		for slotIndex = 1, self:GetChainSlotCount() do
+			self:SetChainTextByPath("Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Label", "")
+			self:SetChainTextByPath("Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Tier", "")
+			self:SetChainEntityEnabled("Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Label", false)
+			self:SetChainEntityEnabled("Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Tier", false)
+		end
+
+		self:SetInventoryTextByPath("Panel/Title", "")
+		self:SetInventoryEntityEnabled("Panel/Bg", false)
+		self:SetInventoryEntityEnabled("Panel/Title", false)
+		for index = 1, self:GetBagSlotCount() do
+			self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Label", "")
+			self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Name", "")
+			self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "")
+			self:SetInventoryEntityEnabled("Panel/Inventory/Item_" .. tostring(index) .. "/Label", false)
+			self:SetInventoryEntityEnabled("Panel/Inventory/Item_" .. tostring(index) .. "/Name", false)
+			self:SetInventoryEntityEnabled("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", false)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetChainEntityEnabled(string relativePath, boolean enabled)
+		-- Enables or disables an entity under the chain root.
+		local entity = self:GetChainEntity(relativePath)
+		if entity ~= nil then
+			entity.Enable = enabled == true
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetInventoryEntityEnabled(string relativePath, boolean enabled)
+		-- Enables or disables an entity under the inventory root.
+		local entity = self:GetInventoryEntity(relativePath)
+		if entity ~= nil then
+			entity.Enable = enabled == true
 		end
 	end
 

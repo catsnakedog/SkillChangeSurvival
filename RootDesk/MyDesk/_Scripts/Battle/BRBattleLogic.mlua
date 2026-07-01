@@ -737,6 +737,12 @@ script BRBattleLogic extends Component
 		end
 		
 		local userId = attackerEntity.PlayerComponent.UserId
+		if _BRSkillSystem ~= nil then
+			_BRSkillSystem:RequestCastNextChainSkill(userId)
+			self:Log("skill-chain input user=" .. userId)
+			return
+		end
+
 		local now = self:Now()
 		local nextAttackAt = self:ReadNumber(self._T.nextAttackAt[userId], 0)
 		if now < nextAttackAt then

@@ -29,6 +29,8 @@ script BRLobbyTrainingController extends Component
 
 	property boolean GrantStarterPartsOnEnter = true
 
+	property boolean RequirePickupKeyForStarterParts = true
+
 	property boolean ResetSkillOnEnter = false
 
 	property number StarterPartCount = 7
@@ -195,6 +197,11 @@ script BRLobbyTrainingController extends Component
 		if self._T.starterGranted[userId] == true then
 			return
 		end
+		if self.RequirePickupKeyForStarterParts == true then
+			self._T.starterGranted[userId] = true
+			self:Log("starter parts skipped user=" .. userId .. " reason=pickupKey")
+			return
+		end
 		if self.ResetSkillOnEnter == true and self._T.skillReset[userId] ~= true then
 			_BRSkillSystem:ResetUser(userId)
 			self._T.skillReset[userId] = true
@@ -262,6 +269,12 @@ script BRLobbyTrainingController extends Component
 		end
 
 		local userId = attackerEntity.PlayerComponent.UserId
+		if _BRSkillSystem ~= nil then
+			_BRSkillSystem:RequestCastNextChainSkill(userId)
+			self:Log("skill-chain input user=" .. userId)
+			return
+		end
+
 		local now = self:Now()
 		local nextAttackAt = self:ReadNumber(self._T.nextAttackAt[userId], 0)
 		if now < nextAttackAt then

@@ -9,11 +9,67 @@ script BRSkillSystem extends Logic
 
 	property number ChainSlotCount = 5
 
+	property integer MaxSkillTier = 4
+
 	property number BagSlotCount = 2
+
+	property number SkillFrameSeconds = 0.03
+
+	property number SkillChainResetSeconds = 2.5
+
+	property number ChainCastCooldownSeconds = 0.18
+
+	property number SkillMovementSpeedRate = 0.45
+
+	property number DefaultSkillAttackPower = 300
+
+	property number DefaultCriticalRate = 0.2
+
+	property number DefaultCriticalDamageRate = 2.0
+
+	property number SkillTargetPadding = 0.35
 
 	property number DroppedPartSpawnYOffset = 0.35
 
 	property number DroppedPartSpawnXOffset = 1.15
+
+	property boolean EnableSkillVisualEffects = true
+
+	property string SlashEffectRUID = "0706dac96b694cd699b87e602ba74f42"
+
+	property string ProjectileEffectRUID = "4a7a78ed206847748a65a46e5f5ae206"
+
+	property string BurstEffectRUID = "9194c22af1dc423a9b23eb4de171a137"
+
+	property string GuardEffectRUID = "8a31de9dc1634e3bbd3d083f7deadf47"
+
+	property string FieldEffectRUID = "9df237754ee44c90bb4602f55d29ff9b"
+
+	property string HitEffectRUID = "9194c22af1dc423a9b23eb4de171a137"
+
+	property number SkillEffectScale = 1.0
+
+	property number SkillEffectAlpha = 1.0
+
+	property integer SkillEffectOrderInLayer = 30
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		-- Initializes the server-side skill-chain runtime once per world session.
+		self:EnsureRuntime()
+		self:Log("runtime ready frameSeconds=" .. tostring(self:GetSkillFrameSeconds()))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnUpdate(number delta)
+		-- Advances active skill casts, hit areas, projectiles, fields, and temporary statuses.
+		self:EnsureRuntime()
+		self:TickActiveCasts(delta)
+		self:TickActiveAreas(delta)
+		self:TickActiveProjectiles(delta)
+		self:TickActiveFields(delta)
+		self:TickStatuses()
+	end
 
 	method void EnsureRuntime()
 		-- Initializes runtime-only skill data tables.
@@ -28,6 +84,39 @@ script BRSkillSystem extends Logic
 		end
 		if self._T.snapshotVersions == nil then
 			self._T.snapshotVersions = {}
+		end
+		if self._T.skillRuntimeCatalog == nil then
+			self._T.skillRuntimeCatalog = self:CreateSkillRuntimeCatalog()
+		end
+		if self._T.skillEventCatalog == nil then
+			self._T.skillEventCatalog = self:CreateSkillEventCatalog()
+		end
+		if self._T.skillHitboxCatalog == nil then
+			self._T.skillHitboxCatalog = self:CreateSkillHitboxCatalog()
+		end
+		if self._T.skillActionCatalog == nil then
+			self._T.skillActionCatalog = self:CreateSkillActionCatalog()
+		end
+		if self._T.chainRuntimeByUser == nil then
+			self._T.chainRuntimeByUser = {}
+		end
+		if self._T.activeCasts == nil then
+			self._T.activeCasts = {}
+		end
+		if self._T.activeAreas == nil then
+			self._T.activeAreas = {}
+		end
+		if self._T.activeProjectiles == nil then
+			self._T.activeProjectiles = {}
+		end
+		if self._T.activeFields == nil then
+			self._T.activeFields = {}
+		end
+		if self._T.statusByEntityId == nil then
+			self._T.statusByEntityId = {}
+		end
+		if self._T.casterLocks == nil then
+			self._T.casterLocks = {}
 		end
 		if self._T.randomSeeded ~= true then
 			self._T.randomSeeded = true
@@ -68,6 +157,1479 @@ script BRSkillSystem extends Logic
 			"guard_part",
 			"field_part"
 		}
+	end
+
+	method any CreateSkillRuntimeCatalog()
+		-- Creates distinct skill timeline definitions for each skill order.
+		local skills = {}
+		self:AddSkillRuntimeDefinition(skills, "Slash", 1, "Slash", 12, 12, { [4] = { "divineSwingArea1" }, [8] = { "slashFollowEffect" } })
+		self:AddSkillRuntimeDefinition(skills, "Slash", 2, "Slash II", 14, 16, { [3] = { "divineSwingArea1" }, [6] = { "slashTier2BackArea" }, [10] = { "slashFollowEffect" } })
+		self:AddSkillRuntimeDefinition(skills, "Slash", 3, "Slash III", 16, 18, { [2] = { "slashTier3WideArea" }, [6] = { "divineSwingArea1" }, [11] = { "slashFollowEffect" } })
+		self:AddSkillRuntimeDefinition(skills, "Slash", 4, "Slash IV", 18, 22, { [2] = { "slashTier4CrossArea" }, [7] = { "slashTier3WideArea" }, [13] = { "slashFollowEffect" } })
+		self:AddSkillRuntimeDefinition(skills, "Shot", 1, "Shot", 12, 14, { [5] = { "basicProjectile" } })
+		self:AddSkillRuntimeDefinition(skills, "Shot", 2, "Piercing Shot", 13, 16, { [4] = { "shotPierceProjectile" } })
+		self:AddSkillRuntimeDefinition(skills, "Shot", 3, "Double Shot", 15, 18, { [3] = { "basicProjectile" }, [7] = { "shotPierceProjectile" } })
+		self:AddSkillRuntimeDefinition(skills, "Shot", 4, "Storm Shot", 18, 22, { [2] = { "shotStormProjectile" }, [6] = { "shotPierceProjectile" }, [10] = { "basicProjectile" } })
+		self:AddSkillRuntimeDefinition(skills, "Burst", 1, "Burst", 10, 18, { [3] = { "burstTriggerArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Burst", 2, "Burst II", 12, 20, { [3] = { "burstTriggerArea2" } })
+		self:AddSkillRuntimeDefinition(skills, "Burst", 3, "Burst III", 14, 22, { [2] = { "burstTriggerArea3" } })
+		self:AddSkillRuntimeDefinition(skills, "Burst", 4, "Burst IV", 16, 26, { [2] = { "burstTriggerArea4" }, [7] = { "burstEchoArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Dash", 1, "Dash", 9, 15, { [2] = { "dashDamageArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Dash", 2, "Dash II", 11, 17, { [2] = { "dashExtendedArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Dash", 3, "Dash III", 13, 19, { [1] = { "dashExtendedArea" }, [6] = { "dashReturnArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Dash", 4, "Dash IV", 15, 23, { [1] = { "dashBreakArea" }, [5] = { "dashExtendedArea" }, [9] = { "dashReturnArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Guard", 1, "Guard", 8, 20, { [0] = { "guardBuffAction" } })
+		self:AddSkillRuntimeDefinition(skills, "Guard", 2, "Barrier", 10, 22, { [0] = { "guardBarrierAction" } })
+		self:AddSkillRuntimeDefinition(skills, "Guard", 3, "Fortress", 12, 24, { [0] = { "guardFortressAction" }, [6] = { "slashFollowEffect" } })
+		self:AddSkillRuntimeDefinition(skills, "Guard", 4, "Aegis", 14, 28, { [0] = { "guardAegisAction" }, [5] = { "guardBarrierAction" } })
+		self:AddSkillRuntimeDefinition(skills, "Field", 1, "Field", 12, 24, { [6] = { "fieldCreateAction" } })
+		self:AddSkillRuntimeDefinition(skills, "Field", 2, "Field II", 14, 26, { [5] = { "fieldCreateWideAction" } })
+		self:AddSkillRuntimeDefinition(skills, "Field", 3, "Field III", 16, 28, { [4] = { "fieldCreatePulseAction" } })
+		self:AddSkillRuntimeDefinition(skills, "Field", 4, "Field IV", 18, 32, { [3] = { "fieldCreateStormAction" }, [9] = { "fieldCreateWideAction" } })
+		return skills
+	end
+
+	method void AddSkillRuntimeDefinition(any skills, string baseSkillKey, number tier, string displayName, number totalFrames, number cooldownFrames, any eventsByFrame)
+		-- Registers one tier as a different executable skill definition.
+		local order = self:ClampSkillTier(tier)
+		local skillKey = self:GetTieredSkillKey(baseSkillKey, order)
+		skills[skillKey] = {
+			SkillKey = skillKey,
+			BaseSkillKey = baseSkillKey,
+			Tier = order,
+			DisplayName = displayName,
+			TotalFrames = math.max(1, math.floor(self:ReadNumber(totalFrames, 1))),
+			CooldownFrames = math.max(1, math.floor(self:ReadNumber(cooldownFrames, 1))),
+			EventsByFrame = eventsByFrame
+		}
+	end
+
+	method any CreateSkillEventCatalog()
+		-- Creates timeline events; each event delegates work to action data.
+		local events = {}
+		events["divineSwingArea1"] = {
+			EventId = "divineSwingArea1",
+			Type = "area",
+			DurationFrames = 4,
+			HitboxIds = { "ds1b1", "ds1b2" },
+			ActionIds = { "ds1hit", "ds1stun" }
+		}
+		events["slashFollowEffect"] = {
+			EventId = "slashFollowEffect",
+			Type = "action",
+			ActionIds = { "slashAfterEffect" }
+		}
+		events["slashTier2BackArea"] = {
+			EventId = "slashTier2BackArea",
+			Type = "area",
+			DurationFrames = 3,
+			HitboxIds = { "ds1b2", "ds1b1" },
+			ActionIds = { "slashTier2Hit" }
+		}
+		events["slashTier3WideArea"] = {
+			EventId = "slashTier3WideArea",
+			Type = "area",
+			DurationFrames = 4,
+			HitboxIds = { "slashWide" },
+			ActionIds = { "slashTier3Hit", "slashAfterEffect" }
+		}
+		events["slashTier4CrossArea"] = {
+			EventId = "slashTier4CrossArea",
+			Type = "area",
+			DurationFrames = 5,
+			HitboxIds = { "slashWide", "slashBackWide" },
+			ActionIds = { "slashTier4Hit", "ds1stun" }
+		}
+		events["basicProjectile"] = {
+			EventId = "basicProjectile",
+			Type = "projectile",
+			ProjectileId = "basicProjectile",
+			DurationFrames = 24,
+			Speed = 7.5,
+			Range = 6.5,
+			Pierce = 0,
+			HitboxIds = { "projectileSmall" },
+			ActionIds = { "shotHit" }
+		}
+		events["shotPierceProjectile"] = {
+			EventId = "shotPierceProjectile",
+			Type = "projectile",
+			ProjectileId = "shotPierceProjectile",
+			DurationFrames = 24,
+			Speed = 8.4,
+			Range = 7.2,
+			Pierce = 1,
+			HitboxIds = { "projectileMedium" },
+			ActionIds = { "shotTier2Hit" }
+		}
+		events["shotStormProjectile"] = {
+			EventId = "shotStormProjectile",
+			Type = "projectile",
+			ProjectileId = "shotStormProjectile",
+			DurationFrames = 30,
+			Speed = 9.0,
+			Range = 8.6,
+			Pierce = 3,
+			HitboxIds = { "projectileLarge" },
+			ActionIds = { "shotTier4Hit" }
+		}
+		events["burstTriggerArea"] = {
+			EventId = "burstTriggerArea",
+			Type = "area",
+			DurationFrames = 3,
+			HitboxIds = { "burstCore" },
+			ActionIds = { "burstHit", "burstTrigger" }
+		}
+		events["burstTriggerArea2"] = {
+			EventId = "burstTriggerArea2",
+			Type = "area",
+			DurationFrames = 4,
+			HitboxIds = { "burstWide" },
+			ActionIds = { "burstTier2Hit", "burstTrigger" }
+		}
+		events["burstTriggerArea3"] = {
+			EventId = "burstTriggerArea3",
+			Type = "area",
+			DurationFrames = 5,
+			HitboxIds = { "burstWide", "burstCore" },
+			ActionIds = { "burstTier3Hit", "burstTrigger" }
+		}
+		events["burstTriggerArea4"] = {
+			EventId = "burstTriggerArea4",
+			Type = "area",
+			DurationFrames = 6,
+			HitboxIds = { "burstHuge" },
+			ActionIds = { "burstTier4Hit", "burstTrigger" }
+		}
+		events["burstEchoArea"] = {
+			EventId = "burstEchoArea",
+			Type = "area",
+			DurationFrames = 3,
+			HitboxIds = { "burstWide" },
+			ActionIds = { "burstTier2Hit" }
+		}
+		events["dashDamageArea"] = {
+			EventId = "dashDamageArea",
+			Type = "area",
+			DurationFrames = 2,
+			HitboxIds = { "dashBox" },
+			ActionIds = { "dashHit" }
+		}
+		events["dashExtendedArea"] = {
+			EventId = "dashExtendedArea",
+			Type = "area",
+			DurationFrames = 3,
+			HitboxIds = { "dashLong" },
+			ActionIds = { "dashTier2Hit" }
+		}
+		events["dashReturnArea"] = {
+			EventId = "dashReturnArea",
+			Type = "area",
+			DurationFrames = 2,
+			HitboxIds = { "dashBack" },
+			ActionIds = { "dashTier3Hit" }
+		}
+		events["dashBreakArea"] = {
+			EventId = "dashBreakArea",
+			Type = "area",
+			DurationFrames = 4,
+			HitboxIds = { "dashWide" },
+			ActionIds = { "dashTier4Hit", "ds1stun" }
+		}
+		events["guardBuffAction"] = {
+			EventId = "guardBuffAction",
+			Type = "action",
+			ActionIds = { "guardBuff" }
+		}
+		events["guardBarrierAction"] = {
+			EventId = "guardBarrierAction",
+			Type = "action",
+			ActionIds = { "guardBarrierBuff" }
+		}
+		events["guardFortressAction"] = {
+			EventId = "guardFortressAction",
+			Type = "action",
+			ActionIds = { "guardFortressBuff" }
+		}
+		events["guardAegisAction"] = {
+			EventId = "guardAegisAction",
+			Type = "action",
+			ActionIds = { "guardAegisBuff" }
+		}
+		events["fieldCreateAction"] = {
+			EventId = "fieldCreateAction",
+			Type = "field",
+			DurationFrames = 60,
+			HitboxIds = { "fieldZone" },
+			ActionIds = { "fieldTickHit" }
+		}
+		events["fieldCreateWideAction"] = {
+			EventId = "fieldCreateWideAction",
+			Type = "field",
+			DurationFrames = 72,
+			HitboxIds = { "fieldWide" },
+			ActionIds = { "fieldTier2TickHit" }
+		}
+		events["fieldCreatePulseAction"] = {
+			EventId = "fieldCreatePulseAction",
+			Type = "field",
+			DurationFrames = 84,
+			HitboxIds = { "fieldWide", "fieldZone" },
+			ActionIds = { "fieldTier3TickHit" }
+		}
+		events["fieldCreateStormAction"] = {
+			EventId = "fieldCreateStormAction",
+			Type = "field",
+			DurationFrames = 96,
+			HitboxIds = { "fieldHuge" },
+			ActionIds = { "fieldTier4TickHit" }
+		}
+		return events
+	end
+
+	method any CreateSkillHitboxCatalog()
+		-- Creates invisible target-capture rectangles in pixel data; runtime converts to world units.
+		local hitboxes = {}
+		hitboxes["ds1b1"] = { HitboxId = "ds1b1", Rx = 0, By = 0, W = 248, H = 90 }
+		hitboxes["ds1b2"] = { HitboxId = "ds1b2", Rx = -248, By = 0, W = 43, H = 63 }
+		hitboxes["projectileSmall"] = { HitboxId = "projectileSmall", Rx = 0, By = 0, W = 80, H = 70 }
+		hitboxes["projectileMedium"] = { HitboxId = "projectileMedium", Rx = 0, By = -8, W = 110, H = 86 }
+		hitboxes["projectileLarge"] = { HitboxId = "projectileLarge", Rx = 0, By = -15, W = 140, H = 110 }
+		hitboxes["slashWide"] = { HitboxId = "slashWide", Rx = -10, By = -10, W = 320, H = 120 }
+		hitboxes["slashBackWide"] = { HitboxId = "slashBackWide", Rx = -300, By = -8, W = 180, H = 110 }
+		hitboxes["burstCore"] = { HitboxId = "burstCore", Rx = -40, By = -20, W = 180, H = 150 }
+		hitboxes["burstWide"] = { HitboxId = "burstWide", Rx = -80, By = -35, W = 280, H = 190 }
+		hitboxes["burstHuge"] = { HitboxId = "burstHuge", Rx = -150, By = -45, W = 420, H = 240 }
+		hitboxes["dashBox"] = { HitboxId = "dashBox", Rx = 0, By = 0, W = 180, H = 90 }
+		hitboxes["dashLong"] = { HitboxId = "dashLong", Rx = 0, By = -5, W = 280, H = 95 }
+		hitboxes["dashBack"] = { HitboxId = "dashBack", Rx = -220, By = -5, W = 180, H = 95 }
+		hitboxes["dashWide"] = { HitboxId = "dashWide", Rx = -80, By = -20, W = 380, H = 150 }
+		hitboxes["fieldZone"] = { HitboxId = "fieldZone", Rx = -140, By = -30, W = 280, H = 160 }
+		hitboxes["fieldWide"] = { HitboxId = "fieldWide", Rx = -210, By = -45, W = 420, H = 190 }
+		hitboxes["fieldHuge"] = { HitboxId = "fieldHuge", Rx = -300, By = -60, W = 600, H = 240 }
+		return hitboxes
+	end
+
+	method any CreateSkillActionCatalog()
+		-- Creates executable actions consumed by skill events.
+		local actions = {}
+		actions["ds1hit"] = { ActionId = "ds1hit", Type = "damage", Coefficient = 120 }
+		actions["ds1stun"] = { ActionId = "ds1stun", Type = "debuff", StatusId = "stun", DurationFrames = 30, CancelChain = true }
+		actions["slashAfterEffect"] = { ActionId = "slashAfterEffect", Type = "aftereffect" }
+		actions["slashTier2Hit"] = { ActionId = "slashTier2Hit", Type = "damage", Coefficient = 105 }
+		actions["slashTier3Hit"] = { ActionId = "slashTier3Hit", Type = "damage", Coefficient = 90 }
+		actions["slashTier4Hit"] = { ActionId = "slashTier4Hit", Type = "damage", Coefficient = 85 }
+		actions["shotHit"] = { ActionId = "shotHit", Type = "damage", Coefficient = 95 }
+		actions["shotTier2Hit"] = { ActionId = "shotTier2Hit", Type = "damage", Coefficient = 90 }
+		actions["shotTier4Hit"] = { ActionId = "shotTier4Hit", Type = "damage", Coefficient = 80 }
+		actions["burstHit"] = { ActionId = "burstHit", Type = "damage", Coefficient = 70 }
+		actions["burstTier2Hit"] = { ActionId = "burstTier2Hit", Type = "damage", Coefficient = 75 }
+		actions["burstTier3Hit"] = { ActionId = "burstTier3Hit", Type = "damage", Coefficient = 65 }
+		actions["burstTier4Hit"] = { ActionId = "burstTier4Hit", Type = "damage", Coefficient = 60 }
+		actions["burstTrigger"] = { ActionId = "burstTrigger", Type = "trigger" }
+		actions["dashHit"] = { ActionId = "dashHit", Type = "damage", Coefficient = 80 }
+		actions["dashTier2Hit"] = { ActionId = "dashTier2Hit", Type = "damage", Coefficient = 85 }
+		actions["dashTier3Hit"] = { ActionId = "dashTier3Hit", Type = "damage", Coefficient = 75 }
+		actions["dashTier4Hit"] = { ActionId = "dashTier4Hit", Type = "damage", Coefficient = 70 }
+		actions["guardBuff"] = { ActionId = "guardBuff", Type = "buff", StatusId = "guard", DurationFrames = 120, DamageTakenRate = 0.7 }
+		actions["guardBarrierBuff"] = { ActionId = "guardBarrierBuff", Type = "buff", StatusId = "barrier", DurationFrames = 150, DamageTakenRate = 0.58 }
+		actions["guardFortressBuff"] = { ActionId = "guardFortressBuff", Type = "buff", StatusId = "fortress", DurationFrames = 180, DamageTakenRate = 0.45 }
+		actions["guardAegisBuff"] = { ActionId = "guardAegisBuff", Type = "buff", StatusId = "aegis", DurationFrames = 210, DamageTakenRate = 0.35 }
+		actions["fieldTickHit"] = { ActionId = "fieldTickHit", Type = "damage", Coefficient = 35 }
+		actions["fieldTier2TickHit"] = { ActionId = "fieldTier2TickHit", Type = "damage", Coefficient = 30 }
+		actions["fieldTier3TickHit"] = { ActionId = "fieldTier3TickHit", Type = "damage", Coefficient = 28 }
+		actions["fieldTier4TickHit"] = { ActionId = "fieldTier4TickHit", Type = "damage", Coefficient = 24 }
+		return actions
+	end
+
+	@ExecSpace("Server")
+	method void RequestCastNextChainSkill(string requestUserId)
+		-- Casts every player-castable skill in the local user's chain together.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("cast request skipped reason=noUser")
+			return
+		end
+		local playerEntity = self:FindPlayerEntityByUserId(userId)
+		if playerEntity == nil then
+			self:Log("cast request skipped user=" .. userId .. " reason=noPlayer")
+			return
+		end
+		self:TryCastNextChainSkill(playerEntity)
+	end
+
+	method boolean TryCastNextChainSkill(Entity casterEntity)
+		-- Starts all executable chain steps together for one player input.
+		self:EnsureRuntime()
+		if casterEntity == nil or casterEntity.PlayerComponent == nil then
+			return false
+		end
+		if casterEntity.PlayerComponent:IsDead() == true or casterEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+
+		local userId = self:GetUserIdFromPlayer(casterEntity)
+		if userId == "" then
+			return false
+		end
+
+		local state = self:GetUserState(userId)
+		local resolved = self:BuildResolvedChain(state)
+		if resolved == nil or resolved.Count <= 0 then
+			return false
+		end
+
+		local runtime = self:GetChainRuntime(userId)
+		local now = self:Now()
+		if self:ReadNumber(runtime.ActiveCastCount, 0) > 0 and now < self:ReadNumber(runtime.ActiveUntil, 0) then
+			return true
+		end
+		if now < self:ReadNumber(runtime.NextCastAt, 0) then
+			return true
+		end
+
+		runtime.Signature = resolved.Signature
+		runtime.NextStepIndex = 1
+
+		local maxDuration = 0
+		local maxCooldown = self:GetChainCastCooldownSeconds()
+		local castCount = 0
+		local skillSummary = ""
+		for stepIndex, step in ipairs(resolved.Steps) do
+			if step ~= nil and step.SkillDef ~= nil then
+				castCount = castCount + 1
+				local skillDuration = self:GetSkillDurationSeconds(step.SkillDef)
+				local skillCooldown = self:GetSkillCooldownSeconds(step.SkillDef)
+				if skillDuration > maxDuration then
+					maxDuration = skillDuration
+				end
+				if skillCooldown > maxCooldown then
+					maxCooldown = skillCooldown
+				end
+				if skillSummary ~= "" then
+					skillSummary = skillSummary .. "+"
+				end
+				skillSummary = skillSummary .. self:ReadString(step.SkillKey, "") .. "#" .. tostring(math.max(1, math.floor(self:ReadNumber(step.Tier, 1))))
+				self:StartSkillCast(casterEntity, userId, step, false, nil, nil)
+				self:Log("cast start user=" .. userId .. " step=" .. tostring(stepIndex) .. "/" .. tostring(resolved.Count) .. " skill=" .. self:ReadString(step.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(step.Tier, 1)))) .. " role=" .. self:ReadString(step.Role, "normal"))
+			end
+		end
+
+		if castCount <= 0 then
+			return false
+		end
+
+		runtime.NextCastAt = now + maxCooldown
+		runtime.ResetAt = now + self:GetSkillChainResetSeconds()
+		runtime.ActiveUntil = now + maxDuration
+
+		self:Log("chain cast start user=" .. userId .. " count=" .. tostring(castCount) .. " skills=" .. skillSummary .. " cooldown=" .. tostring(maxCooldown))
+		return true
+	end
+
+	method any BuildResolvedChain(any state)
+		-- Resolves chain slots into player-cast steps while folding consecutive same-key tiers.
+		local result = {
+			Steps = {},
+			Count = 0,
+			Signature = ""
+		}
+		if state == nil then
+			return result
+		end
+		self:NormalizeUserState(state)
+		local consumedEndGroups = {}
+		local groups = {}
+		local activeGroup = nil
+		local signature = ""
+		local slotCount = self:GetChainSlotCount()
+		for slotIndex = 1, slotCount do
+			local instanceId = state.EquippedChainSlots[slotIndex]
+			local part = self:FindPartInState(state, instanceId)
+			if signature ~= "" then
+				signature = signature .. "|"
+			end
+			if part == nil then
+				signature = signature .. "-"
+				activeGroup = nil
+			else
+				local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
+				signature = signature .. tostring(part.InstanceId) .. ":" .. skillKey
+				if activeGroup ~= nil and skillKey ~= "" and self:ReadString(activeGroup.SkillKey, "") == skillKey then
+					activeGroup.EndSlotIndex = slotIndex
+					activeGroup.Part = part
+					activeGroup.InstanceId = instanceId
+					activeGroup.Tier = self:ClampSkillTier(self:ReadNumber(activeGroup.Tier, 1) + 1)
+				else
+					activeGroup = {
+						StartSlotIndex = slotIndex,
+						EndSlotIndex = slotIndex,
+						Part = part,
+						InstanceId = instanceId,
+						SkillKey = skillKey,
+						Tier = 1
+					}
+					table.insert(groups, activeGroup)
+				end
+			end
+		end
+
+		for groupIndex, group in ipairs(groups) do
+			if consumedEndGroups[groupIndex] ~= true then
+				local part = group.Part
+				if part ~= nil then
+					local groupTier = self:ClampSkillTier(group.Tier)
+					local skillDef = self:GetSkillDefinitionForPart(part, groupTier)
+					local step = {
+						SlotIndex = math.floor(self:ReadNumber(group.StartSlotIndex, 0)),
+						EndSlotIndex = math.floor(self:ReadNumber(group.EndSlotIndex, 0)),
+						Tier = groupTier,
+						Part = part,
+						SkillDef = skillDef,
+						SkillKey = self:ReadString(skillDef.SkillKey, self:ReadString(group.SkillKey, self:ReadString(part.SkillKey, ""))),
+						Role = "normal",
+						EndPart = nil,
+						EndSkillDef = nil,
+						TriggerEndSlotIndex = 0,
+						EndTier = 0
+					}
+					local nextGroup = groups[groupIndex + 1]
+					if self:SkillHasTrigger(skillDef) == true and nextGroup ~= nil and nextGroup.Part ~= nil then
+						local endTier = self:ClampSkillTier(nextGroup.Tier)
+						step.Role = "start"
+						step.EndPart = nextGroup.Part
+						step.EndSkillDef = self:GetSkillDefinitionForPart(nextGroup.Part, endTier)
+						step.TriggerEndSlotIndex = math.floor(self:ReadNumber(nextGroup.EndSlotIndex, 0))
+						step.EndTier = endTier
+						consumedEndGroups[groupIndex + 1] = true
+					end
+					table.insert(result.Steps, step)
+				end
+			end
+		end
+		result.Count = #result.Steps
+		result.Signature = signature
+		return result
+	end
+
+	method string BuildResolvedChainSummary(any state)
+		-- Builds a readable simultaneous cast summary such as A 1 + B 2->C 1.
+		local resolved = self:BuildResolvedChain(state)
+		if resolved == nil or resolved.Count <= 0 then
+			return self:BuildEmptyRecipeText()
+		end
+		local text = "Chain: "
+		for index, step in ipairs(resolved.Steps) do
+			if index > 1 then
+				text = text .. " + "
+			end
+			local name = self:GetSkillTierText(step.Part, self:ReadNumber(step.Tier, 1))
+			if step.Role == "start" and step.EndPart ~= nil then
+				name = name .. "->" .. self:GetSkillTierText(step.EndPart, self:ReadNumber(step.EndTier, 1))
+			end
+			text = text .. name
+		end
+		return text
+	end
+
+	method any GetSkillDefinitionForPart(any part, number tier)
+		-- Returns runtime skill data for one owned part and folded tier.
+		self:EnsureRuntime()
+		local skillKey = ""
+		if part ~= nil then
+			skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, "Slash"))
+		end
+		local order = self:ClampSkillTier(tier)
+		local tieredSkillKey = self:GetTieredSkillKey(skillKey, order)
+		local skillDef = self._T.skillRuntimeCatalog[tieredSkillKey]
+		if skillDef == nil then
+			skillDef = self._T.skillRuntimeCatalog[skillKey]
+		end
+		if skillDef == nil then
+			skillDef = self._T.skillRuntimeCatalog["Slash"]
+		end
+		return skillDef
+	end
+
+	method string GetTieredSkillKey(string baseSkillKey, number tier)
+		-- Converts a base skill and tier into the executable skill definition key.
+		local safeSkillKey = self:ReadString(baseSkillKey, "Slash")
+		local order = self:ClampSkillTier(tier)
+		if order <= 1 then
+			return safeSkillKey
+		end
+		return safeSkillKey .. tostring(order)
+	end
+
+	method number ClampSkillTier(number tier)
+		-- Clamps a chain order to the designed skill-tier range.
+		local order = math.max(1, math.floor(self:ReadNumber(tier, 1)))
+		return math.min(order, self:GetMaxSkillTier())
+	end
+
+	method number GetMaxSkillTier()
+		-- Returns the highest skill order that has a dedicated definition.
+		return math.max(1, math.floor(self:ReadNumber(self.MaxSkillTier, 4)))
+	end
+
+	method boolean SkillHasTrigger(any skillDef)
+		-- Checks whether a skill timeline contains a trigger action.
+		if skillDef == nil or skillDef.EventsByFrame == nil then
+			return false
+		end
+		for frame, eventIds in pairs(skillDef.EventsByFrame) do
+			if eventIds ~= nil then
+				for index, eventId in ipairs(eventIds) do
+					local eventDef = self._T.skillEventCatalog[eventId]
+					if eventDef ~= nil and eventDef.ActionIds ~= nil then
+						for actionIndex, actionId in ipairs(eventDef.ActionIds) do
+							local actionDef = self._T.skillActionCatalog[actionId]
+							if actionDef ~= nil and actionDef.Type == "trigger" then
+								return true
+							end
+						end
+					end
+				end
+			end
+		end
+		return false
+	end
+
+	method any GetChainRuntime(string userId)
+		-- Returns per-user chain execution state.
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if self._T.chainRuntimeByUser[safeUserId] == nil then
+			self._T.chainRuntimeByUser[safeUserId] = {
+				Signature = "",
+				NextStepIndex = 1,
+				NextCastAt = 0,
+				ResetAt = 0,
+				ActiveUntil = 0,
+				ActiveCastCount = 0
+			}
+		end
+		return self._T.chainRuntimeByUser[safeUserId]
+	end
+
+	method void StartSkillCast(Entity casterEntity, string userId, any step, boolean isVirtualCaster, number fixedX, number fixedY)
+		-- Adds one active skill cast to the server frame loop.
+		if step == nil or step.SkillDef == nil then
+			return
+		end
+		local direction = self:GetLookDirection(casterEntity)
+		local fixedOriginX = nil
+		local fixedOriginY = nil
+		if fixedX ~= nil and fixedY ~= nil then
+			fixedOriginX = fixedX
+			fixedOriginY = fixedY
+		end
+		local cast = {
+			UserId = self:ReadString(userId, ""),
+			CasterEntity = casterEntity,
+			SourceEntity = casterEntity,
+			SkillDef = step.SkillDef,
+			SkillKey = self:ReadString(step.SkillKey, self:ReadString(step.SkillDef.SkillKey, "")),
+			Tier = math.max(1, math.floor(self:ReadNumber(step.Tier, 1))),
+			Role = self:ReadString(step.Role, "normal"),
+			EndPart = step.EndPart,
+			EndSkillDef = step.EndSkillDef,
+			EndTier = math.max(0, math.floor(self:ReadNumber(step.EndTier, 0))),
+			IsVirtualCaster = isVirtualCaster == true,
+			Direction = direction,
+			Frame = 0,
+			FrameTimer = 0,
+			FixedOriginX = fixedOriginX,
+			FixedOriginY = fixedOriginY,
+			Completed = false,
+			Cancelled = false
+		}
+		table.insert(self._T.activeCasts, cast)
+		if cast.IsVirtualCaster ~= true then
+			local runtime = self:GetChainRuntime(cast.UserId)
+			runtime.ActiveCastCount = math.max(0, math.floor(self:ReadNumber(runtime.ActiveCastCount, 0))) + 1
+			local expectedEndAt = self:Now() + self:GetSkillDurationSeconds(step.SkillDef)
+			if expectedEndAt > self:ReadNumber(runtime.ActiveUntil, 0) then
+				runtime.ActiveUntil = expectedEndAt
+			end
+			self:ApplyCasterActionLimit(cast)
+		end
+	end
+
+	method void StartVirtualEndSkill(any context, number originX, number originY)
+		-- Creates a temporary virtual caster and casts the paired end skill only.
+		if context == nil or context.IsVirtualCaster == true then
+			return
+		end
+		if context.EndSkillDef == nil then
+			self:Log("trigger skipped user=" .. self:ReadString(context.UserId, "") .. " reason=noEndSkill")
+			return
+		end
+		local step = {
+			SkillDef = context.EndSkillDef,
+			SkillKey = self:ReadString(context.EndSkillDef.SkillKey, ""),
+			Tier = math.max(1, math.floor(self:ReadNumber(context.EndTier, 1))),
+			Role = "end",
+			EndPart = nil,
+			EndSkillDef = nil,
+			EndTier = 0
+		}
+		self:StartSkillCast(context.SourceEntity, self:ReadString(context.UserId, ""), step, true, originX, originY)
+		self:Log("trigger cast user=" .. self:ReadString(context.UserId, "") .. " endSkill=" .. self:ReadString(step.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(step.Tier, 1)))) .. " at=(" .. tostring(originX) .. "," .. tostring(originY) .. ")")
+	end
+
+	method void TickActiveCasts(number delta)
+		-- Ticks active casts at fixed 30 ms frames.
+		for index = #self._T.activeCasts, 1, -1 do
+			local cast = self._T.activeCasts[index]
+			if cast == nil or cast.Cancelled == true then
+				self:FinishSkillCast(cast, true)
+				table.remove(self._T.activeCasts, index)
+			else
+				self:TickSkillCast(cast, delta)
+				if cast.Completed == true then
+					self:FinishSkillCast(cast, false)
+					table.remove(self._T.activeCasts, index)
+				end
+			end
+		end
+	end
+
+	method void TickSkillCast(any cast, number delta)
+		-- Advances one active cast and fires frame events.
+		if cast == nil or cast.SkillDef == nil then
+			return
+		end
+		cast.FrameTimer = self:ReadNumber(cast.FrameTimer, 0) + self:ReadNumber(delta, 0)
+		local frameSeconds = self:GetSkillFrameSeconds()
+		while cast.FrameTimer >= frameSeconds and cast.Completed ~= true and cast.Cancelled ~= true do
+			cast.FrameTimer = cast.FrameTimer - frameSeconds
+			self:ProcessSkillFrame(cast, math.floor(self:ReadNumber(cast.Frame, 0)))
+			cast.Frame = math.floor(self:ReadNumber(cast.Frame, 0)) + 1
+			if cast.Frame >= self:GetSkillTotalFrames(cast.SkillDef) then
+				cast.Completed = true
+			end
+		end
+	end
+
+	method void ProcessSkillFrame(any cast, number frame)
+		-- Executes all events assigned to one skill frame.
+		if cast == nil or cast.SkillDef == nil then
+			return
+		end
+		if frame == 0 then
+			self:Log("skill frame0 user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(cast.Tier, 1)))) .. " virtual=" .. tostring(cast.IsVirtualCaster == true))
+		end
+		local eventsByFrame = cast.SkillDef.EventsByFrame
+		if eventsByFrame == nil then
+			return
+		end
+		local eventIds = eventsByFrame[frame]
+		if eventIds == nil then
+			return
+		end
+		for index, eventId in ipairs(eventIds) do
+			self:StartSkillEvent(cast, eventId)
+		end
+	end
+
+	method void StartSkillEvent(any cast, string eventId)
+		-- Starts one skill event from a timeline frame.
+		local eventDef = self._T.skillEventCatalog[self:ReadString(eventId, "")]
+		if eventDef == nil then
+			return
+		end
+		local eventType = self:ReadString(eventDef.Type, "action")
+		if eventType == "area" then
+			self:StartAreaCapture(cast, eventDef)
+		elseif eventType == "projectile" then
+			self:StartProjectile(cast, eventDef)
+		elseif eventType == "field" then
+			self:StartField(cast, eventDef)
+		else
+			local origin = self:GetContextOrigin(cast)
+			self:ExecuteActions(cast, eventDef.ActionIds, nil, origin.x, origin.y, self:ReadString(eventDef.EventId, "action"))
+		end
+	end
+
+	method void FinishSkillCast(any cast, boolean cancelled)
+		-- Restores action limits when a non-virtual skill cast ends.
+		if cast == nil then
+			return
+		end
+		if cast.IsVirtualCaster ~= true then
+			local runtime = self:GetChainRuntime(self:ReadString(cast.UserId, ""))
+			local activeCount = math.max(0, math.floor(self:ReadNumber(runtime.ActiveCastCount, 0)) - 1)
+			runtime.ActiveCastCount = activeCount
+			if activeCount <= 0 then
+				self:RestoreCasterActionLimit(cast)
+				runtime.ActiveUntil = 0
+			end
+		end
+		if cancelled == true then
+			self:Log("skill cancelled user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, ""))
+		else
+			self:Log("skill end user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, ""))
+		end
+	end
+
+	method void StartAreaCapture(any context, any eventDef)
+		-- Creates a duration-based invisible hitbox area that follows the caster unless virtual.
+		local origin = self:GetContextOrigin(context)
+		local fixedOriginX = nil
+		local fixedOriginY = nil
+		if context.IsVirtualCaster == true or context.FixedOriginX ~= nil then
+			fixedOriginX = origin.x
+			fixedOriginY = origin.y
+		end
+		local area = {
+			EventId = self:ReadString(eventDef.EventId, ""),
+			UserId = self:ReadString(context.UserId, ""),
+			CasterEntity = context.CasterEntity,
+			SourceEntity = context.SourceEntity,
+			SkillKey = self:ReadString(context.SkillKey, ""),
+			Tier = self:ClampSkillTier(context.Tier),
+			IsVirtualCaster = context.IsVirtualCaster == true,
+			Direction = self:GetContextDirection(context),
+			FixedOriginX = fixedOriginX,
+			FixedOriginY = fixedOriginY,
+			EndSkillDef = context.EndSkillDef,
+			EndTier = math.max(0, math.floor(self:ReadNumber(context.EndTier, 0))),
+			RemainingFrames = math.max(1, math.floor(self:ReadNumber(eventDef.DurationFrames, 1))),
+			FrameTimer = 0,
+			HitboxIds = eventDef.HitboxIds,
+			ActionIds = eventDef.ActionIds,
+			SeenTargets = {},
+			TriggerFired = false
+		}
+		table.insert(self._T.activeAreas, area)
+		self:PlaySkillVisualForEvent(area, area.EventId, origin.x, origin.y, false)
+		self:Log("area start user=" .. area.UserId .. " event=" .. area.EventId .. " frames=" .. tostring(area.RemainingFrames))
+	end
+
+	method void TickActiveAreas(number delta)
+		-- Updates every active target-capture area once per skill frame.
+		for index = #self._T.activeAreas, 1, -1 do
+			local area = self._T.activeAreas[index]
+			if area == nil then
+				table.remove(self._T.activeAreas, index)
+			else
+				area.FrameTimer = self:ReadNumber(area.FrameTimer, 0) + self:ReadNumber(delta, 0)
+				local frameSeconds = self:GetSkillFrameSeconds()
+				while area.FrameTimer >= frameSeconds and area.RemainingFrames > 0 do
+					area.FrameTimer = area.FrameTimer - frameSeconds
+					self:ProcessAreaFrame(area)
+					area.RemainingFrames = area.RemainingFrames - 1
+				end
+				if area.RemainingFrames <= 0 then
+					self:Log("area end user=" .. self:ReadString(area.UserId, "") .. " event=" .. self:ReadString(area.EventId, ""))
+					table.remove(self._T.activeAreas, index)
+				end
+			end
+		end
+	end
+
+	method void ProcessAreaFrame(any area)
+		-- Detects targets inside one active area and runs its actions once per target.
+		local targets = self:CollectTargetsForContext(area)
+		for index, targetEntity in ipairs(targets) do
+			if self:IsSkillTargetValid(area, targetEntity) == true and self:IsTargetInsideHitboxes(area, targetEntity) == true then
+				local targetKey = self:GetEntityKey(targetEntity)
+				if area.SeenTargets[targetKey] ~= true then
+					area.SeenTargets[targetKey] = true
+					local pos = self:GetEntityPosition2(targetEntity)
+					self:ExecuteActions(area, area.ActionIds, targetEntity, pos.x, pos.y, self:ReadString(area.EventId, "area"))
+				end
+			end
+		end
+	end
+
+	method void StartProjectile(any context, any eventDef)
+		-- Creates a logical projectile that moves in the skill direction and executes actions on contact.
+		local origin = self:GetContextOrigin(context)
+		local projectile = {
+			EventId = self:ReadString(eventDef.EventId, ""),
+			UserId = self:ReadString(context.UserId, ""),
+			CasterEntity = context.CasterEntity,
+			SourceEntity = context.SourceEntity,
+			SkillKey = self:ReadString(context.SkillKey, ""),
+			Tier = self:ClampSkillTier(context.Tier),
+			IsVirtualCaster = context.IsVirtualCaster == true,
+			Direction = self:GetContextDirection(context),
+			X = origin.x,
+			Y = origin.y,
+			Travelled = 0,
+			Speed = math.max(0.1, self:ReadNumber(eventDef.Speed, 6)),
+			Range = math.max(0.1, self:ReadNumber(eventDef.Range, 5)),
+			Pierce = math.max(0, math.floor(self:ReadNumber(eventDef.Pierce, 0))),
+			HitboxIds = eventDef.HitboxIds,
+			ActionIds = eventDef.ActionIds,
+			SeenTargets = {},
+			EndSkillDef = context.EndSkillDef,
+			EndTier = math.max(0, math.floor(self:ReadNumber(context.EndTier, 0))),
+			VisualTimer = 0
+		}
+		table.insert(self._T.activeProjectiles, projectile)
+		self:PlaySkillVisualForEvent(projectile, projectile.EventId, projectile.X, projectile.Y, false)
+		self:Log("projectile start user=" .. projectile.UserId .. " event=" .. projectile.EventId)
+	end
+
+	method void TickActiveProjectiles(number delta)
+		-- Moves active logical projectiles and resolves contact.
+		for index = #self._T.activeProjectiles, 1, -1 do
+			local projectile = self._T.activeProjectiles[index]
+			if projectile == nil then
+				table.remove(self._T.activeProjectiles, index)
+			else
+				local move = projectile.Speed * self:ReadNumber(delta, 0)
+				projectile.X = self:ReadNumber(projectile.X, 0) + projectile.Direction * move
+				projectile.Travelled = self:ReadNumber(projectile.Travelled, 0) + math.abs(move)
+				projectile.VisualTimer = self:ReadNumber(projectile.VisualTimer, 0) + self:ReadNumber(delta, 0)
+				if projectile.VisualTimer >= 0.09 then
+					projectile.VisualTimer = 0
+					self:PlaySkillVisualForEvent(projectile, self:ReadString(projectile.EventId, ""), projectile.X, projectile.Y, false)
+				end
+				self:ProcessProjectileContact(projectile)
+				if projectile.Remove == true or projectile.Travelled >= projectile.Range then
+					self:Log("projectile end user=" .. self:ReadString(projectile.UserId, "") .. " event=" .. self:ReadString(projectile.EventId, ""))
+					table.remove(self._T.activeProjectiles, index)
+				end
+			end
+		end
+	end
+
+	method void ProcessProjectileContact(any projectile)
+		-- Applies projectile actions to newly contacted targets.
+		local targets = self:CollectTargetsForContext(projectile)
+		for index, targetEntity in ipairs(targets) do
+			if self:IsSkillTargetValid(projectile, targetEntity) == true and self:IsTargetInsideHitboxes(projectile, targetEntity) == true then
+				local targetKey = self:GetEntityKey(targetEntity)
+				if projectile.SeenTargets[targetKey] ~= true then
+					projectile.SeenTargets[targetKey] = true
+					local pos = self:GetEntityPosition2(targetEntity)
+					self:ExecuteActions(projectile, projectile.ActionIds, targetEntity, pos.x, pos.y, self:ReadString(projectile.EventId, "projectile"))
+					if projectile.Pierce <= 0 then
+						projectile.Remove = true
+						return
+					end
+					projectile.Pierce = projectile.Pierce - 1
+				end
+			end
+		end
+	end
+
+	method void StartField(any context, any eventDef)
+		-- Creates a fixed-position field area with repeated target capture.
+		local origin = self:GetContextOrigin(context)
+		local field = {
+			EventId = self:ReadString(eventDef.EventId, ""),
+			UserId = self:ReadString(context.UserId, ""),
+			CasterEntity = context.CasterEntity,
+			SourceEntity = context.SourceEntity,
+			SkillKey = self:ReadString(context.SkillKey, ""),
+			Tier = self:ClampSkillTier(context.Tier),
+			IsVirtualCaster = context.IsVirtualCaster == true,
+			Direction = self:GetContextDirection(context),
+			FixedOriginX = origin.x,
+			FixedOriginY = origin.y,
+			RemainingFrames = math.max(1, math.floor(self:ReadNumber(eventDef.DurationFrames, 1))),
+			FrameTimer = 0,
+			HitboxIds = eventDef.HitboxIds,
+			ActionIds = eventDef.ActionIds,
+			SeenTargets = {},
+			EndSkillDef = context.EndSkillDef,
+			EndTier = math.max(0, math.floor(self:ReadNumber(context.EndTier, 0))),
+			VisualTimer = 0
+		}
+		table.insert(self._T.activeFields, field)
+		self:PlaySkillVisualForEvent(field, field.EventId, origin.x, origin.y, true)
+		self:Log("field start user=" .. field.UserId .. " event=" .. field.EventId)
+	end
+
+	method void TickActiveFields(number delta)
+		-- Ticks fixed fields; field hit memory resets each frame to support repeated ticks.
+		for index = #self._T.activeFields, 1, -1 do
+			local field = self._T.activeFields[index]
+			if field == nil then
+				table.remove(self._T.activeFields, index)
+			else
+				field.FrameTimer = self:ReadNumber(field.FrameTimer, 0) + self:ReadNumber(delta, 0)
+				field.VisualTimer = self:ReadNumber(field.VisualTimer, 0) + self:ReadNumber(delta, 0)
+				if field.VisualTimer >= 0.45 then
+					field.VisualTimer = 0
+					local origin = self:GetContextOrigin(field)
+					self:PlaySkillVisualForEvent(field, self:ReadString(field.EventId, ""), origin.x, origin.y, true)
+				end
+				local frameSeconds = self:GetSkillFrameSeconds()
+				while field.FrameTimer >= frameSeconds and field.RemainingFrames > 0 do
+					field.FrameTimer = field.FrameTimer - frameSeconds
+					field.SeenTargets = {}
+					self:ProcessAreaFrame(field)
+					field.RemainingFrames = field.RemainingFrames - 1
+				end
+				if field.RemainingFrames <= 0 then
+					self:Log("field end user=" .. self:ReadString(field.UserId, "") .. " event=" .. self:ReadString(field.EventId, ""))
+					table.remove(self._T.activeFields, index)
+				end
+			end
+		end
+	end
+
+	method void ExecuteActions(any context, any actionIds, Entity targetEntity, number triggerX, number triggerY, string sourceId)
+		-- Executes action ids sequentially with the supplied context and target.
+		if actionIds == nil then
+			return
+		end
+		for index, actionId in ipairs(actionIds) do
+			local actionDef = self._T.skillActionCatalog[actionId]
+			if actionDef ~= nil then
+				self:ExecuteAction(context, actionDef, targetEntity, triggerX, triggerY, sourceId)
+			end
+		end
+	end
+
+	method void ExecuteAction(any context, any actionDef, Entity targetEntity, number triggerX, number triggerY, string sourceId)
+		-- Dispatches one action by type.
+		local actionType = self:ReadString(actionDef.Type, "damage")
+		if actionType == "damage" then
+			self:ApplySkillDamage(context, targetEntity, actionDef, sourceId)
+			if targetEntity ~= nil then
+				self:PlaySkillHitVisual(context, triggerX, triggerY, sourceId)
+			end
+		elseif actionType == "buff" then
+			self:ApplySkillStatus(context.SourceEntity, actionDef, self:ReadString(context.UserId, ""), sourceId)
+			local origin = self:GetContextOrigin(context)
+			self:PlaySkillVisualAt(context, self.GuardEffectRUID, origin.x, origin.y + 0.35, self:GetContextDirection(context), 0.75, "buff:" .. self:ReadString(actionDef.ActionId, "buff"))
+		elseif actionType == "debuff" then
+			self:ApplySkillStatus(targetEntity, actionDef, self:ReadString(context.UserId, ""), sourceId)
+			if targetEntity ~= nil then
+				self:PlaySkillHitVisual(context, triggerX, triggerY + 0.25, "debuff:" .. self:ReadString(actionDef.ActionId, "debuff"))
+			end
+			if actionDef.CancelChain == true then
+				self:CancelTargetChain(targetEntity, self:ReadString(sourceId, "debuff"))
+			end
+		elseif actionType == "trigger" then
+			if context.IsVirtualCaster ~= true and context.TriggerFired ~= true then
+				context.TriggerFired = true
+				self:PlaySkillVisualAt(context, self.BurstEffectRUID, triggerX, triggerY + 0.25, self:GetContextDirection(context), 0.9, "trigger:" .. self:ReadString(actionDef.ActionId, "trigger"))
+				self:StartVirtualEndSkill(context, triggerX, triggerY)
+			end
+		else
+			local origin = self:GetContextOrigin(context)
+			self:PlaySkillVisualAt(context, self.SlashEffectRUID, origin.x, origin.y, self:GetContextDirection(context), 0.65, "aftereffect:" .. self:ReadString(actionDef.ActionId, "aftereffect"))
+			self:Log("aftereffect user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " source=" .. self:ReadString(sourceId, ""))
+		end
+	end
+
+	method void ApplySkillDamage(any context, Entity targetEntity, any actionDef, string sourceId)
+		-- Applies direct skill damage to players or training dummies.
+		if targetEntity == nil then
+			return
+		end
+		local attackerEntity = context.SourceEntity
+		local attackPower = self:GetSkillAttackPower(attackerEntity)
+		local coefficient = math.max(0, self:ReadNumber(actionDef.Coefficient, 100))
+		local damage = math.max(1, math.floor(attackPower * coefficient / 100))
+		local critical = self:RollCritical(attackerEntity)
+		if critical == true then
+			damage = math.max(1, math.floor(damage * self:GetCriticalDamageRate(attackerEntity)))
+		end
+
+		---@type BRTrainingDummy
+		local dummy = targetEntity:GetComponent("script.BRTrainingDummy")
+		if dummy ~= nil then
+			dummy:ApplyTrainingDamage(attackerEntity, damage, self:ReadString(sourceId, "skill"))
+			self:Log("damage dummy user=" .. self:ReadString(context.UserId, "") .. " target=" .. targetEntity.Name .. " amount=" .. tostring(damage) .. " critical=" .. tostring(critical))
+			return
+		end
+
+		if targetEntity.PlayerComponent ~= nil then
+			local player = targetEntity.PlayerComponent
+			player.Hp = math.max(0, player.Hp - damage)
+			self:Log("damage player user=" .. self:ReadString(context.UserId, "") .. " target=" .. self:ReadString(player.UserId, "") .. " amount=" .. tostring(damage) .. " hp=" .. tostring(player.Hp) .. " critical=" .. tostring(critical))
+			if player.Hp <= 0 then
+				self:HandleSkillFatalDamage(attackerEntity, targetEntity, sourceId)
+			end
+		end
+	end
+
+	method void HandleSkillFatalDamage(Entity attackerEntity, Entity targetEntity, string sourceId)
+		-- Reuses battle death handling when a skill reduces a player to zero HP.
+		if targetEntity == nil or targetEntity.PlayerComponent == nil then
+			return
+		end
+		local mapName = self:ReadString(targetEntity.CurrentMapName, "")
+		if mapName == "" then
+			return
+		end
+		local battleLogicEntity = _EntityService:GetEntityByPath("/maps/" .. mapName .. "/BattleLogic")
+		if battleLogicEntity == nil then
+			return
+		end
+		---@type BRBattleLogic
+		local battleLogic = battleLogicEntity:GetComponent("script.BRBattleLogic")
+		if battleLogic ~= nil then
+			battleLogic:HandlePlayerFatalDeath(attackerEntity, targetEntity, "skill:" .. self:ReadString(sourceId, "skill"))
+		end
+	end
+
+	method void ApplySkillStatus(Entity targetEntity, any actionDef, string applierUserId, string sourceId)
+		-- Records a temporary buff or debuff on an entity.
+		if targetEntity == nil then
+			return
+		end
+		local key = self:GetEntityKey(targetEntity)
+		if key == "" then
+			return
+		end
+		if self._T.statusByEntityId[key] == nil then
+			self._T.statusByEntityId[key] = {}
+		end
+		local statusId = self:ReadString(actionDef.StatusId, self:ReadString(actionDef.ActionId, "status"))
+		self._T.statusByEntityId[key][statusId] = {
+			StatusId = statusId,
+			TargetEntity = targetEntity,
+			ApplierUserId = self:ReadString(applierUserId, ""),
+			ExpiresAt = self:Now() + self:ReadNumber(actionDef.DurationFrames, 1) * self:GetSkillFrameSeconds(),
+			DamageTakenRate = self:ReadNumber(actionDef.DamageTakenRate, 1),
+			CancelChain = actionDef.CancelChain == true
+		}
+		self:Log("status apply target=" .. targetEntity.Name .. " status=" .. statusId .. " source=" .. self:ReadString(sourceId, ""))
+	end
+
+	method void TickStatuses()
+		-- Removes expired status records.
+		local now = self:Now()
+		for entityId, statusMap in pairs(self._T.statusByEntityId) do
+			local empty = true
+			for statusId, status in pairs(statusMap) do
+				if status == nil or now >= self:ReadNumber(status.ExpiresAt, 0) then
+					statusMap[statusId] = nil
+					self:Log("status expire entity=" .. tostring(entityId) .. " status=" .. tostring(statusId))
+				else
+					empty = false
+				end
+			end
+			if empty == true then
+				self._T.statusByEntityId[entityId] = nil
+			end
+		end
+	end
+
+	method void CancelTargetChain(Entity targetEntity, string reason)
+		-- Cancels active and queued chain execution for the target player.
+		if targetEntity == nil or targetEntity.PlayerComponent == nil then
+			return
+		end
+		local userId = self:ReadString(targetEntity.PlayerComponent.UserId, "")
+		if userId == "" then
+			return
+		end
+		local runtime = self:GetChainRuntime(userId)
+		runtime.NextStepIndex = 1
+		runtime.ActiveUntil = 0
+		for index, cast in ipairs(self._T.activeCasts) do
+			if cast ~= nil and self:ReadString(cast.UserId, "") == userId then
+				cast.Cancelled = true
+			end
+		end
+		self:Log("chain cancelled target=" .. userId .. " reason=" .. self:ReadString(reason, "cc"))
+	end
+
+	method void PlaySkillVisualForEvent(any context, string eventId, number x, number y, boolean isField)
+		-- Requests the mapped animation effect for a skill event.
+		local safeEventId = self:ReadString(eventId, "")
+		local direction = self:GetContextDirection(context)
+		local offsetX = 0
+		local offsetY = 0.35
+		if safeEventId == "divineSwingArea1" or string.find(safeEventId, "slashTier") ~= nil then
+			offsetX = 1.25
+			offsetY = 0.45
+		elseif safeEventId == "slashFollowEffect" then
+			offsetX = 0.9
+			offsetY = 0.5
+		elseif safeEventId == "basicProjectile" or string.find(safeEventId, "Projectile") ~= nil then
+			offsetX = 0.35
+			offsetY = 0.45
+		elseif string.find(safeEventId, "burst") ~= nil then
+			offsetX = 0.45
+			offsetY = 0.45
+		elseif string.find(safeEventId, "dash") ~= nil then
+			offsetX = 0.8
+			offsetY = 0.35
+		elseif string.find(safeEventId, "guard") ~= nil then
+			offsetX = 0
+			offsetY = 0.6
+		elseif string.find(safeEventId, "fieldCreate") ~= nil then
+			offsetX = 0
+			offsetY = 0.25
+		end
+		if isField == true then
+			offsetX = 0
+		end
+		self:PlaySkillVisualAt(context, self:GetSkillEffectRUID(safeEventId), x + direction * offsetX, y + offsetY, direction, self:GetSkillEffectScaleRate(safeEventId), "event:" .. safeEventId)
+	end
+
+	method void PlaySkillHitVisual(any context, number x, number y, string sourceId)
+		-- Requests a compact impact effect at the target position.
+		local scaleRate = 0.7
+		local safeSourceId = self:ReadString(sourceId, "")
+		if string.find(safeSourceId, "field") ~= nil then
+			scaleRate = 0.55
+		elseif string.find(safeSourceId, "projectile") ~= nil then
+			scaleRate = 0.6
+		end
+		self:PlaySkillVisualAt(context, self.HitEffectRUID, x, y + 0.35, self:GetContextDirection(context), scaleRate, "hit:" .. safeSourceId)
+	end
+
+	method string GetSkillEffectRUID(string eventId)
+		-- Maps event ids to default animation clip RUIDs.
+		local safeEventId = self:ReadString(eventId, "")
+		if safeEventId == "basicProjectile" or string.find(safeEventId, "Projectile") ~= nil then
+			return self:ReadString(self.ProjectileEffectRUID, "")
+		end
+		if string.find(safeEventId, "burst") ~= nil then
+			return self:ReadString(self.BurstEffectRUID, "")
+		end
+		if string.find(safeEventId, "guard") ~= nil then
+			return self:ReadString(self.GuardEffectRUID, "")
+		end
+		if string.find(safeEventId, "fieldCreate") ~= nil then
+			return self:ReadString(self.FieldEffectRUID, "")
+		end
+		if string.find(safeEventId, "dash") ~= nil then
+			return self:ReadString(self.BurstEffectRUID, "")
+		end
+		return self:ReadString(self.SlashEffectRUID, "")
+	end
+
+	method number GetSkillEffectScaleRate(string eventId)
+		-- Returns per-event scale so large clips do not flood the screen.
+		local safeEventId = self:ReadString(eventId, "")
+		if safeEventId == "basicProjectile" then
+			return 0.35
+		end
+		if string.find(safeEventId, "shotPierce") ~= nil then
+			return 0.45
+		end
+		if string.find(safeEventId, "shotStorm") ~= nil then
+			return 0.55
+		end
+		if string.find(safeEventId, "burstTriggerArea4") ~= nil then
+			return 1.15
+		end
+		if string.find(safeEventId, "burst") ~= nil then
+			return 0.8
+		end
+		if string.find(safeEventId, "guard") ~= nil then
+			return 0.75
+		end
+		if string.find(safeEventId, "fieldCreateStorm") ~= nil then
+			return 1.65
+		end
+		if string.find(safeEventId, "fieldCreate") ~= nil then
+			return 1.35
+		end
+		if string.find(safeEventId, "dash") ~= nil then
+			return 0.75
+		end
+		if safeEventId == "slashFollowEffect" then
+			return 0.65
+		end
+		return 0.85
+	end
+
+	method void PlaySkillVisualAt(any context, string animationRuid, number x, number y, number direction, number scaleRate, string sourceId)
+		-- Sends a visual effect request to clients currently viewing the same map.
+		if self.EnableSkillVisualEffects ~= true then
+			return
+		end
+		local safeRuid = self:ReadString(animationRuid, "")
+		if safeRuid == "" then
+			return
+		end
+		local mapName = self:GetContextMapName(context)
+		if mapName == "" then
+			return
+		end
+		self:PushSkillVisualClient(mapName, safeRuid, x, y, direction, scaleRate, self:ReadString(sourceId, "skill"))
+	end
+
+	@ExecSpace("Client")
+	method void PushSkillVisualClient(string mapName, string animationRuid, number x, number y, number direction, number scaleRate, string sourceId)
+		-- Plays a one-shot skill animation clip on this client.
+		if self.EnableSkillVisualEffects ~= true then
+			return
+		end
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+		if self:ReadString(localPlayer.CurrentMapName, "") ~= self:ReadString(mapName, "") then
+			return
+		end
+		local safeRuid = self:ReadString(animationRuid, "")
+		if safeRuid == "" then
+			return
+		end
+		local safeScale = math.max(0.05, self:ReadNumber(scaleRate, 1) * math.max(0.05, self:ReadNumber(self.SkillEffectScale, 1)))
+		local safeAlpha = math.max(0, math.min(1, self:ReadNumber(self.SkillEffectAlpha, 1)))
+		local options = {}
+		options["FlipX"] = self:ReadNumber(direction, 1) > 0
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = math.floor(self:ReadNumber(self.SkillEffectOrderInLayer, 30))
+		options["Alpha"] = safeAlpha
+		options["PlayRate"] = 1.15
+		options["IgnoreMapLayerCheck"] = true
+		local serial = _EffectService:PlayEffect(safeRuid, localPlayer, Vector3(self:ReadNumber(x, 0), self:ReadNumber(y, 0), 0), 0, Vector3(safeScale, safeScale, 1), false, options)
+		if serial == 0 then
+			log("[BRSkill] effect failed source=" .. self:ReadString(sourceId, "skill") .. " ruid=" .. safeRuid)
+		end
+	end
+
+	method any CollectTargetsForContext(any context)
+		-- Collects player and training-dummy targets in the caster's current map.
+		local targets = {}
+		local mapName = self:GetContextMapName(context)
+		if mapName == "" then
+			return targets
+		end
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users ~= nil then
+			for index, entity in ipairs(users) do
+				table.insert(targets, entity)
+			end
+		end
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
+		if mapEntity ~= nil then
+			local dummyComponents = mapEntity:GetChildComponentsByTypeName("script.BRTrainingDummy", true)
+			if dummyComponents == nil or dummyComponents[1] == nil then
+				dummyComponents = mapEntity:GetChildComponentsByTypeName("BRTrainingDummy", true)
+			end
+			if dummyComponents ~= nil then
+				for index, dummy in ipairs(dummyComponents) do
+					if dummy ~= nil and dummy.Entity ~= nil then
+						table.insert(targets, dummy.Entity)
+					end
+				end
+			end
+		end
+		return targets
+	end
+
+	method boolean IsSkillTargetValid(any context, Entity targetEntity)
+		-- Checks self-hit, death, and same-user restrictions.
+		if targetEntity == nil or isvalid(targetEntity) == false then
+			return false
+		end
+		if context == nil or context.SourceEntity == nil then
+			return false
+		end
+		if targetEntity.Id == context.SourceEntity.Id then
+			return false
+		end
+		if targetEntity.PlayerComponent ~= nil then
+			if targetEntity.PlayerComponent:IsDead() == true or targetEntity.PlayerComponent.Hp <= 0 then
+				return false
+			end
+			if self:ReadString(targetEntity.PlayerComponent.UserId, "") == self:ReadString(context.UserId, "") then
+				return false
+			end
+			return true
+		end
+		return targetEntity:GetComponent("script.BRTrainingDummy") ~= nil
+	end
+
+	method boolean IsTargetInsideHitboxes(any context, Entity targetEntity)
+		-- Tests a target against any rectangle hitbox on the context.
+		if context == nil or context.HitboxIds == nil or targetEntity == nil then
+			return false
+		end
+		for index, hitboxId in ipairs(context.HitboxIds) do
+			local hitbox = self._T.skillHitboxCatalog[hitboxId]
+			if hitbox ~= nil and self:IsTargetInsideHitbox(context, targetEntity, hitbox) == true then
+				return true
+			end
+		end
+		return false
+	end
+
+	method boolean IsTargetInsideHitbox(any context, Entity targetEntity, any hitbox)
+		-- Converts pixel hitbox data into world units and tests the target position.
+		local origin = self:GetContextOrigin(context)
+		local target = self:GetEntityPosition2(targetEntity)
+		local direction = self:GetContextDirection(context)
+		local rx = self:ReadNumber(hitbox.Rx, 0) / 100
+		local by = self:ReadNumber(hitbox.By, 0) / 100
+		local width = math.max(0.01, self:ReadNumber(hitbox.W, 1) / 100)
+		local height = math.max(0.01, self:ReadNumber(hitbox.H, 1) / 100)
+		local centerX = origin.x + (-direction) * (rx - width * 0.5)
+		local centerY = origin.y + by + height * 0.5
+		local halfWidth = width * 0.5 + self:GetSkillTargetPadding()
+		local halfHeight = height * 0.5 + self:GetSkillTargetPadding()
+		return math.abs(target.x - centerX) <= halfWidth and math.abs(target.y - centerY) <= halfHeight
+	end
+
+	method Vector2 GetContextOrigin(any context)
+		-- Returns the origin for active casts, virtual casts, projectiles, areas, or fields.
+		if context == nil then
+			return Vector2(0, 0)
+		end
+		if context.X ~= nil and context.Y ~= nil then
+			return Vector2(self:ReadNumber(context.X, 0), self:ReadNumber(context.Y, 0))
+		end
+		if context.IsVirtualCaster == true or context.FixedOriginX ~= nil then
+			return Vector2(self:ReadNumber(context.FixedOriginX, 0), self:ReadNumber(context.FixedOriginY, 0))
+		end
+		return self:GetEntityPosition2(context.CasterEntity)
+	end
+
+	method string GetContextMapName(any context)
+		-- Returns the map name for a context.
+		if context == nil then
+			return ""
+		end
+		if context.CasterEntity ~= nil and context.CasterEntity.CurrentMapName ~= nil then
+			return self:ReadString(context.CasterEntity.CurrentMapName, "")
+		end
+		if context.SourceEntity ~= nil and context.SourceEntity.CurrentMapName ~= nil then
+			return self:ReadString(context.SourceEntity.CurrentMapName, "")
+		end
+		return ""
+	end
+
+	method number GetContextDirection(any context)
+		-- Returns a fixed direction for a context.
+		if context ~= nil and self:ReadNumber(context.Direction, 0) < 0 then
+			return -1
+		end
+		return 1
+	end
+
+	method number GetLookDirection(Entity entity)
+		-- Reads the player's current facing direction, defaulting to right.
+		if entity ~= nil and entity.PlayerControllerComponent ~= nil then
+			if entity.PlayerControllerComponent.LookDirectionX < 0 then
+				return -1
+			end
+		end
+		return 1
+	end
+
+	method string GetEntityKey(Entity entity)
+		-- Returns a stable key for runtime target memory.
+		if entity == nil then
+			return ""
+		end
+		if entity.Id ~= nil and entity.Id ~= "" then
+			return entity.Id
+		end
+		return entity.Name
+	end
+
+	method number GetSkillAttackPower(Entity entity)
+		-- Returns final attack power after temporary statuses.
+		return math.max(1, self:ReadNumber(self.DefaultSkillAttackPower, 300))
+	end
+
+	method boolean RollCritical(Entity entity)
+		-- Rolls critical hit using the default critical rate.
+		return _UtilLogic:RandomDouble() < self:GetCriticalRate(entity)
+	end
+
+	method number GetCriticalRate(Entity entity)
+		-- Returns final critical rate.
+		return math.max(0, math.min(1, self:ReadNumber(self.DefaultCriticalRate, 0.2)))
+	end
+
+	method number GetCriticalDamageRate(Entity entity)
+		-- Returns final critical damage multiplier.
+		return math.max(1, self:ReadNumber(self.DefaultCriticalDamageRate, 2.0))
+	end
+
+	method void ApplyCasterActionLimit(any cast)
+		-- Temporarily reduces caster movement speed while a player-cast skill is active.
+		if cast == nil or cast.CasterEntity == nil then
+			return
+		end
+		local userId = self:ReadString(cast.UserId, "")
+		if userId == "" or self._T.casterLocks[userId] ~= nil then
+			return
+		end
+		local entity = cast.CasterEntity
+		local lock = { Entity = entity, InputSpeed = nil }
+		if entity.MovementComponent ~= nil then
+			lock.InputSpeed = entity.MovementComponent.InputSpeed
+			entity.MovementComponent.InputSpeed = math.max(0.05, self:ReadNumber(lock.InputSpeed, 1) * self:GetSkillMovementSpeedRate())
+		end
+		self._T.casterLocks[userId] = lock
+	end
+
+	method void RestoreCasterActionLimit(any cast)
+		-- Restores movement speed after a non-virtual skill ends.
+		if cast == nil then
+			return
+		end
+		local userId = self:ReadString(cast.UserId, "")
+		local lock = self._T.casterLocks[userId]
+		if lock == nil then
+			return
+		end
+		if lock.Entity ~= nil and isvalid(lock.Entity) and lock.Entity.MovementComponent ~= nil and lock.InputSpeed ~= nil then
+			lock.Entity.MovementComponent.InputSpeed = lock.InputSpeed
+		end
+		self._T.casterLocks[userId] = nil
+	end
+
+	method number GetSkillTotalFrames(any skillDef)
+		-- Returns a skill's timeline length in frames.
+		if skillDef == nil then
+			return 1
+		end
+		return math.max(1, math.floor(self:ReadNumber(skillDef.TotalFrames, 1)))
+	end
+
+	method number GetSkillCooldownSeconds(any skillDef)
+		-- Converts a skill cooldown from frames to seconds.
+		if skillDef == nil then
+			return self:GetChainCastCooldownSeconds()
+		end
+		return math.max(self:GetChainCastCooldownSeconds(), math.floor(self:ReadNumber(skillDef.CooldownFrames, 1)) * self:GetSkillFrameSeconds())
+	end
+
+	method number GetSkillDurationSeconds(any skillDef)
+		-- Converts a skill timeline duration from frames to seconds.
+		return self:GetSkillTotalFrames(skillDef) * self:GetSkillFrameSeconds()
+	end
+
+	method number GetSkillFrameSeconds()
+		-- Returns the fixed frame duration used by skill timelines.
+		return math.max(0.005, self:ReadNumber(self.SkillFrameSeconds, 0.03))
+	end
+
+	method number GetSkillChainResetSeconds()
+		-- Returns the idle timeout before the player-cast chain restarts from slot 1.
+		return math.max(0.1, self:ReadNumber(self.SkillChainResetSeconds, 2.5))
+	end
+
+	method number GetChainCastCooldownSeconds()
+		-- Returns the minimum cooldown between player-cast chain steps.
+		return math.max(0.03, self:ReadNumber(self.ChainCastCooldownSeconds, 0.18))
+	end
+
+	method number GetSkillMovementSpeedRate()
+		-- Returns the movement speed multiplier during a non-virtual skill cast.
+		return math.max(0, math.min(1, self:ReadNumber(self.SkillMovementSpeedRate, 0.45)))
+	end
+
+	method number GetSkillTargetPadding()
+		-- Returns target padding added to rectangle hitboxes.
+		return math.max(0, self:ReadNumber(self.SkillTargetPadding, 0.35))
+	end
+
+	method number Now()
+		-- Returns server elapsed time in seconds.
+		return _UtilLogic.ElapsedSeconds
 	end
 
 	method void ResetUser(string userId)
@@ -570,9 +2132,14 @@ script BRSkillSystem extends Logic
 	end
 
 	method string GetSkillTierText(any part, number tier)
-		-- Formats skill order as "Name n차"; no actual merge is performed.
-		local order = math.max(1, math.floor(self:ReadNumber(tier, 1)))
-		return self:GetSkillName(part) .. " " .. tostring(order) .. "차"
+		-- Formats the current chain tier label for one folded skill definition.
+		local order = self:ClampSkillTier(tier)
+		local skillDef = self:GetSkillDefinitionForPart(part, order)
+		local displayName = self:GetSkillName(part)
+		if skillDef ~= nil then
+			displayName = self:ReadString(skillDef.DisplayName, displayName)
+		end
+		return displayName .. " " .. tostring(order) .. "차"
 	end
 
 	@ExecSpace("Server")
@@ -804,6 +2371,9 @@ script BRSkillSystem extends Logic
 
 	method string BuildRecipeText(any state)
 		-- Builds the current skill recipe summary from consecutive chain parts.
+		return self:BuildResolvedChainSummary(state)
+	end
+--[[
 		local chain = self:BuildChainState(state)
 		if chain.FilledCount <= 0 then
 			return self:BuildEmptyRecipeText()
@@ -815,8 +2385,9 @@ script BRSkillSystem extends Logic
 		return "Skill: " .. self:GetSkillTierText(part, chain.HighestTier)
 	end
 
+]]
 	method string BuildChainSnapshotText(any state)
-		-- Serializes slots as slot,instanceId,short,tier,displayName records.
+		-- Serializes slots as slot,instanceId,short,tier,displayName,skillKey records.
 		local chain = self:BuildChainState(state)
 		local text = ""
 		for slotIndex = 1, self:GetChainSlotCount() do
@@ -824,21 +2395,23 @@ script BRSkillSystem extends Logic
 			local part = self:FindPartInState(state, instanceId)
 			local shortText = "-"
 			local displayName = "-"
+			local skillKey = "-"
 			local tier = math.floor(self:ReadNumber(chain.Tiers[slotIndex], 0))
 			if part ~= nil then
 				shortText = self:GetPartShortText(part)
 				displayName = self:SanitizeRecordText(self:GetSkillName(part))
+				skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
 			end
 			if text ~= "" then
 				text = text .. ";"
 			end
-			text = text .. tostring(slotIndex) .. "," .. tostring(instanceId) .. "," .. shortText .. "," .. tostring(tier) .. "," .. displayName
+			text = text .. tostring(slotIndex) .. "," .. tostring(instanceId) .. "," .. shortText .. "," .. tostring(tier) .. "," .. displayName .. "," .. skillKey
 		end
 		return text
 	end
 
 	method string BuildBagSnapshotText(any state)
-		-- Serializes explicit spare bag slots as slot,instanceId,short,tier,displayName records.
+		-- Serializes explicit spare bag slots as slot,instanceId,short,tier,displayName,skillKey records.
 		self:NormalizeUserState(state)
 		local text = ""
 		for bagSlot = 1, self:GetBagSlotCount() do
@@ -849,10 +2422,12 @@ script BRSkillSystem extends Logic
 			local part = self:FindPartInState(state, instanceId)
 			local shortText = "-"
 			local displayName = "-"
+			local skillKey = "-"
 			local tier = 0
 			if part ~= nil then
 				shortText = self:GetPartShortText(part)
 				displayName = self:SanitizeRecordText(self:GetSkillName(part))
+				skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
 				tier = 1
 			end
 			if text ~= "" then
@@ -863,6 +2438,7 @@ script BRSkillSystem extends Logic
 				.. "," .. shortText
 				.. "," .. tostring(tier)
 				.. "," .. displayName
+				.. "," .. skillKey
 		end
 		return text
 	end
@@ -1015,7 +2591,7 @@ script BRSkillSystem extends Logic
 			if instanceId ~= nil and part ~= nil then
 				local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
 				if skillKey ~= "" and skillKey == previousSkillKey then
-					currentTier = currentTier + 1
+					currentTier = self:ClampSkillTier(currentTier + 1)
 				else
 					currentTier = 1
 				end

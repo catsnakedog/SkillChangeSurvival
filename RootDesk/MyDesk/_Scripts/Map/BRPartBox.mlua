@@ -13,6 +13,8 @@ script BRPartBox extends Component
 
 	property boolean AutoEquipOnDrop = true
 
+	property boolean RequirePickupKey = true
+
 	property boolean VerboseLog = false
 
 	property boolean available = true
@@ -22,13 +24,15 @@ script BRPartBox extends Component
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
 		-- Starts the box interaction loop when this box is currently active.
+		self:ForcePickupKeyMode()
 		if self.EnablePartBox == false then
 			self:SetVisualAvailable(false)
 			return
 		end
 		self.available = true
 		self:SetVisualAvailable(true)
-		self:StartPollTimer()
+		self:ClearPollTimer()
+		self:Log("ready mode=key")
 	end
 
 	@ExecSpace("ServerOnly")
@@ -40,23 +44,18 @@ script BRPartBox extends Component
 	@ExecSpace("ServerOnly")
 	method void SetRuntimeActive(boolean active)
 		-- Enables or disables this supply box without requiring a map edit.
+		self:ForcePickupKeyMode()
 		self.EnablePartBox = active == true
 		self.available = active == true
 		self:SetVisualAvailable(active == true)
-		if active == true then
-			self:StartPollTimer()
-		else
-			self:ClearPollTimer()
-		end
+		self:ClearPollTimer()
 	end
 
 	@ExecSpace("ServerOnly")
 	method void StartPollTimer()
-		-- Starts player proximity polling if it is not already running.
-		if self.pollTimerId ~= nil and self.pollTimerId > 0 then
-			return
-		end
-		self.pollTimerId = _TimerService:SetTimerRepeat(function() self:ScanPlayers() end, self:GetPollSeconds(), 0.1)
+		-- Supply boxes are key-pickup only; proximity polling stays disabled.
+		self:ForcePickupKeyMode()
+		self:ClearPollTimer()
 	end
 
 	@ExecSpace("ServerOnly")
@@ -70,29 +69,34 @@ script BRPartBox extends Component
 
 	@ExecSpace("ServerOnly")
 	method void ScanPlayers()
-		-- Opens the box for the first living nearby player.
+		-- Auto pickup is intentionally disabled; use TryOpenForPlayer from the pickup key system.
+		self:ForcePickupKeyMode()
+		return
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ForcePickupKeyMode()
+		-- Keeps old placed-map values from re-enabling automatic proximity pickup.
+		self.RequirePickupKey = true
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean TryOpenForPlayer(Entity playerEntity)
+		-- Opens this box only when the requesting player is inside pickup range.
 		if self.EnablePartBox == false or self.available == false then
-			return
+			return false
 		end
-		
-		local mapName = self:GetMapName()
-		if mapName == "" then
-			return
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
 		end
-		
-		local users = _UserService:GetUsersByMapName(mapName)
-		if users == nil then
-			return
-		end
-		
+
 		local boxPosition = self:GetEntityPosition2(self.Entity)
-		local radius = self:GetTouchRadius()
-		for index, playerEntity in ipairs(users) do
-			if self:IsPlayerCloseEnough(playerEntity, boxPosition, radius) == true then
-				self:OpenForPlayer(playerEntity)
-				return
-			end
+		if self:IsPlayerCloseEnough(playerEntity, boxPosition, self:GetTouchRadius()) ~= true then
+			return false
 		end
+
+		self:OpenForPlayer(playerEntity)
+		return true
 	end
 
 	@ExecSpace("ServerOnly")

@@ -687,9 +687,28 @@ script BRBattleLogic extends Component
 		elseif localPlayer.SideviewbodyComponent ~= nil then
 			localPlayer.SideviewbodyComponent:SetWorldPosition(position)
 		end
+		local localUserId = ""
 		if localPlayer.PlayerComponent ~= nil then
+			localUserId = self:ReadString(localPlayer.PlayerComponent.UserId, "")
+			localPlayer.PlayerComponent:ProcessRevive()
 			localPlayer.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
 		end
+		log("[BRBattle] local revive position user=" .. localUserId .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ") reason=" .. self:ReadString(reason, ""))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void LogReviveConfirm(string userId, Entity playerEntity, string source)
+		local safeUserId = self:ReadString(userId, "")
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			log("[BRBattle] revive confirm user=" .. safeUserId .. " missing-player source=" .. self:ReadString(source, ""))
+			return
+		end
+
+		local position = self:GetEntityPosition2(playerEntity)
+		log("[BRBattle] revive confirm user=" .. safeUserId
+			.. " dead=" .. tostring(playerEntity.PlayerComponent:IsDead())
+			.. " hp=" .. tostring(playerEntity.PlayerComponent.Hp)
+			.. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ") source=" .. self:ReadString(source, ""))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -970,11 +989,14 @@ script BRBattleLogic extends Component
 
 		local playerComponent = playerEntity.PlayerComponent
 		local maxHp = self:GetAdjustedBattleMaxHp(playerEntity)
+		local reviveHp = math.max(1, math.ceil(maxHp * self:GetLifeReviveHpPercent()))
 		playerComponent.PVPMode = true
 		playerComponent.MaxHp = maxHp
 		playerComponent.RespawnDuration = self:GetLifeNativeRespawnBlockSeconds()
 		playerComponent.RespawnPosition = Vector3(revivePosition.x, revivePosition.y, 0)
-		playerComponent.Hp = math.max(1, math.ceil(maxHp * self:GetLifeReviveHpPercent()))
+		playerComponent.Hp = reviveHp
+		playerComponent:Respawn()
+		playerComponent.Hp = reviveHp
 		playerComponent:ProcessRevive(safeUserId)
 		self:PreparePlayerPhysics(playerEntity)
 		self:ApplySkillStatsToPlayer(playerEntity)
@@ -997,13 +1019,27 @@ script BRBattleLogic extends Component
 			.. " lives=" .. tostring(math.floor(self:ReadNumber(self._T.lives[safeUserId], 0)))
 			.. " hp=" .. tostring(playerComponent.Hp) .. "/" .. tostring(maxHp)
 			.. " pos=(" .. tostring(revivePosition.x) .. "," .. tostring(revivePosition.y) .. ") source=" .. self:ReadString(source, ""))
+		log("[BRBattle] life revive user=" .. safeUserId
+			.. " lives=" .. tostring(math.floor(self:ReadNumber(self._T.lives[safeUserId], 0)))
+			.. " hp=" .. tostring(playerComponent.Hp) .. "/" .. tostring(maxHp)
+			.. " pos=(" .. tostring(revivePosition.x) .. "," .. tostring(revivePosition.y) .. ") source=" .. self:ReadString(source, ""))
+		_TimerService:SetTimerOnce(function() self:LogReviveConfirm(safeUserId, playerEntity, source) end, 0.2)
 	end
 
 	@ExecSpace("Server")
 	method void RequestReviveOptions()
+		self:RequestReviveOptionsForUser("")
+	end
+
+	@ExecSpace("Server")
+	method void RequestReviveOptionsForUser(string requestedUserId)
 		-- Pushes the caller's current selectable revive rooms to the client UI.
 		local userId = self:GetSenderUserId()
 		if userId == "" then
+			userId = self:ReadString(requestedUserId, "")
+		end
+		if userId == "" then
+			log("[BRBattle] revive options ignored sender=nil requested=nil")
 			return
 		end
 		self:PushReviveOptionsToUser(userId, "")
@@ -1011,34 +1047,51 @@ script BRBattleLogic extends Component
 
 	@ExecSpace("Server")
 	method void RequestReviveAt(number row, number column)
+		self:RequestReviveAtForUser(row, column, "")
+	end
+
+	@ExecSpace("Server")
+	method void RequestReviveAtForUser(number row, number column, string requestedUserId)
 		-- Validates and performs a selected revive location.
 		local userId = self:GetSenderUserId()
 		if userId == "" then
+			userId = self:ReadString(requestedUserId, "")
+		end
+		if userId == "" then
+			log("[BRBattle] revive request ignored sender=nil row=" .. tostring(row) .. " column=" .. tostring(column))
 			return
 		end
 
 		self:EnsureServerRuntimeTables()
+		log("[BRBattle] revive request user=" .. userId .. " row=" .. tostring(row) .. " column=" .. tostring(column)
+			.. " pending=" .. tostring(self._T.pendingRevive[userId] == true)
+			.. " lives=" .. tostring(self:ReadNumber(self._T.lives[userId], 0)))
 		if self:IsLifeReviveSelectionEnabled() ~= true then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=selection-disabled")
 			self:PushReviveOptionsToUser(userId, "Revive selection is disabled.")
 			return
 		end
 		if self._T.pendingRevive[userId] ~= true then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=not-pending")
 			self:PushReviveOptionsToUser(userId, "You are not waiting for revive.")
 			return
 		end
 		if self:ReadNumber(self._T.lives[userId], 0) <= 0 then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=no-lives")
 			self:PushReviveOptionsToUser(userId, "No lives left.")
 			return
 		end
 
 		local now = self:Now()
 		if now < self:ReadNumber(self._T.reviveUntil[userId], now) then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=preparing remaining=" .. tostring(self:ReadNumber(self._T.reviveUntil[userId], now) - now))
 			self:PushReviveOptionsToUser(userId, "Revive preparing...")
 			return
 		end
 
 		local playerEntity = _UserService:GetUserEntityByUserId(userId)
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=missing-player")
 			self._T.pendingRevive[userId] = nil
 			self._T.lifeState[userId] = "OUT"
 			self:UpdateLifeSummary()
@@ -1046,6 +1099,7 @@ script BRBattleLogic extends Component
 			return
 		end
 		if playerEntity.CurrentMapName ~= self:GetBattleMapName() then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=map-left current=" .. self:ReadString(playerEntity.CurrentMapName, ""))
 			self._T.pendingRevive[userId] = nil
 			self._T.lifeState[userId] = "OUT"
 			self:UpdateLifeSummary()
@@ -1057,22 +1111,26 @@ script BRBattleLogic extends Component
 		local room = self:FindLogicalRoomByCoordinate(graph, row, column)
 		local roomKey = self:GetLogicalRoomKey(room)
 		if room == nil or roomKey == "" then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=no-room row=" .. tostring(row) .. " column=" .. tostring(column))
 			self:PushReviveOptionsToUser(userId, "That room is not available.")
 			return
 		end
 		if roomKey == self:ReadString(self._T.deathRoomKey[userId], "") then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=death-room key=" .. roomKey)
 			self:PushReviveOptionsToUser(userId, "Cannot revive where you died.")
 			return
 		end
 
 		local occupied = self:BuildOccupiedLogicalRoomCounts(graph, userId)
 		if self:ReadNumber(occupied[roomKey], 0) > 0 then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=occupied key=" .. roomKey .. " count=" .. tostring(self:ReadNumber(occupied[roomKey], 0)))
 			self:PushReviveOptionsToUser(userId, "Cannot revive on another player.")
 			return
 		end
 
 		local revivePosition = self:GetRespawnPositionForLogicalRoom(graph, room)
 		if revivePosition == nil then
+			log("[BRBattle] revive rejected user=" .. userId .. " reason=missing-position key=" .. roomKey)
 			self:PushReviveOptionsToUser(userId, "Revive point is missing.")
 			return
 		end

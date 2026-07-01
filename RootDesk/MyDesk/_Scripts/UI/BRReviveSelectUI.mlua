@@ -51,7 +51,7 @@ script BRReviveSelectUI extends Component
 		local now = _UtilLogic.ElapsedSeconds
 		if now >= self.nextRequestAt then
 			self.nextRequestAt = now + self:GetRequestSeconds()
-			battleLogic:RequestReviveOptions()
+			battleLogic:RequestReviveOptionsForUser(self:GetLocalUserId())
 		end
 
 		local renderKey = self:GetRenderKey(battleLogic)
@@ -71,7 +71,9 @@ script BRReviveSelectUI extends Component
 			for column = 1, self:GetMaxColumns() do
 				local cell = self:GetGridChild(self:GetCellName(row, column))
 				if cell ~= nil then
-					local clickHandler = cell:ConnectEvent(ButtonClickEvent, self.OnCellClick)
+					local rowIndex = row
+					local columnIndex = column
+					local clickHandler = cell:ConnectEvent(ButtonClickEvent, function(event) self:OnCellClick(rowIndex, columnIndex, event) end)
 					table.insert(self._T.handlers, { Entity = cell, Handler = clickHandler })
 				end
 			end
@@ -90,15 +92,22 @@ script BRReviveSelectUI extends Component
 		self._T.handlers = {}
 	end
 
-	method void OnCellClick(ButtonClickEvent event)
-		local cell = { Row = 0, Column = 0 }
-		if event ~= nil and event.Entity ~= nil then
-			cell = self:GetCellCoordinateFromName(event.Entity.Name)
+	method void OnCellClick(number row, number column, ButtonClickEvent event)
+		local safeRow = math.floor(self:ReadNumber(row, 0))
+		local safeColumn = math.floor(self:ReadNumber(column, 0))
+		if safeRow <= 0 or safeColumn <= 0 then
+			if event ~= nil and event.Entity ~= nil then
+				local cell = self:GetCellCoordinateFromName(event.Entity.Name)
+				safeRow = math.floor(self:ReadNumber(cell.Row, 0))
+				safeColumn = math.floor(self:ReadNumber(cell.Column, 0))
+			end
 		end
-		if cell.Row <= 0 or cell.Column <= 0 then
+		if safeRow <= 0 or safeColumn <= 0 then
+			self:Log("click ignored invalid cell")
 			return
 		end
-		self:SelectCell(cell.Row, cell.Column)
+		self:Log("click cell row=" .. tostring(safeRow) .. " column=" .. tostring(safeColumn))
+		self:SelectCell(safeRow, safeColumn)
 	end
 
 	method void SelectCell(number row, number column)
@@ -106,20 +115,24 @@ script BRReviveSelectUI extends Component
 		local candidate = self._T.candidates[key]
 		local battleLogic = self:GetBattleLogic()
 		if battleLogic == nil or candidate == nil then
+			self:Log("select ignored key=" .. key .. " battleLogic=" .. tostring(battleLogic ~= nil) .. " candidate=" .. tostring(candidate ~= nil))
 			return
 		end
 
 		local remaining = battleLogic:GetLocalReviveRemainingSeconds()
 		if remaining > 0 then
+			self:Log("select waiting key=" .. key .. " remaining=" .. tostring(remaining))
 			self:SetTextByPath("Panel/Message", "Revive preparing... " .. tostring(math.ceil(remaining)) .. "s")
 			return
 		end
 		if self:ReadNumber(candidate.State, 0) ~= 1 then
+			self:Log("select blocked key=" .. key .. " state=" .. tostring(self:ReadNumber(candidate.State, 0)))
 			self:SetTextByPath("Panel/Message", self:GetCandidateReason(candidate))
 			return
 		end
 
-		battleLogic:RequestReviveAt(row, column)
+		self:Log("request revive key=" .. key)
+		battleLogic:RequestReviveAtForUser(row, column, self:GetLocalUserId())
 		self:SetTextByPath("Panel/Message", "Reviving...")
 	end
 
@@ -247,6 +260,14 @@ script BRReviveSelectUI extends Component
 		end
 		---@type BRBattleLogic
 		return entity:GetComponent("script.BRBattleLogic")
+	end
+
+	method string GetLocalUserId()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return ""
+		end
+		return self:ReadString(localPlayer.PlayerComponent.UserId, "")
 	end
 
 	method any ParseRoomSet(string roomsText)

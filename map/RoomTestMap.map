@@ -6341,6 +6341,223 @@
                       "x": 1.0,
                       "y": 0.0
                     }
+                  },
+                  {
+                    "Length": 0.8999939,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 47,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "968429d5-4978-4f2c-afa1-34f1779231e2",
+                    "Id": 204,
+                    "StartPoint": {
+                      "x": -78.2402,
+                      "y": -343.6827
+                    },
+                    "EndPoint": {
+                      "x": -77.3402,
+                      "y": -343.6827
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 0.9000015,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 48,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "320d3394-50b4-4700-9894-7fdf5fadd9f3",
+                    "Id": 205,
+                    "StartPoint": {
+                      "x": -79.4641,
+                      "y": -344.0908
+                    },
+                    "EndPoint": {
+                      "x": -78.5641,
+                      "y": -344.0908
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 0.440002441,
+                    "NextFootholdId": 207,
+                    "PreviousFootholdId": 0,
+                    "groupID": 49,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "b5a35e5d-54ce-4637-9fdd-0b679820744e",
+                    "Id": 206,
+                    "StartPoint": {
+                      "x": -81.927,
+                      "y": -344.8458
+                    },
+                    "EndPoint": {
+                      "x": -81.487,
+                      "y": -344.8458
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 0.590335131,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 206,
+                    "groupID": 49,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "b5a35e5d-54ce-4637-9fdd-0b679820744e",
+                    "Id": 207,
+                    "StartPoint": {
+                      "x": -81.487,
+                      "y": -344.8458
+                    },
+                    "EndPoint": {
+                      "x": -81.027,
+                      "y": -344.4758
+                    },
+                    "Variance": {
+                      "x": 0.7792169,
+                      "y": 0.626754344
+                    }
+                  },
+                  {
+                    "Length": 0.8999939,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 50,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "4fe12402-7ac8-4fb6-82e4-f04cbf3c4bab",
+                    "Id": 208,
+                    "StartPoint": {
+                      "x": -83.3624,
+                      "y": -344.8918
+                    },
+                    "EndPoint": {
+                      "x": -82.4624,
+                      "y": -344.8918
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 0.9000015,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 51,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "ddd89398-49fe-4192-b865-f011a4b1fb9e",
+                    "Id": 209,
+                    "StartPoint": {
+                      "x": -86.052,
+                      "y": -345.2545
+                    },
+                    "EndPoint": {
+                      "x": -85.152,
+                      "y": -345.2545
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "Length": 0.9000015,
+                    "NextFootholdId": 0,
+                    "PreviousFootholdId": 0,
+                    "groupID": 52,
+                    "layer": 1,
+                    "sortingLayerName": "MapLayer0",
+                    "attribute": {
+                      "walk": 1.0,
+                      "force": 0.0,
+                      "drag": 1.0,
+                      "isBlockVertical": false,
+                      "isDynamic": false,
+                      "isCustomFoothold": true,
+                      "inertiaOption": 0
+                    },
+                    "OwnerId": "ea5b9519-dea2-4547-a888-9a8d4fa04c87",
+                    "Id": 210,
+                    "StartPoint": {
+                      "x": -87.2305,
+                      "y": -345.3301
+                    },
+                    "EndPoint": {
+                      "x": -86.3305,
+                      "y": -345.3301
+                    },
+                    "Variance": {
+                      "x": 1.0,
+                      "y": 0.0
+                    }
                   }
                 ]
               },
@@ -17473,6 +17690,493 @@
               "DropCount": 1.0,
               "AutoEquipOnDrop": true,
               "VerboseLog": false
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "26f71e15-1ef3-401b-b8ee-e1b1471be31e",
+        "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent",
+        "jsonString": {
+          "name": "Polygon",
+          "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": true,
+          "displayOrder": 6,
+          "pathConstraints": "/////",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "polygonrenderer",
+            "sub_entity_id": null,
+            "root_entity_id": "26f71e15-1ef3-401b-b8ee-e1b1471be31e",
+            "replaced_model_id": null
+          },
+          "modelId": "polygonrenderer",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": -999.996
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Scale": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 0.0
+              },
+              "Points": [
+                {
+                  "x": 5.0,
+                  "y": 0.0
+                },
+                {
+                  "x": 5.0,
+                  "y": 5.0
+                },
+                {
+                  "x": -5.0,
+                  "y": 5.0
+                },
+                {
+                  "x": -5.0,
+                  "y": 0.0
+                }
+              ],
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "968429d5-4978-4f2c-afa1-34f1779231e2",
+        "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21_4",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.CustomFootholdComponent",
+        "jsonString": {
+          "name": "foothold-21_4",
+          "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21_4",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": true,
+          "displayOrder": 0,
+          "pathConstraints": "//////",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "Foothold",
+            "sub_entity_id": null,
+            "root_entity_id": "049a00f4-4c1d-4ec8-9258-0d56017147c5",
+            "replaced_model_id": null
+          },
+          "modelId": "foothold",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 2.2098,
+                "y": -1.9227,
+                "z": -1000.001
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "ActionSheet": {},
+              "EndFrameIndex": 2147483647,
+              "RenderSetting": 0,
+              "SortingLayer": "MapLayer0",
+              "SpriteRUID": "1bbe156aa0204a40b2452c92c6ee1a55",
+              "StartFrameIndex": 0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "edgeLists": [
+                [
+                  {
+                    "x": -0.45,
+                    "y": 0.24
+                  },
+                  {
+                    "x": 0.45,
+                    "y": 0.24
+                  }
+                ]
+              ],
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "320d3394-50b4-4700-9894-7fdf5fadd9f3",
+        "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21_3",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.CustomFootholdComponent",
+        "jsonString": {
+          "name": "foothold-21_3",
+          "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21_3",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": true,
+          "displayOrder": 1,
+          "pathConstraints": "//////",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "Foothold",
+            "sub_entity_id": null,
+            "root_entity_id": "0afb2a90-558d-468b-b418-ddb858568b88",
+            "replaced_model_id": null
+          },
+          "modelId": "foothold",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0.9859,
+                "y": -2.3308,
+                "z": -1000.001
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "ActionSheet": {},
+              "EndFrameIndex": 2147483647,
+              "RenderSetting": 0,
+              "SortingLayer": "MapLayer0",
+              "SpriteRUID": "1bbe156aa0204a40b2452c92c6ee1a55",
+              "StartFrameIndex": 0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "edgeLists": [
+                [
+                  {
+                    "x": -0.45,
+                    "y": 0.24
+                  },
+                  {
+                    "x": 0.45,
+                    "y": 0.24
+                  }
+                ]
+              ],
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "b5a35e5d-54ce-4637-9fdd-0b679820744e",
+        "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-32",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.CustomFootholdComponent",
+        "jsonString": {
+          "name": "foothold-32",
+          "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-32",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": true,
+          "displayOrder": 2,
+          "pathConstraints": "//////",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "Foothold",
+            "sub_entity_id": null,
+            "root_entity_id": "3fed6365-2f61-4055-bb5d-6a9c2fbdf427",
+            "replaced_model_id": null
+          },
+          "modelId": "foothold",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": -1.477,
+                "y": -2.9958,
+                "z": -1000.001
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "ActionSheet": {},
+              "EndFrameIndex": 2147483647,
+              "RenderSetting": 0,
+              "SortingLayer": "MapLayer0",
+              "SpriteRUID": "f0d3029156ee4ec68aecf9dd1a22afc1",
+              "StartFrameIndex": 0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "edgeLists": [
+                [
+                  {
+                    "x": -0.45,
+                    "y": 0.15
+                  },
+                  {
+                    "x": -0.01,
+                    "y": 0.15
+                  },
+                  {
+                    "x": 0.45,
+                    "y": 0.52
+                  }
+                ]
+              ],
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "4fe12402-7ac8-4fb6-82e4-f04cbf3c4bab",
+        "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21_2",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.CustomFootholdComponent",
+        "jsonString": {
+          "name": "foothold-21_2",
+          "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21_2",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": true,
+          "displayOrder": 3,
+          "pathConstraints": "//////",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "Foothold",
+            "sub_entity_id": null,
+            "root_entity_id": "d5dd9bac-b0d0-418d-a10e-bfea8520b6c3",
+            "replaced_model_id": null
+          },
+          "modelId": "foothold",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": -2.9124,
+                "y": -3.1318,
+                "z": -1000.001
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "ActionSheet": {},
+              "EndFrameIndex": 2147483647,
+              "RenderSetting": 0,
+              "SortingLayer": "MapLayer0",
+              "SpriteRUID": "1bbe156aa0204a40b2452c92c6ee1a55",
+              "StartFrameIndex": 0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "edgeLists": [
+                [
+                  {
+                    "x": -0.45,
+                    "y": 0.24
+                  },
+                  {
+                    "x": 0.45,
+                    "y": 0.24
+                  }
+                ]
+              ],
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "ddd89398-49fe-4192-b865-f011a4b1fb9e",
+        "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21_1",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.CustomFootholdComponent",
+        "jsonString": {
+          "name": "foothold-21_1",
+          "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21_1",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": true,
+          "displayOrder": 4,
+          "pathConstraints": "//////",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "Foothold",
+            "sub_entity_id": null,
+            "root_entity_id": "35797745-01c8-4898-ad31-7577e31672cc",
+            "replaced_model_id": null
+          },
+          "modelId": "foothold",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": -5.602,
+                "y": -3.4945,
+                "z": -0.003
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "ActionSheet": {},
+              "EndFrameIndex": 2147483647,
+              "RenderSetting": 0,
+              "SortingLayer": "MapLayer0",
+              "SpriteRUID": "1bbe156aa0204a40b2452c92c6ee1a55",
+              "StartFrameIndex": 0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "edgeLists": [
+                [
+                  {
+                    "x": -0.45,
+                    "y": 0.24
+                  },
+                  {
+                    "x": 0.45,
+                    "y": 0.24
+                  }
+                ]
+              ],
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
+      },
+      {
+        "id": "ea5b9519-dea2-4547-a888-9a8d4fa04c87",
+        "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.CustomFootholdComponent",
+        "jsonString": {
+          "name": "foothold-21",
+          "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/Polygon/foothold-21",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": true,
+          "displayOrder": 5,
+          "pathConstraints": "//////",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "Foothold",
+            "sub_entity_id": null,
+            "root_entity_id": "03d359ee-2916-44be-ba1f-c72879d79c5b",
+            "replaced_model_id": null
+          },
+          "modelId": "foothold",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": -6.7805,
+                "y": -3.5701,
+                "z": -0.003
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "ActionSheet": {},
+              "EndFrameIndex": 2147483647,
+              "RenderSetting": 0,
+              "SortingLayer": "MapLayer0",
+              "SpriteRUID": "1bbe156aa0204a40b2452c92c6ee1a55",
+              "StartFrameIndex": 0,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.CustomFootholdComponent",
+              "edgeLists": [
+                [
+                  {
+                    "x": -0.45,
+                    "y": 0.24
+                  },
+                  {
+                    "x": 0.45,
+                    "y": 0.24
+                  }
+                ]
+              ],
+              "Enable": true
             }
           ],
           "@version": 1

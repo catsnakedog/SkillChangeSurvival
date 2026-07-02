@@ -88,6 +88,11 @@ export function dryRunMoveLineToOrigin(mapName, linePath) {
   return buildLineOriginPlan(context);
 }
 
+export function dryRunMoveLineBoundsToPivot(mapName, linePath) {
+  const context = collectFootholds(mapName, linePath);
+  return buildLineBoundsPivotPlan(context);
+}
+
 export function dryRunSymmetry(mapName, roomPath) {
   const loaded = loadMap(mapName);
   return buildSymmetryPlan(loaded, mapName, roomPath);
@@ -131,18 +136,7 @@ export function applyMoveLineToOrigin(mapName, linePath) {
     return { ...plan, applied: false };
   }
 
-  for (const foothold of context.footholds) {
-    const position = foothold.transform.Position;
-    position.x = roundCoord((position.x ?? 0) + plan.delta.x);
-    position.y = roundCoord((position.y ?? 0) + plan.delta.y);
-  }
-
-  for (const foothold of context.footholds) {
-    for (const serialized of foothold.serialized) {
-      shiftPoint(serialized.StartPoint, plan.delta);
-      shiftPoint(serialized.EndPoint, plan.delta);
-    }
-  }
+  shiftFootholdChildren(context, plan.delta);
 
   fs.writeFileSync(context.file, `${JSON.stringify(context.data, null, 2)}\n`, "utf8");
 
@@ -150,6 +144,24 @@ export function applyMoveLineToOrigin(mapName, linePath) {
     ...plan,
     applied: true,
     message: "Moved child footholds so the selected line's first start edge point matches the line parent pivot.",
+  };
+}
+
+export function applyMoveLineBoundsToPivot(mapName, linePath) {
+  const context = collectFootholds(mapName, linePath);
+  const plan = buildLineBoundsPivotPlan(context);
+  if (plan.errors.length > 0) {
+    return { ...plan, applied: false };
+  }
+
+  shiftFootholdChildren(context, plan.delta);
+
+  fs.writeFileSync(context.file, `${JSON.stringify(context.data, null, 2)}\n`, "utf8");
+
+  return {
+    ...plan,
+    applied: true,
+    message: "Moved child footholds so edge bounds center X and max Y match the line parent pivot.",
   };
 }
 
@@ -527,6 +539,105 @@ function buildLineOriginPlan(context) {
   return output;
 }
 
+function buildLineBoundsPivotPlan(context) {
+  const errors = [];
+  const sorted = sortFootholds(context.footholds);
+
+  for (const foothold of sorted) {
+    if (!foothold.transform?.Position) {
+      errors.push(`Cannot edit foothold TransformComponent.Position: ${foothold.name}`);
+    }
+    if (foothold.edgePoints.length === 0) {
+      errors.push(`Cannot read foothold edge points: ${foothold.name}`);
+    }
+  }
+
+  const bounds = getLineWorldBounds(sorted);
+  if (!bounds) {
+    errors.push("Cannot read line edge bounds");
+  }
+
+  if (errors.length > 0) {
+    return {
+      action: "move-line-bounds-pivot",
+      applied: false,
+      errors,
+      sorted: sorted.map(summarizeFoothold),
+      changes: [],
+    };
+  }
+
+  const targetWorld = {
+    x: roundCoord(context.lineWorldPosition.x),
+    y: roundCoord(context.lineWorldPosition.y),
+  };
+  const delta = {
+    x: roundCoord(targetWorld.x - bounds.centerX),
+    y: roundCoord(targetWorld.y - bounds.maxY),
+  };
+
+  const affectedFootholds = sorted.map((foothold) => {
+    const firstBefore = foothold.firstPoint ? pointWorld(foothold.firstPoint, foothold.worldPosition) : null;
+    const rearBefore = foothold.rearPoint ? pointWorld(foothold.rearPoint, foothold.worldPosition) : null;
+    return {
+      name: foothold.name,
+      path: foothold.path,
+      positionBefore: clonePoint3(foothold.transform.Position),
+      positionAfter: {
+        x: roundCoord((foothold.transform.Position.x ?? 0) + delta.x),
+        y: roundCoord((foothold.transform.Position.y ?? 0) + delta.y),
+        z: foothold.transform.Position.z ?? 0,
+      },
+      firstEdgeWorldBefore: firstBefore,
+      firstEdgeWorldAfter: firstBefore ? addPoint(firstBefore, delta) : null,
+      rearEdgeWorldBefore: rearBefore,
+      rearEdgeWorldAfter: rearBefore ? addPoint(rearBefore, delta) : null,
+    };
+  });
+
+  const output = {
+    action: "move-line-bounds-pivot",
+    applied: false,
+    errors,
+    lineName: context.line.name,
+    linePath: context.line.path,
+    sorted: sorted.map(summarizeFoothold),
+    boundsBefore: bounds,
+    boundsAfter: {
+      minX: roundCoord(bounds.minX + delta.x),
+      maxX: roundCoord(bounds.maxX + delta.x),
+      centerX: roundCoord(bounds.centerX + delta.x),
+      minY: roundCoord(bounds.minY + delta.y),
+      maxY: roundCoord(bounds.maxY + delta.y),
+    },
+    targetPivotWorld: targetWorld,
+    delta,
+    moveTarget: {
+      type: "foothold-children",
+      name: context.line.name,
+      path: context.line.path,
+      linePivotWorld: targetWorld,
+    },
+    affectedFootholds,
+    changes: [
+      {
+        lineName: context.line.name,
+        delta,
+        boundsBefore: bounds,
+        boundsAfter: {
+          minX: roundCoord(bounds.minX + delta.x),
+          maxX: roundCoord(bounds.maxX + delta.x),
+          centerX: roundCoord(bounds.centerX + delta.x),
+          minY: roundCoord(bounds.minY + delta.y),
+          maxY: roundCoord(bounds.maxY + delta.y),
+        },
+        targetPivotWorld: targetWorld,
+      },
+    ],
+  };
+  return output;
+}
+
 function buildPairSymmetryOperation(leftContext, rightContext, roomWorldPosition, group) {
   const errors = [];
   const leftBounds = getLineEndpointsInRoom(leftContext, roomWorldPosition);
@@ -680,6 +791,41 @@ function getLineEndpointsInRoom(context, roomWorldPosition) {
     left: endpoints[0] ?? null,
     right: endpoints[endpoints.length - 1] ?? null,
   };
+}
+
+function getLineWorldBounds(footholds) {
+  const points = [];
+  for (const foothold of footholds) {
+    for (const point of foothold.edgePoints) {
+      points.push(pointWorld(point, foothold.worldPosition));
+    }
+  }
+  if (points.length === 0) return null;
+
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return {
+    minX: roundCoord(minX),
+    maxX: roundCoord(maxX),
+    centerX: roundCoord((minX + maxX) / 2),
+    minY: roundCoord(minY),
+    maxY: roundCoord(maxY),
+  };
+}
+
+function shiftFootholdChildren(context, delta) {
+  for (const foothold of context.footholds) {
+    const position = foothold.transform.Position;
+    position.x = roundCoord((position.x ?? 0) + delta.x);
+    position.y = roundCoord((position.y ?? 0) + delta.y);
+
+    for (const serialized of foothold.serialized) {
+      shiftPoint(serialized.StartPoint, delta);
+      shiftPoint(serialized.EndPoint, delta);
+    }
+  }
 }
 
 function shiftLineParent(context, delta) {

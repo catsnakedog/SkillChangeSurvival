@@ -83,15 +83,17 @@ export function dryRunConnect(mapName, linePath) {
   return buildConnectionPlan(context);
 }
 
+export function dryRunMoveLineToOrigin(mapName, linePath) {
+  const context = collectFootholds(mapName, linePath);
+  return buildLineOriginPlan(context);
+}
+
 export function applyConnect(mapName, linePath) {
   const context = collectFootholds(mapName, linePath);
   const plan = buildConnectionPlan(context);
   if (plan.errors.length > 0) {
     return { ...plan, applied: false };
   }
-
-  const backupPath = `${context.file}.${timestamp()}.bak`;
-  fs.copyFileSync(context.file, backupPath);
 
   for (const item of plan.rawFinalOffsets) {
     if (nearZero(item.offset.x) && nearZero(item.offset.y)) continue;
@@ -113,8 +115,36 @@ export function applyConnect(mapName, linePath) {
   return {
     ...plan,
     applied: true,
-    backupPath,
     message: "Moved following foothold Transform positions so each first edge point matches the previous rear edge point.",
+  };
+}
+
+export function applyMoveLineToOrigin(mapName, linePath) {
+  const context = collectFootholds(mapName, linePath);
+  const plan = buildLineOriginPlan(context);
+  if (plan.errors.length > 0) {
+    return { ...plan, applied: false };
+  }
+
+  for (const foothold of context.footholds) {
+    const position = foothold.transform.Position;
+    position.x = roundCoord((position.x ?? 0) + plan.delta.x);
+    position.y = roundCoord((position.y ?? 0) + plan.delta.y);
+  }
+
+  for (const foothold of context.footholds) {
+    for (const serialized of foothold.serialized) {
+      shiftPoint(serialized.StartPoint, plan.delta);
+      shiftPoint(serialized.EndPoint, plan.delta);
+    }
+  }
+
+  fs.writeFileSync(context.file, `${JSON.stringify(context.data, null, 2)}\n`, "utf8");
+
+  return {
+    ...plan,
+    applied: true,
+    message: "Moved child footholds so the selected line's first start edge point matches the line parent pivot.",
   };
 }
 
@@ -154,6 +184,8 @@ function collectFootholds(mapName, linePath) {
   return {
     ...loaded,
     line,
+    lineTransform: componentOf(line, TRANSFORM),
+    lineWorldPosition: getWorldPosition(line, entities),
     footholds,
   };
 }
@@ -253,6 +285,116 @@ function buildConnectionPlan(context) {
   });
   Object.defineProperty(output, "rawFinalOffsets", {
     value: rawFinalOffsets,
+    enumerable: false,
+  });
+  return output;
+}
+
+function buildLineOriginPlan(context) {
+  const errors = [];
+  const sorted = sortFootholds(context.footholds);
+  const first = sorted[0];
+
+  if (!first?.firstPoint) {
+    errors.push("Cannot select the line start edge point");
+  }
+
+  for (const foothold of sorted) {
+    if (!foothold.transform?.Position) {
+      errors.push(`Cannot edit foothold TransformComponent.Position: ${foothold.name}`);
+    }
+    if (foothold.edgePoints.length === 0) {
+      errors.push(`Cannot read foothold edge points: ${foothold.name}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    return {
+      action: "move-line-origin",
+      applied: false,
+      errors,
+      sorted: sorted.map(summarizeFoothold),
+      changes: [],
+    };
+  }
+
+  const startWorld = pointWorld(first.firstPoint, first.worldPosition);
+  const targetWorld = {
+    x: roundCoord(context.lineWorldPosition.x),
+    y: roundCoord(context.lineWorldPosition.y),
+  };
+  const delta = {
+    x: roundCoord(targetWorld.x - startWorld.x),
+    y: roundCoord(targetWorld.y - startWorld.y),
+  };
+
+  const rawMoveTarget = {
+    type: "foothold-children",
+    name: context.line.name,
+    path: context.line.path,
+    linePivotWorld: targetWorld,
+    positionBefore: null,
+    positionAfter: null,
+  };
+
+  const affectedFootholds = sorted.map((foothold) => ({
+    name: foothold.name,
+    path: foothold.path,
+    positionBefore: clonePoint3(foothold.transform.Position),
+    positionAfter: {
+      x: roundCoord((foothold.transform.Position.x ?? 0) + delta.x),
+      y: roundCoord((foothold.transform.Position.y ?? 0) + delta.y),
+      z: foothold.transform.Position.z ?? 0,
+    },
+    firstEdgeWorldBefore: foothold.firstPoint ? pointWorld(foothold.firstPoint, foothold.worldPosition) : null,
+    firstEdgeWorldAfter: foothold.firstPoint
+      ? {
+          x: roundCoord(pointWorld(foothold.firstPoint, foothold.worldPosition).x + delta.x),
+          y: roundCoord(pointWorld(foothold.firstPoint, foothold.worldPosition).y + delta.y),
+        }
+      : null,
+  }));
+
+  const output = {
+    action: "move-line-origin",
+    applied: false,
+    errors,
+    lineName: context.line.name,
+    linePath: context.line.path,
+    sorted: sorted.map(summarizeFoothold),
+    startFoothold: first.name,
+    startEdgeWorldBefore: startWorld,
+    startEdgeWorldAfter: {
+      x: roundCoord(startWorld.x + delta.x),
+      y: roundCoord(startWorld.y + delta.y),
+    },
+    targetPivotWorld: targetWorld,
+    delta,
+    moveTarget: {
+      type: rawMoveTarget.type,
+      name: rawMoveTarget.name,
+      path: rawMoveTarget.path,
+      linePivotWorld: rawMoveTarget.linePivotWorld,
+      positionBefore: rawMoveTarget.positionBefore,
+      positionAfter: rawMoveTarget.positionAfter,
+    },
+    affectedFootholds,
+    changes: [
+      {
+        lineName: context.line.name,
+        delta,
+        startFoothold: first.name,
+        startEdgeWorldBefore: startWorld,
+        startEdgeWorldAfter: {
+          x: roundCoord(startWorld.x + delta.x),
+          y: roundCoord(startWorld.y + delta.y),
+        },
+        targetPivotWorld: targetWorld,
+      },
+    ],
+  };
+  Object.defineProperty(output, "rawMoveTarget", {
+    value: rawMoveTarget,
     enumerable: false,
   });
   return output;
@@ -472,8 +614,4 @@ function nearZero(value) {
 
 function roundCoord(value) {
   return Math.round(value * 1000000) / 1000000;
-}
-
-function timestamp() {
-  return new Date().toISOString().replace(/[:.]/g, "-");
 }

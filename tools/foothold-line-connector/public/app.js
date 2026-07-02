@@ -15,12 +15,16 @@ const els = {
   save: document.querySelector("#saveButton"),
   dryRun: document.querySelector("#dryRunButton"),
   connect: document.querySelector("#connectButton"),
+  originDryRun: document.querySelector("#originDryRunButton"),
+  originMove: document.querySelector("#originMoveButton"),
 };
 
 els.refresh.addEventListener("click", () => refreshAll());
 els.save.addEventListener("click", () => saveCurrentMap());
 els.dryRun.addEventListener("click", () => runPlan(false));
 els.connect.addEventListener("click", () => runPlan(true));
+els.originDryRun.addEventListener("click", () => runOriginMove(false));
+els.originMove.addEventListener("click", () => runOriginMove(true));
 els.map.addEventListener("change", () => {
   state.map = els.map.value;
   loadRooms();
@@ -141,9 +145,35 @@ async function runPlan(apply) {
   }
 }
 
+async function runOriginMove(apply) {
+  if (!state.map) return appendLog("Map is not selected");
+  if (!state.roomPath) return appendLog("Room is not selected");
+  if (!state.linePath) return appendLog("Line parent is not selected");
+
+  const endpoint = apply ? "/api/move-line-origin" : "/api/move-line-origin/dry-run";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ map: state.map, linePath: state.linePath }),
+    });
+    const plan = data.plan ?? data.result;
+    appendLog(apply ? "Origin move result" : "Origin Dry Run result");
+    renderPlan(plan);
+    if (plan.message) appendLog(plan.message);
+    if (data.refresh) appendLog(`Maker refresh: ${JSON.stringify(data.refresh)}`);
+    if (plan.backupPath) appendLog(`Backup: ${plan.backupPath}`);
+  } catch (error) {
+    appendLog(`Failed: ${error.message}`);
+  }
+}
+
 function renderPlan(plan) {
   if (plan.errors?.length) {
     for (const error of plan.errors) appendLog(`Error: ${error}`);
+    return;
+  }
+  if (plan.action === "move-line-origin") {
+    renderOriginPlan(plan);
     return;
   }
   appendLog("Sorted order:");
@@ -156,6 +186,19 @@ function renderPlan(plan) {
   for (const change of plan.changes) {
     appendLog(`- ${change.toName}: move (${fmt(change.delta.x)}, ${fmt(change.delta.y)}) so first edge (${fmt(change.toFirstWorldBefore.x)}, ${fmt(change.toFirstWorldBefore.y)}) matches ${change.fromName} rear (${fmt(change.fromRearWorld.x)}, ${fmt(change.fromRearWorld.y)})`);
     appendLog(`  position: (${fmt(change.toPositionBefore.x)}, ${fmt(change.toPositionBefore.y)}, ${fmt(change.toPositionBefore.z)}) -> (${fmt(change.toPositionAfter.x)}, ${fmt(change.toPositionAfter.y)}, ${fmt(change.toPositionAfter.z)})`);
+  }
+}
+
+function renderOriginPlan(plan) {
+  appendLog(`Line: ${plan.lineName}`);
+  appendLog(`Start foothold: ${plan.startFoothold}`);
+  appendLog(`Parent pivot target: (${fmt(plan.targetPivotWorld.x)}, ${fmt(plan.targetPivotWorld.y)})`);
+  appendLog(`Start edge: (${fmt(plan.startEdgeWorldBefore.x)}, ${fmt(plan.startEdgeWorldBefore.y)}) -> (${fmt(plan.startEdgeWorldAfter.x)}, ${fmt(plan.startEdgeWorldAfter.y)})`);
+  appendLog(`Move delta: (${fmt(plan.delta.x)}, ${fmt(plan.delta.y)})`);
+  appendLog(`Move target: ${plan.moveTarget.type}`);
+  appendLog(`Affected footholds: ${plan.affectedFootholds.length}`);
+  for (const foothold of plan.affectedFootholds) {
+    appendLog(`- ${foothold.name}: first edge (${fmt(foothold.firstEdgeWorldBefore.x)}, ${fmt(foothold.firstEdgeWorldBefore.y)}) -> (${fmt(foothold.firstEdgeWorldAfter.x)}, ${fmt(foothold.firstEdgeWorldAfter.y)})`);
   }
 }
 

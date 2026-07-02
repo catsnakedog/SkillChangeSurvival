@@ -32,20 +32,12 @@ script BRSkillUIDatabase extends Logic
 	end
 
 	method Color GetSlotBaseColor(boolean occupied, number tier, boolean equipped)
-		-- Returns the square background tint for one UI slot.
+		-- Returns a stable square background tint; tier emphasis is carried by the frame.
 		if occupied ~= true then
 			return Color(0.055, 0.07, 0.1, 0.72)
 		end
 		if equipped == true then
 			return Color(0.09, 0.16, 0.14, 0.92)
-		end
-		local order = self:ClampTier(tier)
-		if order >= 4 then
-			return Color(0.18, 0.09, 0.25, 0.96)
-		elseif order == 3 then
-			return Color(0.2, 0.11, 0.08, 0.96)
-		elseif order == 2 then
-			return Color(0.18, 0.15, 0.06, 0.96)
 		end
 		return Color(0.08, 0.12, 0.18, 0.94)
 	end
@@ -69,17 +61,9 @@ script BRSkillUIDatabase extends Logic
 	end
 
 	method Color GetIconColor(number tier, boolean occupied)
-		-- Returns icon tint for occupied and empty slots.
+		-- Keeps icon tint neutral so chain emphasis reads through the frame.
 		if occupied ~= true then
 			return Color(1, 1, 1, 0)
-		end
-		local order = self:ClampTier(tier)
-		if order >= 4 then
-			return Color(1.0, 0.88, 1.0, 1.0)
-		elseif order == 3 then
-			return Color(1.0, 0.9, 0.72, 1.0)
-		elseif order == 2 then
-			return Color(1.0, 0.96, 0.62, 1.0)
 		end
 		return Color(1, 1, 1, 0.96)
 	end
@@ -129,6 +113,30 @@ script BRSkillUIDatabase extends Logic
 					IconRUID = field,
 					ByTier = { [1] = field, [2] = field, [3] = burst, [4] = burst },
 					LeadByTier = { [2] = field, [3] = burst, [4] = burst }
+				},
+				Unique = {
+					IconRUID = guard,
+					ByTier = { [1] = guard, [2] = guard, [3] = field, [4] = field }
+				},
+				UniqueHero = {
+					IconRUID = guard,
+					ByTier = { [1] = guard, [2] = guard, [3] = field, [4] = field }
+				},
+				UniqueStorm = {
+					IconRUID = shot,
+					ByTier = { [1] = shot, [2] = shot, [3] = burst, [4] = burst }
+				},
+				UniqueArcane = {
+					IconRUID = burst,
+					ByTier = { [1] = burst, [2] = burst, [3] = field, [4] = field }
+				},
+				Blink = {
+					IconRUID = slash,
+					ByTier = { [1] = slash, [2] = shot, [3] = burst, [4] = burst }
+				},
+				Nimbus = {
+					IconRUID = field,
+					ByTier = { [1] = field, [2] = field, [3] = shot, [4] = burst }
 				}
 			}
 			self:Log("icon db ready")
@@ -139,7 +147,7 @@ script BRSkillUIDatabase extends Logic
 	method string GetBaseSkillKey(string skillKey)
 		-- Normalizes tiered runtime keys back to their base catalog key.
 		local key = self:ReadString(skillKey, "Default")
-		key = string.gsub(key, "%d+$", "")
+		key = self:ReadString(string.match(key, "^(.-)%d*$"), key)
 		if key == "" or key == "-" then
 			return "Default"
 		end

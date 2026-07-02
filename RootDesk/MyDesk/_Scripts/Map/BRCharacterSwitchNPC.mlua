@@ -1,0 +1,141 @@
+@Component
+script BRCharacterSwitchNPC extends Component
+
+	property string InteractionKeyName = "C"
+
+	property number InteractionRange = 1.8
+
+	property boolean VerboseLog = true
+
+	property any inputKeyDownHandler = nil
+
+	method void OnBeginPlay()
+		-- Resets any stale serialized/runtime handle before hooking the local key on clients.
+		self.inputKeyDownHandler = nil
+		if self:IsClient() then
+			self:StartInput()
+		end
+	end
+
+	method void OnEndPlay()
+		-- Unhooks the local character-switch key when this NPC leaves play on clients.
+		if self:IsClient() then
+			self:DisconnectInput()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StartInput()
+		-- Starts client key input with guards so map refresh/re-enter does not double-connect.
+		if self.inputKeyDownHandler ~= nil then
+			self:Log("ready skipped reason=alreadyConnected")
+			return
+		end
+		if _InputService == nil then
+			self:Log("ready skipped reason=noInputService")
+			return
+		end
+		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnInteractionKeyDown)
+		if self.inputKeyDownHandler == nil then
+			self:Log("ready failed reason=connectReturnedNil")
+			return
+		end
+		self:Log("ready key=" .. self:GetInteractionKeyName() .. " range=" .. tostring(self:GetInteractionRange()))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnInteractionKeyDown(KeyDownEvent event)
+		-- Requests the next character only when the local player is near the NPC.
+		if self:IsInteractionKey(event) ~= true then
+			return
+		end
+		if self:IsLocalPlayerInRange() ~= true then
+			return
+		end
+		if _BRCharacterSystem == nil then
+			self:Log("switch skipped reason=noCharacterSystem")
+			return
+		end
+		_BRCharacterSystem:RequestCycleCharacter(self:GetNpcName())
+		self:Log("switch requested npc=" .. self:GetNpcName())
+	end
+
+	method boolean IsInteractionKey(KeyDownEvent event)
+		-- Checks the configured interaction key without serializing KeyboardKey enum values.
+		if event == nil then
+			return false
+		end
+		local keyName = self:GetInteractionKeyName()
+		if keyName == "C" then
+			return event.key == KeyboardKey.C
+		end
+		return event.key == KeyboardKey.C
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsLocalPlayerInRange()
+		-- Checks local player distance from this NPC using world-unit coordinates.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.TransformComponent == nil or self.Entity == nil or self.Entity.TransformComponent == nil then
+			return false
+		end
+		local playerPosition = localPlayer.TransformComponent.WorldPosition
+		local npcPosition = self.Entity.TransformComponent.WorldPosition
+		local dx = playerPosition.x - npcPosition.x
+		local dy = playerPosition.y - npcPosition.y
+		local range = self:GetInteractionRange()
+		return dx * dx + dy * dy <= range * range
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisconnectInput()
+		-- Disconnects the key handler if one was connected.
+		if self.inputKeyDownHandler ~= nil and _InputService ~= nil then
+			_InputService:DisconnectEvent(KeyDownEvent, self.inputKeyDownHandler)
+		end
+		self.inputKeyDownHandler = nil
+	end
+
+	method string GetNpcName()
+		-- Reads a stable source name for switch logs.
+		if self.Entity == nil then
+			return "CharacterSwitchNPC"
+		end
+		return self:ReadString(self.Entity.Name, "CharacterSwitchNPC")
+	end
+
+	method number GetInteractionRange()
+		-- Returns the interaction radius in world units.
+		return math.max(0.2, self:ReadNumber(self.InteractionRange, 1.8))
+	end
+
+	method string GetInteractionKeyName()
+		-- Returns the display/config name of the local interaction key.
+		return self:ReadString(self.InteractionKeyName, "C")
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes NPC switch logs when enabled.
+		if self.VerboseLog == true then
+			log("[BRCharacterNPC] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

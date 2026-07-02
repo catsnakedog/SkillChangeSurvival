@@ -19,6 +19,10 @@ script BRPortalConnectionSystem extends Logic
 
 	property boolean InstantCameraFollow = true
 
+	property boolean EnableCameraBoundsClamp = true
+
+	property number CameraBoundsPollSeconds = 0.2
+
 	property boolean BlockDeadPlayers = true
 
 	property boolean BlockDuringBattleLock = true
@@ -35,6 +39,10 @@ script BRPortalConnectionSystem extends Logic
 
 	property any inputKeyDownHandler = nil
 
+	property number cameraBoundsTimerId = 0
+
+	property string cameraBoundsLastKey = ""
+
 	property number clientNextPortalRequestAt = 0
 
 	method void OnBeginPlay()
@@ -50,6 +58,7 @@ script BRPortalConnectionSystem extends Logic
 		end
 		if self:IsClient() then
 			self:StartClientInput()
+			self:StartClientCameraBounds()
 		end
 	end
 
@@ -60,6 +69,7 @@ script BRPortalConnectionSystem extends Logic
 		end
 		if self:IsClient() then
 			self:StopClientInput()
+			self:StopClientCameraBounds()
 		end
 	end
 
@@ -167,12 +177,37 @@ script BRPortalConnectionSystem extends Logic
 	end
 
 	@ExecSpace("ClientOnly")
+	method void StartClientCameraBounds()
+		-- Starts syncing the local follow camera clamp from the current map bounds.
+		if self.cameraBoundsTimerId ~= nil and self.cameraBoundsTimerId > 0 then
+			return
+		end
+		self:ApplyLocalCameraBounds("client-ready")
+		self.cameraBoundsTimerId = _TimerService:SetTimerRepeat(function() self:ApplyLocalCameraBounds("tick") end, self:GetCameraBoundsPollSeconds(), 0.1)
+		log("[BRPortalConnection] camera bounds watcher ready interval=" .. tostring(self:GetCameraBoundsPollSeconds()))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StopClientCameraBounds()
+		-- Stops syncing the local follow camera clamp.
+		if self.cameraBoundsTimerId ~= nil and self.cameraBoundsTimerId > 0 then
+			_TimerService:ClearTimer(self.cameraBoundsTimerId)
+		end
+		self.cameraBoundsTimerId = 0
+		self.cameraBoundsLastKey = ""
+	end
+
+	@ExecSpace("ClientOnly")
 	method void OnPortalInteractKeyDown(KeyDownEvent event)
 		-- Sends a portal-use request when the local player presses the up arrow.
 		if event == nil or event.key ~= KeyboardKey.UpArrow then
 			return
 		end
 		if self.EnablePortalConnections ~= true or self.RequireInteractionKey ~= true then
+			return
+		end
+		if _BRCommonSkillSystem ~= nil and _BRCommonSkillSystem:IsLocalNimbusActive() == true then
+			log("[BRPortalConnection] interact blocked reason=nimbus")
 			return
 		end
 
@@ -273,10 +308,25 @@ script BRPortalConnectionSystem extends Logic
 		if now < self:ReadNumber(self._T.cooldownUntil[userId], 0) then
 			return false
 		end
+		if self:IsNimbusPortalLocked(playerEntity) == true then
+			return false
+		end
 		if self:IsBattlePortalLocked(mapName, playerEntity) == true then
 			return false
 		end
 		return true
+	end
+
+	method boolean IsNimbusPortalLocked(Entity playerEntity)
+		-- Blocks portal movement while the user is riding the non-combat nimbus skill.
+		if _BRCommonSkillSystem == nil or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
+		end
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		if userId == "" then
+			return false
+		end
+		return _BRCommonSkillSystem:IsNimbusActiveForUser(userId) == true
 	end
 
 	method any FindPortalLinkForPlayer(any graph, Entity playerEntity)
@@ -400,6 +450,103 @@ script BRPortalConnectionSystem extends Logic
 		log("[BRPortalConnection] camera instant reason=" .. self:ReadString(reason, ""))
 	end
 
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalCameraBounds(string reason)
+		-- Copies the current map bounds to the local player camera as a center-coordinate clamp.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.CameraComponent == nil then
+			return
+		end
+
+		local camera = localPlayer.CameraComponent
+		if self.EnableCameraBoundsClamp ~= true then
+			self:DisableLocalCameraBounds(camera, "disabled", reason)
+			return
+		end
+
+		local mapEntity = self:GetLocalPlayerMapEntity(localPlayer)
+		local mapName = self:GetLocalPlayerMapName(localPlayer, mapEntity)
+		if mapEntity == nil or mapEntity.MapComponent == nil then
+			self:DisableLocalCameraBounds(camera, mapName, "mapMissing")
+			return
+		end
+
+		if mapEntity.MapComponent.UseCustomBound ~= true then
+			self:DisableLocalCameraBounds(camera, mapName, "mapHasNoCustomBound")
+			return
+		end
+
+		local leftBottom = mapEntity.MapComponent.LeftBottom
+		local rightTop = mapEntity.MapComponent.RightTop
+		if leftBottom == nil or rightTop == nil then
+			self:DisableLocalCameraBounds(camera, mapName, "boundMissing")
+			return
+		end
+		if rightTop.x <= leftBottom.x or rightTop.y <= leftBottom.y then
+			self:DisableLocalCameraBounds(camera, mapName, "boundInvalid")
+			return
+		end
+
+		camera.ConfineCameraArea = false
+		camera.UseCustomBound = true
+		camera.LeftBottom = Vector2(leftBottom.x, leftBottom.y)
+		camera.RightTop = Vector2(rightTop.x, rightTop.y)
+
+		local key = "bound:" .. mapName .. ":" .. tostring(leftBottom.x) .. "," .. tostring(leftBottom.y) .. "," .. tostring(rightTop.x) .. "," .. tostring(rightTop.y)
+		if self.cameraBoundsLastKey ~= key then
+			self.cameraBoundsLastKey = key
+			log("[BRPortalConnection] camera bounds centerClamp map=" .. mapName
+				.. " bounds=(" .. tostring(leftBottom.x) .. "," .. tostring(leftBottom.y) .. ")-(" .. tostring(rightTop.x) .. "," .. tostring(rightTop.y) .. ")"
+				.. " reason=" .. self:ReadString(reason, ""))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisableLocalCameraBounds(CameraComponent camera, string mapName, string reason)
+		-- Clears local custom camera bounds when the active map does not expose a map-part range.
+		if camera == nil then
+			return
+		end
+
+		camera.UseCustomBound = false
+		camera.ConfineCameraArea = true
+
+		local safeMapName = self:ReadString(mapName, "")
+		local safeReason = self:ReadString(reason, "")
+		local key = "disabled:" .. safeMapName .. ":" .. safeReason
+		if self.cameraBoundsLastKey ~= key then
+			self.cameraBoundsLastKey = key
+			log("[BRPortalConnection] camera bounds disabled map=" .. safeMapName .. " reason=" .. safeReason)
+		end
+	end
+
+	method Entity GetLocalPlayerMapEntity(Entity playerEntity)
+		-- Resolves the map entity that currently owns the local player.
+		if playerEntity == nil then
+			return nil
+		end
+		if playerEntity.CurrentMap ~= nil then
+			return playerEntity.CurrentMap
+		end
+
+		local mapName = self:ReadString(playerEntity.CurrentMapName, "")
+		if mapName == "" then
+			return nil
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. mapName)
+	end
+
+	method string GetLocalPlayerMapName(Entity playerEntity, Entity mapEntity)
+		-- Reads a stable map name for camera-bound logs and cache keys.
+		if mapEntity ~= nil then
+			return self:ReadString(mapEntity.Name, "")
+		end
+		if playerEntity ~= nil then
+			return self:ReadString(playerEntity.CurrentMapName, "")
+		end
+		return ""
+	end
+
 	method boolean IsBattlePortalLocked(string mapName, Entity playerEntity)
 		-- Checks optional battle logic for combat-time portal blocking.
 		if self.BlockDuringBattleLock ~= true then
@@ -456,29 +603,35 @@ script BRPortalConnectionSystem extends Logic
 			return "nearest=none"
 		end
 
-		local bestLink = nil
 		local bestPortalPosition = nil
 		local bestDistance = nil
+		local bestRoomName = ""
+		local bestDirection = ""
 		for index, link in ipairs(graph.PortalLinks) do
-			local portal = self:GetPhysicalPortal(graph.MapName, root, link.FromRoomName, link.FromDirection)
-			if portal ~= nil and portal.Visible == true then
-				local portalPosition = self:GetEntityPosition2(portal)
-				local dx = playerPosition.x - portalPosition.x
-				local dy = playerPosition.y - portalPosition.y
-				local distance = math.sqrt(dx * dx + dy * dy)
-				if bestDistance == nil or distance < bestDistance then
-					bestDistance = distance
-					bestLink = link
-					bestPortalPosition = portalPosition
+			if link ~= nil then
+				local fromRoomName = self:ReadString(link.FromRoomName, "")
+				local fromDirection = self:ReadString(link.FromDirection, "")
+				local portal = self:GetPhysicalPortal(graph.MapName, root, fromRoomName, fromDirection)
+				if portal ~= nil and portal.Visible == true then
+					local portalPosition = self:GetEntityPosition2(portal)
+					local dx = playerPosition.x - portalPosition.x
+					local dy = playerPosition.y - portalPosition.y
+					local distance = math.sqrt(dx * dx + dy * dy)
+					if bestDistance == nil or distance < bestDistance then
+						bestDistance = distance
+						bestPortalPosition = portalPosition
+						bestRoomName = fromRoomName
+						bestDirection = fromDirection
+					end
 				end
 			end
 		end
 
-		if bestLink == nil or bestPortalPosition == nil then
+		if bestPortalPosition == nil then
 			return "nearest=none"
 		end
 
-		return "nearest=" .. self:ReadString(bestLink.FromRoomName, "") .. ":" .. self:ReadString(bestLink.FromDirection, "")
+		return "nearest=" .. bestRoomName .. ":" .. bestDirection
 			.. " dist=" .. tostring(bestDistance)
 			.. " portal=(" .. tostring(bestPortalPosition.x) .. "," .. tostring(bestPortalPosition.y) .. ")"
 	end
@@ -612,18 +765,25 @@ script BRPortalConnectionSystem extends Logic
 			return false
 		end
 
-		local blockedLink = nil
+		local blockedLink = {}
+		local hasBlockedLink = false
+		local mapName = ""
 		if graph ~= nil and graph.PortalLinkByKey ~= nil then
-			blockedLink = graph.PortalLinkByKey[blockedKey]
+			mapName = self:ReadString(graph.MapName, "")
+			local candidateLink = graph.PortalLinkByKey[blockedKey]
+			if candidateLink ~= nil then
+				blockedLink = candidateLink
+				hasBlockedLink = true
+			end
 		end
-		if blockedLink == nil then
+		if hasBlockedLink == false then
 			self._T.arrivalPortalKeyByUser[safeUserId] = nil
 			return false
 		end
 
 		local blockedRoomName = self:ReadString(blockedLink["FromRoomName"], "")
 		local blockedDirection = self:ReadString(blockedLink["FromDirection"], "")
-		local blockedPortal = self:GetPhysicalPortal(graph.MapName, root, blockedRoomName, blockedDirection)
+		local blockedPortal = self:GetPhysicalPortal(mapName, root, blockedRoomName, blockedDirection)
 		if self:IsPlayerInsidePortal(playerPosition, blockedPortal, blockedDirection) == true then
 			return true
 		end
@@ -733,6 +893,11 @@ script BRPortalConnectionSystem extends Logic
 	method number GetClientRequestCooldownSeconds()
 		-- Returns the local key-repeat throttle for portal interaction requests.
 		return math.max(0.03, self:ReadNumber(self.ClientRequestCooldownSeconds, 0.15))
+	end
+
+	method number GetCameraBoundsPollSeconds()
+		-- Returns the client camera-bound sync interval.
+		return math.max(0.05, self:ReadNumber(self.CameraBoundsPollSeconds, 0.2))
 	end
 
 	method number Now()

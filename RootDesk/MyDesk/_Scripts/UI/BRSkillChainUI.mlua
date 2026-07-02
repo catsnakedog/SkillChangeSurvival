@@ -65,15 +65,34 @@ script BRSkillChainUI extends Component
 
 	property number dragGroupOrderBefore = -1000
 
+	property boolean EnableBattleHudLayout = true
+
+	property boolean ShowBattleHudStatus = true
+
+	property string HudTextTemplatePath = "/ui/BossTimerGroup/TimerPanel/LabelText"
+
+	property number HudPanelWidth = 940
+
+	property number HudPanelHeight = 112
+
+	property number HudPanelY = 32
+
+	property number HudSlotSize = 54
+
+	property number HudIconSize = 42
+
+	property number HudSlotSpacing = 58
+
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
 		self:EnsureRuntime()
-		self:ApplyAttachedInventoryLayout()
 		self:ApplySlotOnlyLayout()
+		self:EnsureBattleHudLayout()
 		self:ConnectHandlers()
 		self:SetDragGhostActive(false)
 		self:Refresh()
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds(), 0.1)
+		self:Log("slot highlight mode=frame")
 		self:Log("ready chainRoot=" .. self:GetChainRootPath() .. " inventoryRoot=" .. self:GetInventoryRootPath())
 	end
 
@@ -97,6 +116,7 @@ script BRSkillChainUI extends Component
 
 		self:SetChainPanelActive(true)
 		self:SetInventoryPanelActive(true)
+		self:RefreshBattleHud(localPlayer)
 		local now = _UtilLogic.ElapsedSeconds
 		if _BRSkillSystem ~= nil and now >= self.nextRequestAt then
 			self.nextRequestAt = now + self:GetRequestSeconds()
@@ -104,6 +124,7 @@ script BRSkillChainUI extends Component
 		end
 
 		if _BRSkillSystem == nil then
+			self:RefreshCommonSkillSlots()
 			self:RenderChain()
 			self:RenderBag()
 			return
@@ -111,6 +132,7 @@ script BRSkillChainUI extends Component
 
 		local version = _BRSkillSystem:GetLocalSnapshotVersion()
 		if version == self.lastSnapshotVersion then
+			self:RefreshCommonSkillSlots()
 			return
 		end
 		self.lastSnapshotVersion = version
@@ -119,6 +141,7 @@ script BRSkillChainUI extends Component
 		self._T.bagParts = self:ParseBagText(_BRSkillSystem:GetLocalBagText())
 		self:RenderChain()
 		self:RenderBag()
+		self:RefreshCommonSkillSlots()
 	end
 
 	@ExecSpace("ClientOnly")
@@ -519,6 +542,11 @@ script BRSkillChainUI extends Component
 			return
 		end
 
+		if targetSlot > 0 and self:IsChainSlotLocked(targetSlot) == true then
+			self:Log("drop locked slot=" .. tostring(targetSlot) .. " instance=" .. tostring(instanceId))
+			return
+		end
+
 		if targetSlot > 0 and sourceSlot > 0 then
 			if sourceSlot == targetSlot then
 				self:Log("chain click sourceSlot=" .. tostring(sourceSlot) .. " instance=" .. tostring(instanceId))
@@ -646,6 +674,13 @@ script BRSkillChainUI extends Component
 	method void RenderChainSlotVisual(number slotIndex, any record)
 		-- Applies icon, base tint, and tier frame to one chain slot.
 		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		local basePath = "Panel/Chain/Slot_" .. tostring(safeSlotIndex)
+		if self:IsLockedChainSlotRecord(record) == true then
+			self:SetSkillSlotVisual("CHAIN", basePath, "Default", 0, false, false, false)
+			self:SetVisualSpriteColor("CHAIN", basePath, Color(0.035, 0.04, 0.055, 0.82))
+			self:SetSlotFrameColor("CHAIN", basePath, Color(0.78, 0.82, 0.9, 0.62))
+			return
+		end
 		local occupied = record ~= nil and self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0
 		local isLead = false
 		local displayTier = 1
@@ -657,7 +692,7 @@ script BRSkillChainUI extends Component
 		else
 			displayTier = 0
 		end
-		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Slot_" .. tostring(safeSlotIndex), skillKey, displayTier, occupied, isLead, false)
+		self:SetSkillSlotVisual("CHAIN", basePath, skillKey, displayTier, occupied, isLead, false)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -834,6 +869,22 @@ script BRSkillChainUI extends Component
 		return self:GetBaseSkillKey(self:ReadString(self:ReadRecordValue(record, "SkillKey"), self:InferSkillKey(self:ReadRecordValue(record, "Short"), self:ReadRecordValue(record, "DisplayName"))))
 	end
 
+	method boolean IsLockedChainSlotRecord(any record)
+		-- Returns true for server-provided locked chain slot placeholders.
+		if record == nil then
+			return false
+		end
+		local tier = math.floor(self:ReadNumber(self:ReadRecordValue(record, "Tier"), 0))
+		local skillKey = self:ReadString(self:ReadRecordValue(record, "SkillKey"), "")
+		local displayName = self:ReadString(self:ReadRecordValue(record, "DisplayName"), "")
+		return tier < 0 or skillKey == "LOCKED" or displayName == "LOCKED"
+	end
+
+	method boolean IsChainSlotLocked(number slotIndex)
+		-- Checks whether the local snapshot marks one chain slot as locked.
+		return self:IsLockedChainSlotRecord(self:GetChainSlot(slotIndex))
+	end
+
 	method string InferSkillKey(any shortText, any displayName)
 		-- Infers a skill key for old snapshots that did not include SkillKey.
 		local short = self:ReadString(shortText, "")
@@ -857,7 +908,7 @@ script BRSkillChainUI extends Component
 	method string GetBaseSkillKey(string skillKey)
 		-- Normalizes tiered runtime keys back to their base catalog key.
 		local key = self:ReadString(skillKey, "Default")
-		key = string.gsub(key, "%d+$", "")
+		key = self:ReadString(string.match(key, "^(.-)%d*$"), key)
 		if key == "" or key == "-" then
 			return "Default"
 		end
@@ -1035,6 +1086,10 @@ script BRSkillChainUI extends Component
 		if safeInstanceId <= 0 or safeSlot <= 0 then
 			return
 		end
+		if self:IsChainSlotLocked(safeSlot) == true then
+			self:Log("insert skipped instance=" .. tostring(safeInstanceId) .. " targetSlot=" .. tostring(safeSlot) .. " reason=locked")
+			return
+		end
 		_BRSkillSystem:RequestEquipPartToChainSlot(self:GetLocalUserId(), safeInstanceId, safeSlot)
 		self:ApplyLocalEquipPartToSlot(safeInstanceId, safeSlot)
 		self.nextRequestAt = 0
@@ -1080,6 +1135,9 @@ script BRSkillChainUI extends Component
 		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
 		local safeSlot = math.floor(self:ReadNumber(targetSlot, 0))
 		if safeInstanceId <= 0 or safeSlot <= 0 then
+			return
+		end
+		if self:IsChainSlotLocked(safeSlot) == true then
 			return
 		end
 
@@ -1220,6 +1278,9 @@ script BRSkillChainUI extends Component
 		if fromIndex <= 0 or toIndex <= 0 or fromIndex == toIndex then
 			return
 		end
+		if self:IsChainSlotLocked(fromIndex) == true or self:IsChainSlotLocked(toIndex) == true then
+			return
+		end
 		if self._T.chainSlots == nil then
 			self._T.chainSlots = {}
 		end
@@ -1246,7 +1307,7 @@ script BRSkillChainUI extends Component
 			if slots ~= nil then
 				record = slots[slotIndex]
 			end
-			if record == nil or self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) <= 0 then
+			if self:IsLockedChainSlotRecord(record) ~= true and (record == nil or self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) <= 0) then
 				return slotIndex
 			end
 		end
@@ -1544,6 +1605,309 @@ script BRSkillChainUI extends Component
 	end
 
 	@ExecSpace("ClientOnly")
+	method void EnsureBattleHudLayout()
+		-- Rebuilds the skill chain panel as a compact bottom battle HUD.
+		if self.EnableBattleHudLayout ~= true then
+			return
+		end
+		self:EnsureCommonSkillSlots()
+		self:ApplyBattleHudPanelLayout()
+		self:ApplyBattleHudSlotLayout()
+		self:RefreshCommonSkillSlots()
+		self:RefreshBattleHud(_UserService.LocalPlayer)
+		self:ApplyAttachedInventoryLayout()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyBattleHudPanelLayout()
+		local panel = self:GetChainEntity("Panel")
+		if panel == nil then
+			return
+		end
+		if panel.UITransformComponent ~= nil then
+			panel.UITransformComponent.AnchorsMin = Vector2(0.5, 0)
+			panel.UITransformComponent.AnchorsMax = Vector2(0.5, 0)
+			panel.UITransformComponent.Pivot = Vector2(0.5, 0)
+			panel.UITransformComponent.RectSize = Vector2(self:GetHudPanelWidth(), self:GetHudPanelHeight())
+			panel.UITransformComponent.anchoredPosition = Vector2(0, self:GetHudPanelY())
+		end
+
+		local chain = self:GetChainEntity("Panel/Chain")
+		if chain ~= nil and chain.UITransformComponent ~= nil then
+			chain.UITransformComponent.AnchorsMin = Vector2(0.5, 0.5)
+			chain.UITransformComponent.AnchorsMax = Vector2(0.5, 0.5)
+			chain.UITransformComponent.Pivot = Vector2(0.5, 0.5)
+			chain.UITransformComponent.RectSize = Vector2(560, 64)
+			chain.UITransformComponent.anchoredPosition = Vector2(250, -2)
+		end
+
+		self:SetChainEntityEnabled("Panel/Bg", true)
+		self:SetVisualSpriteColor("CHAIN", "Panel/Bg", Color(0.025, 0.035, 0.055, 0.88))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyBattleHudSlotLayout()
+		local size = self:GetHudSlotSize()
+		local spacing = self:GetHudSlotSpacing()
+		local startX = -128
+		for slotIndex = 1, self:GetChainSlotCount() do
+			local x = startX + (slotIndex - 1) * spacing
+			self:ApplyHudSlotLayout("Panel/Chain/Slot_" .. tostring(slotIndex), x, 0, size)
+		end
+
+		local commonStartX = startX - spacing * 3 - 18
+		for index = 1, self:GetCommonSkillSlotCount() do
+			local x = commonStartX + (index - 1) * spacing
+			self:ApplyHudSlotLayout("Panel/Chain/Common_" .. tostring(index), x, 0, size)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EnsureCommonSkillSlots()
+		local chain = self:GetChainEntity("Panel/Chain")
+		local template = self:GetChainEntity("Panel/Chain/Slot_1")
+		if chain == nil or template == nil then
+			return
+		end
+
+		for index = 1, self:GetCommonSkillSlotCount() do
+			local name = "Common_" .. tostring(index)
+			local slot = chain:GetChildByName(name, false)
+			if slot == nil then
+				slot = template:Clone(name)
+				if slot ~= nil then
+					slot:AttachTo(chain)
+				end
+			end
+			if slot ~= nil then
+				self:SetChainTextByPath("Panel/Chain/" .. name .. "/Label", "")
+				self:SetChainTextByPath("Panel/Chain/" .. name .. "/Tier", "")
+				self:SetChainEntityEnabled("Panel/Chain/" .. name .. "/Label", false)
+				self:SetChainEntityEnabled("Panel/Chain/" .. name .. "/Tier", false)
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyHudSlotLayout(string relativePath, number x, number y, number size)
+		local path = self:ReadString(relativePath, "")
+		local slot = self:GetChainEntity(path)
+		if slot == nil then
+			return
+		end
+		local safeSize = math.max(24, self:ReadNumber(size, self:GetHudSlotSize()))
+		self:ApplyHudRect(slot, x, y, safeSize, safeSize, Vector2(0.5, 0.5))
+
+		local icon = self:GetChainEntity(path .. "/Icon")
+		if icon ~= nil then
+			local iconSize = self:GetHudIconSize()
+			self:ApplyHudRect(icon, 0, 0, iconSize, iconSize, Vector2(0.5, 0.5))
+		end
+
+		self:ApplyHudFrame(path, safeSize)
+		local touch = self:GetChainEntity(path .. "/Touch")
+		if touch ~= nil then
+			self:ApplyHudRect(touch, 0, 0, safeSize, safeSize, Vector2(0.5, 0.5))
+		end
+		self:SetChainEntityEnabled(path .. "/Label", false)
+		self:SetChainEntityEnabled(path .. "/Tier", false)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyHudFrame(string basePath, number size)
+		local safeSize = math.max(24, self:ReadNumber(size, self:GetHudSlotSize()))
+		local thickness = 3
+		self:ApplyHudRect(self:GetChainEntity(basePath .. "/FrameTop"), 0, safeSize * 0.5 - thickness * 0.5, safeSize, thickness, Vector2(0.5, 0.5))
+		self:ApplyHudRect(self:GetChainEntity(basePath .. "/FrameBottom"), 0, -safeSize * 0.5 + thickness * 0.5, safeSize, thickness, Vector2(0.5, 0.5))
+		self:ApplyHudRect(self:GetChainEntity(basePath .. "/FrameLeft"), -safeSize * 0.5 + thickness * 0.5, 0, thickness, safeSize, Vector2(0.5, 0.5))
+		self:ApplyHudRect(self:GetChainEntity(basePath .. "/FrameRight"), safeSize * 0.5 - thickness * 0.5, 0, thickness, safeSize, Vector2(0.5, 0.5))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyHudRect(Entity entity, number x, number y, number width, number height, Vector2 pivot)
+		if entity == nil or entity.UITransformComponent == nil then
+			return
+		end
+		entity.UITransformComponent.AnchorsMin = Vector2(0.5, 0.5)
+		entity.UITransformComponent.AnchorsMax = Vector2(0.5, 0.5)
+		entity.UITransformComponent.Pivot = pivot
+		entity.UITransformComponent.RectSize = Vector2(math.max(1, self:ReadNumber(width, 1)), math.max(1, self:ReadNumber(height, 1)))
+		entity.UITransformComponent.anchoredPosition = Vector2(self:ReadNumber(x, 0), self:ReadNumber(y, 0))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshCommonSkillSlots()
+		if self.EnableBattleHudLayout ~= true then
+			return
+		end
+		local uniqueSkillKey = "Unique"
+		if _BRCharacterSystem ~= nil then
+			uniqueSkillKey = _BRCharacterSystem:GetLocalUniqueSkillKey()
+		end
+		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Common_1", uniqueSkillKey, 1, true, false, false)
+		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Common_2", "Blink", 1, true, false, false)
+		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Common_3", "Nimbus", 1, true, false, false)
+		if _BRCommonSkillSystem ~= nil and _BRCommonSkillSystem:IsLocalNimbusActive() == true then
+			self:SetSlotFrameColor("CHAIN", "Panel/Chain/Common_3", Color(0.42, 0.95, 1.0, 1.0))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshBattleHud(Entity localPlayer)
+		if self.EnableBattleHudLayout ~= true or self.ShowBattleHudStatus ~= true then
+			return
+		end
+		self:EnsureHudGauge("Hp", -246, 18, 212, 10, Color(0.94, 0.18, 0.3, 1))
+		self:EnsureHudGauge("Exp", -246, -15, 212, 8, Color(0.98, 0.86, 0.18, 1))
+		self:EnsureBattleHudText()
+
+		local level = 1
+		local exp = 0
+		local expMax = 1
+		if _BRSkillSystem ~= nil then
+			level = math.max(1, math.floor(self:ReadNumber(_BRSkillSystem:GetLocalSkillLevel(), 1)))
+			exp = math.max(0, math.floor(self:ReadNumber(_BRSkillSystem:GetLocalSkillExperience(), 0)))
+			expMax = math.max(1, math.floor(self:ReadNumber(_BRSkillSystem:GetLocalRequiredExperience(), 1)))
+		end
+
+		local hp = 0
+		local maxHp = 1
+		if localPlayer ~= nil and localPlayer.PlayerComponent ~= nil then
+			hp = math.max(0, math.floor(self:ReadNumber(localPlayer.PlayerComponent.Hp, 0)))
+			maxHp = math.max(1, math.floor(self:ReadNumber(localPlayer.PlayerComponent.MaxHp, 1)))
+		end
+
+		self:SetHudText("HudLevelText", "Lv. " .. tostring(level), Color(1, 1, 1, 1))
+		self:SetHudText("HudHpValue", tostring(hp) .. "/" .. tostring(maxHp), Color(1, 1, 1, 1))
+		self:SetHudText("HudExpValue", tostring(exp) .. "/" .. tostring(expMax), Color(1, 1, 1, 1))
+		self:SetHudGaugeRatio("Hp", hp / maxHp)
+		self:SetHudGaugeRatio("Exp", exp / expMax)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EnsureBattleHudText()
+		self:EnsureHudText("HudLevelText", -392, 18, 90, 28, 20, Color(1, 1, 1, 1))
+		self:EnsureHudText("HudHpLabel", -288, 18, 32, 18, 12, Color(1, 1, 1, 1))
+		self:EnsureHudText("HudHpValue", -246, 18, 212, 16, 10, Color(1, 1, 1, 1))
+		self:EnsureHudText("HudExpLabel", -288, -15, 32, 18, 12, Color(1, 1, 1, 1))
+		self:EnsureHudText("HudExpValue", -246, -15, 212, 16, 10, Color(1, 1, 1, 1))
+		self:SetHudText("HudHpLabel", "HP", Color(1, 1, 1, 1))
+		self:SetHudText("HudExpLabel", "EXP", Color(1, 1, 1, 1))
+	end
+
+	@ExecSpace("ClientOnly")
+	method Entity EnsureHudText(string name, number x, number y, number width, number height, number fontSize, Color color)
+		local panel = self:GetChainEntity("Panel")
+		if panel == nil then
+			return nil
+		end
+		local safeName = self:ReadString(name, "")
+		local entity = panel:GetChildByName(safeName, false)
+		if entity == nil then
+			local template = _EntityService:GetEntityByPath(self:ReadString(self.HudTextTemplatePath, ""))
+			if template == nil then
+				template = self:GetChainEntity("Panel/Title")
+			end
+			if template == nil then
+				return nil
+			end
+			entity = template:Clone(safeName)
+			if entity ~= nil then
+				entity:AttachTo(panel)
+			end
+		end
+		if entity == nil then
+			return nil
+		end
+		entity.Enable = true
+		self:ApplyHudRect(entity, x, y, width, height, Vector2(0, 0.5))
+		if entity.SpriteGUIRendererComponent ~= nil then
+			entity.SpriteGUIRendererComponent.Enable = false
+			entity.SpriteGUIRendererComponent.RaycastTarget = false
+		end
+		if entity.TextComponent ~= nil then
+			entity.TextComponent.FontSize = math.max(8, math.floor(self:ReadNumber(fontSize, 12)))
+			entity.TextComponent.Alignment = TextAlignmentType.MiddleLeft
+			entity.TextComponent.FontColor = color
+			entity.TextComponent.Bold = true
+			entity.TextComponent.DropShadow = true
+		end
+		return entity
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EnsureHudGauge(string key, number x, number y, number width, number height, Color fillColor)
+		local panel = self:GetChainEntity("Panel")
+		local template = self:GetChainEntity("Panel/Chain/Slot_1/FrameTop")
+		if panel == nil or template == nil then
+			return
+		end
+
+		local safeKey = self:ReadString(key, "Gauge")
+		local back = panel:GetChildByName("Hud" .. safeKey .. "Back", false)
+		if back == nil then
+			back = template:Clone("Hud" .. safeKey .. "Back")
+			if back ~= nil then
+				back:AttachTo(panel)
+			end
+		end
+		local fill = panel:GetChildByName("Hud" .. safeKey .. "Fill", false)
+		if fill == nil then
+			fill = template:Clone("Hud" .. safeKey .. "Fill")
+			if fill ~= nil then
+				fill:AttachTo(panel)
+			end
+		end
+
+		if back ~= nil then
+			back.Enable = true
+			self:ApplyHudRect(back, x, y, width, height, Vector2(0, 0.5))
+			self:SetSpriteColor(back, Color(0.02, 0.025, 0.035, 0.95))
+			if back.SpriteGUIRendererComponent ~= nil then
+				back.SpriteGUIRendererComponent.RaycastTarget = false
+			end
+		end
+		if fill ~= nil then
+			fill.Enable = true
+			self:ApplyHudRect(fill, x, y, width, height, Vector2(0, 0.5))
+			self:SetSpriteColor(fill, fillColor)
+			if fill.SpriteGUIRendererComponent ~= nil then
+				fill.SpriteGUIRendererComponent.RaycastTarget = false
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetHudGaugeRatio(string key, number ratio)
+		local panel = self:GetChainEntity("Panel")
+		if panel == nil then
+			return
+		end
+		local safeKey = self:ReadString(key, "Gauge")
+		local back = panel:GetChildByName("Hud" .. safeKey .. "Back", false)
+		local fill = panel:GetChildByName("Hud" .. safeKey .. "Fill", false)
+		if back == nil or fill == nil or back.UITransformComponent == nil or fill.UITransformComponent == nil then
+			return
+		end
+		local safeRatio = math.max(0, math.min(1, self:ReadNumber(ratio, 0)))
+		local backSize = back.UITransformComponent.RectSize
+		fill.UITransformComponent.RectSize = Vector2(math.max(1, backSize.x * safeRatio), backSize.y)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetHudText(string name, string text, Color color)
+		local panel = self:GetChainEntity("Panel")
+		if panel == nil then
+			return
+		end
+		local entity = panel:GetChildByName(self:ReadString(name, ""), false)
+		if entity ~= nil and entity.TextComponent ~= nil then
+			entity.TextComponent.Text = self:ReadString(text, "")
+			entity.TextComponent.FontColor = color
+		end
+	end
+
+	@ExecSpace("ClientOnly")
 	method void SetChainEntityEnabled(string relativePath, boolean enabled)
 		-- Enables or disables an entity under the chain root.
 		local entity = self:GetChainEntity(relativePath)
@@ -1635,6 +1999,34 @@ script BRSkillChainUI extends Component
 			count = math.floor(self:ReadNumber(_BRSkillSystem:GetChainSlotCount(), count))
 		end
 		return math.max(1, count)
+	end
+
+	method number GetCommonSkillSlotCount()
+		return 3
+	end
+
+	method number GetHudPanelWidth()
+		return math.max(360, self:ReadNumber(self.HudPanelWidth, 940))
+	end
+
+	method number GetHudPanelHeight()
+		return math.max(64, self:ReadNumber(self.HudPanelHeight, 112))
+	end
+
+	method number GetHudPanelY()
+		return self:ReadNumber(self.HudPanelY, 32)
+	end
+
+	method number GetHudSlotSize()
+		return math.max(28, self:ReadNumber(self.HudSlotSize, 54))
+	end
+
+	method number GetHudIconSize()
+		return math.max(20, self:ReadNumber(self.HudIconSize, 42))
+	end
+
+	method number GetHudSlotSpacing()
+		return math.max(self:GetHudSlotSize(), self:ReadNumber(self.HudSlotSpacing, 58))
 	end
 
 	method number GetClickDragThreshold()

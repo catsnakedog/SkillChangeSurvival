@@ -9,6 +9,14 @@ script BRSkillSystem extends Logic
 
 	property number ChainSlotCount = 5
 
+	property number StartingSkillLevel = 1
+
+	property number BaseUnlockedChainSlots = 2
+
+	property number ChainSlotsPerLevel = 1
+
+	property number ExperiencePerLevel = 1
+
 	property integer MaxSkillTier = 4
 
 	property number BagSlotCount = 2
@@ -19,7 +27,19 @@ script BRSkillSystem extends Logic
 
 	property number ChainCastCooldownSeconds = 0.18
 
+	property number UniqueSkillCooldownSeconds = 1.4
+
 	property number SkillMovementSpeedRate = 0.45
+
+	property boolean EnablePlayerBoundsReturn = true
+
+	property number PlayerBoundsCheckSeconds = 0.08
+
+	property number PlayerBoundsPadding = 0.05
+
+	property number SafeFootholdYOffset = 0.04
+
+	property number SafeFootholdSearchDistance = 8
 
 	property number DefaultSkillAttackPower = 300
 
@@ -28,6 +48,10 @@ script BRSkillSystem extends Logic
 	property number DefaultCriticalDamageRate = 2.0
 
 	property number SkillTargetPadding = 0.35
+
+	property string TrainingDummyNameTokens = "BattleChainMonster,TrainingDummy,Monster"
+
+	property string PartBoxNameTokens = "SkillPartBox,LobbySkillPartBox,PartBox,SupplyBox,SupplyPoint"
 
 	property number DroppedPartSpawnYOffset = 0.35
 
@@ -69,6 +93,7 @@ script BRSkillSystem extends Logic
 		self:TickActiveProjectiles(delta)
 		self:TickActiveFields(delta)
 		self:TickStatuses()
+		self:TickPlayerBoundsReturn(delta)
 	end
 
 	method void EnsureRuntime()
@@ -99,6 +124,15 @@ script BRSkillSystem extends Logic
 		end
 		if self._T.chainRuntimeByUser == nil then
 			self._T.chainRuntimeByUser = {}
+		end
+		if self._T.uniqueRuntimeByUser == nil then
+			self._T.uniqueRuntimeByUser = {}
+		end
+		if self._T.lastSafeFootholdByUser == nil then
+			self._T.lastSafeFootholdByUser = {}
+		end
+		if self._T.playerBoundsCheckTimer == nil then
+			self._T.playerBoundsCheckTimer = 0
 		end
 		if self._T.activeCasts == nil then
 			self._T.activeCasts = {}
@@ -174,10 +208,10 @@ script BRSkillSystem extends Logic
 		self:AddSkillRuntimeDefinition(skills, "Burst", 2, "Burst II", 12, 20, { [3] = { "burstTriggerArea2" } })
 		self:AddSkillRuntimeDefinition(skills, "Burst", 3, "Burst III", 14, 22, { [2] = { "burstTriggerArea3" } })
 		self:AddSkillRuntimeDefinition(skills, "Burst", 4, "Burst IV", 16, 26, { [2] = { "burstTriggerArea4" }, [7] = { "burstEchoArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Dash", 1, "Dash", 9, 15, { [2] = { "dashDamageArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Dash", 2, "Dash II", 11, 17, { [2] = { "dashExtendedArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Dash", 3, "Dash III", 13, 19, { [1] = { "dashExtendedArea" }, [6] = { "dashReturnArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Dash", 4, "Dash IV", 15, 23, { [1] = { "dashBreakArea" }, [5] = { "dashExtendedArea" }, [9] = { "dashReturnArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Dash", 1, "Dash", 9, 15, { [0] = { "dashMoveAction" }, [2] = { "dashDamageArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Dash", 2, "Dash II", 11, 17, { [0] = { "dashMoveAction" }, [2] = { "dashExtendedArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Dash", 3, "Dash III", 13, 19, { [0] = { "dashLongMoveAction" }, [1] = { "dashExtendedArea" }, [6] = { "dashReturnArea" } })
+		self:AddSkillRuntimeDefinition(skills, "Dash", 4, "Dash IV", 15, 23, { [0] = { "dashLongMoveAction" }, [1] = { "dashBreakArea" }, [5] = { "dashExtendedArea" }, [9] = { "dashReturnArea" } })
 		self:AddSkillRuntimeDefinition(skills, "Guard", 1, "Guard", 8, 20, { [0] = { "guardBuffAction" } })
 		self:AddSkillRuntimeDefinition(skills, "Guard", 2, "Barrier", 10, 22, { [0] = { "guardBarrierAction" } })
 		self:AddSkillRuntimeDefinition(skills, "Guard", 3, "Fortress", 12, 24, { [0] = { "guardFortressAction" }, [6] = { "slashFollowEffect" } })
@@ -186,6 +220,9 @@ script BRSkillSystem extends Logic
 		self:AddSkillRuntimeDefinition(skills, "Field", 2, "Field II", 14, 26, { [5] = { "fieldCreateWideAction" } })
 		self:AddSkillRuntimeDefinition(skills, "Field", 3, "Field III", 16, 28, { [4] = { "fieldCreatePulseAction" } })
 		self:AddSkillRuntimeDefinition(skills, "Field", 4, "Field IV", 18, 32, { [3] = { "fieldCreateStormAction" }, [9] = { "fieldCreateWideAction" } })
+		self:AddSkillRuntimeDefinition(skills, "UniqueHero", 1, "Hero Unique", 18, 46, { [1] = { "uniqueHeroAdvance" }, [4] = { "uniqueHeroArea" }, [9] = { "slashFollowEffect" } })
+		self:AddSkillRuntimeDefinition(skills, "UniqueStorm", 1, "Storm Unique", 20, 48, { [2] = { "uniqueStormProjectile" }, [5] = { "uniqueStormProjectile" }, [8] = { "uniqueStormProjectile" } })
+		self:AddSkillRuntimeDefinition(skills, "UniqueArcane", 1, "Arcane Unique", 22, 52, { [2] = { "uniqueArcaneField" }, [8] = { "uniqueArcaneBurst" } })
 		return skills
 	end
 
@@ -315,6 +352,16 @@ script BRSkillSystem extends Logic
 			HitboxIds = { "dashBox" },
 			ActionIds = { "dashHit" }
 		}
+		events["dashMoveAction"] = {
+			EventId = "dashMoveAction",
+			Type = "action",
+			ActionIds = { "dashMove" }
+		}
+		events["dashLongMoveAction"] = {
+			EventId = "dashLongMoveAction",
+			Type = "action",
+			ActionIds = { "dashLongMove" }
+		}
 		events["dashExtendedArea"] = {
 			EventId = "dashExtendedArea",
 			Type = "area",
@@ -384,6 +431,43 @@ script BRSkillSystem extends Logic
 			HitboxIds = { "fieldHuge" },
 			ActionIds = { "fieldTier4TickHit" }
 		}
+		events["uniqueHeroAdvance"] = {
+			EventId = "uniqueHeroAdvance",
+			Type = "action",
+			ActionIds = { "heroUniqueMove" }
+		}
+		events["uniqueHeroArea"] = {
+			EventId = "uniqueHeroArea",
+			Type = "area",
+			DurationFrames = 5,
+			HitboxIds = { "dashWide", "slashWide" },
+			ActionIds = { "heroUniqueHit", "ds1stun" }
+		}
+		events["uniqueStormProjectile"] = {
+			EventId = "uniqueStormProjectile",
+			Type = "projectile",
+			ProjectileId = "uniqueStormProjectile",
+			DurationFrames = 30,
+			Speed = 10.5,
+			Range = 8.5,
+			Pierce = 2,
+			HitboxIds = { "projectileMedium" },
+			ActionIds = { "stormUniqueHit" }
+		}
+		events["uniqueArcaneField"] = {
+			EventId = "uniqueArcaneField",
+			Type = "field",
+			DurationFrames = 72,
+			HitboxIds = { "fieldWide" },
+			ActionIds = { "arcaneUniqueTick" }
+		}
+		events["uniqueArcaneBurst"] = {
+			EventId = "uniqueArcaneBurst",
+			Type = "area",
+			DurationFrames = 5,
+			HitboxIds = { "burstHuge" },
+			ActionIds = { "arcaneUniqueHit" }
+		}
 		return events
 	end
 
@@ -428,6 +512,8 @@ script BRSkillSystem extends Logic
 		actions["burstTier4Hit"] = { ActionId = "burstTier4Hit", Type = "damage", Coefficient = 60 }
 		actions["burstTrigger"] = { ActionId = "burstTrigger", Type = "trigger" }
 		actions["dashHit"] = { ActionId = "dashHit", Type = "damage", Coefficient = 80 }
+		actions["dashMove"] = { ActionId = "dashMove", Type = "move", Distance = 1.2, Vertical = 0 }
+		actions["dashLongMove"] = { ActionId = "dashLongMove", Type = "move", Distance = 1.75, Vertical = 0 }
 		actions["dashTier2Hit"] = { ActionId = "dashTier2Hit", Type = "damage", Coefficient = 85 }
 		actions["dashTier3Hit"] = { ActionId = "dashTier3Hit", Type = "damage", Coefficient = 75 }
 		actions["dashTier4Hit"] = { ActionId = "dashTier4Hit", Type = "damage", Coefficient = 70 }
@@ -439,6 +525,11 @@ script BRSkillSystem extends Logic
 		actions["fieldTier2TickHit"] = { ActionId = "fieldTier2TickHit", Type = "damage", Coefficient = 30 }
 		actions["fieldTier3TickHit"] = { ActionId = "fieldTier3TickHit", Type = "damage", Coefficient = 28 }
 		actions["fieldTier4TickHit"] = { ActionId = "fieldTier4TickHit", Type = "damage", Coefficient = 24 }
+		actions["heroUniqueMove"] = { ActionId = "heroUniqueMove", Type = "move", Distance = 1.8, Vertical = 0 }
+		actions["heroUniqueHit"] = { ActionId = "heroUniqueHit", Type = "damage", Coefficient = 150 }
+		actions["stormUniqueHit"] = { ActionId = "stormUniqueHit", Type = "damage", Coefficient = 85 }
+		actions["arcaneUniqueTick"] = { ActionId = "arcaneUniqueTick", Type = "damage", Coefficient = 32 }
+		actions["arcaneUniqueHit"] = { ActionId = "arcaneUniqueHit", Type = "damage", Coefficient = 130 }
 		return actions
 	end
 
@@ -456,6 +547,90 @@ script BRSkillSystem extends Logic
 			return
 		end
 		self:TryCastNextChainSkill(playerEntity)
+	end
+
+	@ExecSpace("Server")
+	method void RequestCastUniqueSkill(string requestUserId, string requestedSkillKey)
+		-- Casts the character-specific unique skill outside the skill-chain recipe.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("unique request skipped reason=noUser")
+			return
+		end
+		local playerEntity = self:FindPlayerEntityByUserId(userId)
+		if playerEntity == nil then
+			self:Log("unique request skipped user=" .. userId .. " reason=noPlayer")
+			return
+		end
+		local uniqueSkillKey = self:ResolveUniqueSkillKey(userId, requestedSkillKey)
+		self:TryCastUniqueSkill(playerEntity, uniqueSkillKey)
+	end
+
+	method boolean TryCastUniqueSkill(Entity casterEntity, string uniqueSkillKey)
+		-- Starts one character-specific unique skill with its own cooldown.
+		self:EnsureRuntime()
+		if casterEntity == nil or casterEntity.PlayerComponent == nil then
+			return false
+		end
+		if casterEntity.PlayerComponent:IsDead() == true or casterEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+
+		local userId = self:GetUserIdFromPlayer(casterEntity)
+		if userId == "" then
+			return false
+		end
+
+		local safeSkillKey = self:NormalizeUniqueSkillKey(uniqueSkillKey)
+		local skillDef = self._T.skillRuntimeCatalog[safeSkillKey]
+		if skillDef == nil then
+			self:Log("unique skipped user=" .. userId .. " skill=" .. safeSkillKey .. " reason=noDefinition")
+			return false
+		end
+
+		local runtime = self:GetUniqueRuntime(userId)
+		local now = self:Now()
+		if now < self:ReadNumber(runtime.NextCastAt, 0) then
+			return true
+		end
+
+		local step = {
+			SlotIndex = 0,
+			EndSlotIndex = 0,
+			Tier = 1,
+			Part = nil,
+			SkillDef = skillDef,
+			SkillKey = safeSkillKey,
+			Role = "unique",
+			EndPart = nil,
+			EndSkillDef = nil,
+			TriggerEndSlotIndex = 0,
+			EndTier = 0
+		}
+		self:StartSkillCast(casterEntity, userId, step, false, nil, nil)
+		runtime.NextCastAt = now + math.max(self:GetUniqueSkillCooldownSeconds(), self:GetSkillCooldownSeconds(skillDef))
+		self:Log("unique cast user=" .. userId .. " skill=" .. safeSkillKey .. " cooldown=" .. tostring(runtime.NextCastAt - now))
+		return true
+	end
+
+	method string ResolveUniqueSkillKey(string userId, string requestedSkillKey)
+		-- Resolves the unique skill from the server-side character state first.
+		if _BRCharacterSystem ~= nil then
+			local serverSkillKey = _BRCharacterSystem:GetServerUniqueSkillKey(userId)
+			if serverSkillKey ~= nil and serverSkillKey ~= "" then
+				return self:NormalizeUniqueSkillKey(serverSkillKey)
+			end
+		end
+		return self:NormalizeUniqueSkillKey(requestedSkillKey)
+	end
+
+	method string NormalizeUniqueSkillKey(string skillKey)
+		-- Keeps unique-skill requests inside the known character catalog.
+		local safeSkillKey = self:ReadString(skillKey, "UniqueHero")
+		if safeSkillKey == "UniqueHero" or safeSkillKey == "UniqueStorm" or safeSkillKey == "UniqueArcane" then
+			return safeSkillKey
+		end
+		return "UniqueHero"
 	end
 
 	method boolean TryCastNextChainSkill(Entity casterEntity)
@@ -540,9 +715,10 @@ script BRSkillSystem extends Logic
 		self:NormalizeUserState(state)
 		local consumedEndGroups = {}
 		local groups = {}
-		local activeGroup = nil
+		local activeGroup = {}
+		local hasActiveGroup = false
 		local signature = ""
-		local slotCount = self:GetChainSlotCount()
+		local slotCount = self:GetUnlockedChainSlotCount(state)
 		for slotIndex = 1, slotCount do
 			local instanceId = state.EquippedChainSlots[slotIndex]
 			local part = self:FindPartInState(state, instanceId)
@@ -551,11 +727,11 @@ script BRSkillSystem extends Logic
 			end
 			if part == nil then
 				signature = signature .. "-"
-				activeGroup = nil
+				hasActiveGroup = false
 			else
 				local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
 				signature = signature .. tostring(part.InstanceId) .. ":" .. skillKey
-				if activeGroup ~= nil and skillKey ~= "" and self:ReadString(activeGroup.SkillKey, "") == skillKey then
+				if hasActiveGroup == true and skillKey ~= "" and self:ReadString(activeGroup.SkillKey, "") == skillKey then
 					activeGroup.EndSlotIndex = slotIndex
 					activeGroup.Part = part
 					activeGroup.InstanceId = instanceId
@@ -569,6 +745,7 @@ script BRSkillSystem extends Logic
 						SkillKey = skillKey,
 						Tier = 1
 					}
+					hasActiveGroup = true
 					table.insert(groups, activeGroup)
 				end
 			end
@@ -710,6 +887,18 @@ script BRSkillSystem extends Logic
 			}
 		end
 		return self._T.chainRuntimeByUser[safeUserId]
+	end
+
+	method any GetUniqueRuntime(string userId)
+		-- Returns per-user unique-skill cooldown state.
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if self._T.uniqueRuntimeByUser[safeUserId] == nil then
+			self._T.uniqueRuntimeByUser[safeUserId] = {
+				NextCastAt = 0
+			}
+		end
+		return self._T.uniqueRuntimeByUser[safeUserId]
 	end
 
 	method void StartSkillCast(Entity casterEntity, string userId, any step, boolean isVirtualCaster, number fixedX, number fixedY)
@@ -985,11 +1174,20 @@ script BRSkillSystem extends Logic
 				projectile.X = self:ReadNumber(projectile.X, 0) + projectile.Direction * move
 				projectile.Travelled = self:ReadNumber(projectile.Travelled, 0) + math.abs(move)
 				projectile.VisualTimer = self:ReadNumber(projectile.VisualTimer, 0) + self:ReadNumber(delta, 0)
+				local clampedProjectilePosition = self:ClampContextPositionToMapBounds(projectile, Vector2(projectile.X, projectile.Y))
+				if math.abs(clampedProjectilePosition.x - projectile.X) > 0.001 or math.abs(clampedProjectilePosition.y - projectile.Y) > 0.001 then
+					projectile.X = clampedProjectilePosition.x
+					projectile.Y = clampedProjectilePosition.y
+					projectile.Remove = true
+					self:Log("projectile bound stop user=" .. self:ReadString(projectile.UserId, "") .. " event=" .. self:ReadString(projectile.EventId, ""))
+				end
 				if projectile.VisualTimer >= 0.09 then
 					projectile.VisualTimer = 0
 					self:PlaySkillVisualForEvent(projectile, self:ReadString(projectile.EventId, ""), projectile.X, projectile.Y, false)
 				end
-				self:ProcessProjectileContact(projectile)
+				if projectile.Remove ~= true then
+					self:ProcessProjectileContact(projectile)
+				end
 				if projectile.Remove == true or projectile.Travelled >= projectile.Range then
 					self:Log("projectile end user=" .. self:ReadString(projectile.UserId, "") .. " event=" .. self:ReadString(projectile.EventId, ""))
 					table.remove(self._T.activeProjectiles, index)
@@ -1114,11 +1312,88 @@ script BRSkillSystem extends Logic
 				self:PlaySkillVisualAt(context, self.BurstEffectRUID, triggerX, triggerY + 0.25, self:GetContextDirection(context), 0.9, "trigger:" .. self:ReadString(actionDef.ActionId, "trigger"))
 				self:StartVirtualEndSkill(context, triggerX, triggerY)
 			end
+		elseif actionType == "move" then
+			self:ApplySkillMovement(context, actionDef, sourceId)
 		else
 			local origin = self:GetContextOrigin(context)
 			self:PlaySkillVisualAt(context, self.SlashEffectRUID, origin.x, origin.y, self:GetContextDirection(context), 0.65, "aftereffect:" .. self:ReadString(actionDef.ActionId, "aftereffect"))
 			self:Log("aftereffect user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " source=" .. self:ReadString(sourceId, ""))
 		end
+	end
+
+	method void ApplySkillMovement(any context, any actionDef, string sourceId)
+		-- Moves the caster by a skill action while staying inside the map bound.
+		if context == nil or context.SourceEntity == nil or context.IsVirtualCaster == true then
+			return
+		end
+		local entity = context.SourceEntity
+		if entity == nil or isvalid(entity) == false then
+			return
+		end
+		local position = self:GetEntityPosition2(entity)
+		local direction = self:GetContextDirection(context)
+		local distance = self:ReadNumber(actionDef.Distance, 0)
+		local vertical = self:ReadNumber(actionDef.Vertical, 0)
+		local target = Vector2(position.x + direction * distance, position.y + vertical)
+		target = self:ClampPositionToMapBounds(entity, target)
+		self:MoveEntityToWorldPosition(entity, target)
+		local userId = self:GetUserIdFromPlayer(entity)
+		if userId ~= "" then
+			self:ApplyLocalSkillMovementPosition(target, "skillMove:" .. self:ReadString(sourceId, "move"), userId)
+		end
+		self:PlaySkillVisualAt(context, self.BurstEffectRUID, target.x, target.y + 0.25, direction, 0.65, "move:" .. self:ReadString(actionDef.ActionId, "move"))
+		self:Log("move action user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " target=(" .. tostring(target.x) .. "," .. tostring(target.y) .. ")")
+	end
+
+	method void MoveEntityToWorldPosition(Entity entity, Vector2 position)
+		-- Applies an authoritative world-position correction to any supported body.
+		if entity == nil or position == nil then
+			return
+		end
+		if entity.MovementComponent ~= nil then
+			entity.MovementComponent:Stop()
+			entity.MovementComponent:SetWorldPosition(position)
+		end
+		if entity.RigidbodyComponent ~= nil then
+			entity.RigidbodyComponent.IgnoreMoveBoundary = false
+			entity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			entity.RigidbodyComponent:SetWorldPosition(position)
+			entity.RigidbodyComponent:PositionReset()
+		elseif entity.KinematicbodyComponent ~= nil then
+			entity.KinematicbodyComponent:SetWorldPosition(position)
+		elseif entity.SideviewbodyComponent ~= nil then
+			entity.SideviewbodyComponent:SetWorldPosition(position)
+		end
+		if entity.PlayerComponent ~= nil then
+			entity.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
+		end
+	end
+
+	@ExecSpace("Client")
+	method void ApplyLocalSkillMovementPosition(Vector2 position, string reason)
+		-- Mirrors a server movement correction on the owning client.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or position == nil then
+			return
+		end
+		if localPlayer.MovementComponent ~= nil then
+			localPlayer.MovementComponent:Stop()
+			localPlayer.MovementComponent:SetWorldPosition(position)
+		end
+		if localPlayer.RigidbodyComponent ~= nil then
+			localPlayer.RigidbodyComponent.IgnoreMoveBoundary = false
+			localPlayer.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			localPlayer.RigidbodyComponent:SetWorldPosition(position)
+			localPlayer.RigidbodyComponent:PositionReset()
+		elseif localPlayer.KinematicbodyComponent ~= nil then
+			localPlayer.KinematicbodyComponent:SetWorldPosition(position)
+		elseif localPlayer.SideviewbodyComponent ~= nil then
+			localPlayer.SideviewbodyComponent:SetWorldPosition(position)
+		end
+		if localPlayer.PlayerComponent ~= nil then
+			localPlayer.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
+		end
+		log("[BRSkill] local movement correction reason=" .. self:ReadString(reason, "") .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
 	end
 
 	method void ApplySkillDamage(any context, Entity targetEntity, any actionDef, string sourceId)
@@ -1136,10 +1411,17 @@ script BRSkillSystem extends Logic
 		end
 
 		---@type BRTrainingDummy
-		local dummy = targetEntity:GetComponent("script.BRTrainingDummy")
+		local dummy = self:GetTrainingDummyComponent(targetEntity)
 		if dummy ~= nil then
 			dummy:ApplyTrainingDamage(attackerEntity, damage, self:ReadString(sourceId, "skill"))
 			self:Log("damage dummy user=" .. self:ReadString(context.UserId, "") .. " target=" .. targetEntity.Name .. " amount=" .. tostring(damage) .. " critical=" .. tostring(critical))
+			return
+		end
+
+		local bot = self:GetBattleBotComponent(targetEntity)
+		if bot ~= nil then
+			bot:ApplyBotDamage(attackerEntity, damage, self:ReadString(sourceId, "skill"))
+			self:Log("damage bot user=" .. self:ReadString(context.UserId, "") .. " target=" .. self:ReadString(bot.BotId, targetEntity.Name) .. " amount=" .. tostring(damage) .. " critical=" .. tostring(critical))
 			return
 		end
 
@@ -1263,6 +1545,15 @@ script BRSkillSystem extends Logic
 		elseif string.find(safeEventId, "fieldCreate") ~= nil then
 			offsetX = 0
 			offsetY = 0.25
+		elseif string.find(safeEventId, "uniqueHero") ~= nil then
+			offsetX = 0.95
+			offsetY = 0.45
+		elseif string.find(safeEventId, "uniqueStorm") ~= nil then
+			offsetX = 0.5
+			offsetY = 0.45
+		elseif string.find(safeEventId, "uniqueArcane") ~= nil then
+			offsetX = 0.25
+			offsetY = 0.45
 		end
 		if isField == true then
 			offsetX = 0
@@ -1297,6 +1588,15 @@ script BRSkillSystem extends Logic
 		if string.find(safeEventId, "fieldCreate") ~= nil then
 			return self:ReadString(self.FieldEffectRUID, "")
 		end
+		if string.find(safeEventId, "uniqueStorm") ~= nil then
+			return self:ReadString(self.ProjectileEffectRUID, "")
+		end
+		if string.find(safeEventId, "uniqueArcane") ~= nil then
+			return self:ReadString(self.BurstEffectRUID, "")
+		end
+		if string.find(safeEventId, "uniqueHero") ~= nil then
+			return self:ReadString(self.SlashEffectRUID, "")
+		end
 		if string.find(safeEventId, "dash") ~= nil then
 			return self:ReadString(self.BurstEffectRUID, "")
 		end
@@ -1329,6 +1629,15 @@ script BRSkillSystem extends Logic
 		end
 		if string.find(safeEventId, "fieldCreate") ~= nil then
 			return 1.35
+		end
+		if string.find(safeEventId, "uniqueHero") ~= nil then
+			return 1.05
+		end
+		if string.find(safeEventId, "uniqueStorm") ~= nil then
+			return 0.55
+		end
+		if string.find(safeEventId, "uniqueArcane") ~= nil then
+			return 1.25
 		end
 		if string.find(safeEventId, "dash") ~= nil then
 			return 0.75
@@ -1388,8 +1697,9 @@ script BRSkillSystem extends Logic
 	end
 
 	method any CollectTargetsForContext(any context)
-		-- Collects player and training-dummy targets in the caster's current map.
+		-- Collects player and named training-dummy targets in the caster's current map.
 		local targets = {}
+		local seenTargets = {}
 		local mapName = self:GetContextMapName(context)
 		if mapName == "" then
 			return targets
@@ -1397,11 +1707,12 @@ script BRSkillSystem extends Logic
 		local users = _UserService:GetUsersByMapName(mapName)
 		if users ~= nil then
 			for index, entity in ipairs(users) do
-				table.insert(targets, entity)
+				self:AddSkillTarget(targets, seenTargets, entity)
 			end
 		end
 		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
 		if mapEntity ~= nil then
+			self:CollectNamedTrainingDummyTargets(mapEntity, targets, seenTargets)
 			local dummyComponents = mapEntity:GetChildComponentsByTypeName("script.BRTrainingDummy", true)
 			if dummyComponents == nil or dummyComponents[1] == nil then
 				dummyComponents = mapEntity:GetChildComponentsByTypeName("BRTrainingDummy", true)
@@ -1409,12 +1720,52 @@ script BRSkillSystem extends Logic
 			if dummyComponents ~= nil then
 				for index, dummy in ipairs(dummyComponents) do
 					if dummy ~= nil and dummy.Entity ~= nil then
-						table.insert(targets, dummy.Entity)
+						self:AddSkillTarget(targets, seenTargets, dummy.Entity)
+					end
+				end
+			end
+			local botComponents = mapEntity:GetChildComponentsByTypeName("script.BRBattleBotController", true)
+			if botComponents ~= nil then
+				for index, bot in ipairs(botComponents) do
+					if bot ~= nil and bot.Entity ~= nil then
+						self:AddSkillTarget(targets, seenTargets, bot.Entity)
 					end
 				end
 			end
 		end
 		return targets
+	end
+
+	method void CollectNamedTrainingDummyTargets(Entity entity, any targets, any seenTargets)
+		-- Recursively collects training-dummy targets by placement name.
+		if entity == nil then
+			return
+		end
+		if self:IsTrainingDummyPlacementName(entity.Name) == true and self:GetTrainingDummyComponent(entity) ~= nil then
+			self:AddSkillTarget(targets, seenTargets, entity)
+		end
+		if entity.Children == nil then
+			return
+		end
+		for index, child in ipairs(entity.Children:ToTable()) do
+			self:CollectNamedTrainingDummyTargets(child, targets, seenTargets)
+		end
+	end
+
+	method void AddSkillTarget(any targets, any seenTargets, Entity entity)
+		-- Adds one target once by entity key.
+		if targets == nil or seenTargets == nil or entity == nil then
+			return
+		end
+		local key = self:ReadString(self:GetEntityKey(entity), "")
+		if key == "" then
+			key = self:ReadString(entity.Name, "")
+		end
+		if key == "" or seenTargets[key] == true then
+			return
+		end
+		seenTargets[key] = true
+		table.insert(targets, entity)
 	end
 
 	method boolean IsSkillTargetValid(any context, Entity targetEntity)
@@ -1437,7 +1788,78 @@ script BRSkillSystem extends Logic
 			end
 			return true
 		end
-		return targetEntity:GetComponent("script.BRTrainingDummy") ~= nil
+		local bot = self:GetBattleBotComponent(targetEntity)
+		if bot ~= nil then
+			return bot:IsSkillTargetValid() == true
+		end
+		return self:GetTrainingDummyComponent(targetEntity) ~= nil
+	end
+
+	method any GetTrainingDummyComponent(Entity entity)
+		-- Returns the training-dummy component from a named monster target.
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRTrainingDummy")
+		if component == nil then
+			component = entity:GetComponent("BRTrainingDummy")
+		end
+		return component
+	end
+
+	method any GetBattleBotComponent(Entity entity)
+		-- Returns the battle AI component when the target is a spawned competitor bot.
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRBattleBotController")
+		if component == nil then
+			component = entity:GetComponent("BRBattleBotController")
+		end
+		return component
+	end
+
+	method boolean IsTrainingDummyPlacementName(string entityName)
+		-- Checks whether an entity name is intended as a skill target monster.
+		return self:ContainsNameToken(self:ReadString(entityName, ""), self.TrainingDummyNameTokens)
+	end
+
+	method boolean IsPartBoxPlacementName(string entityName)
+		-- Checks whether an entity name is intended as a skill part box.
+		return self:ContainsNameToken(self:ReadString(entityName, ""), self.PartBoxNameTokens)
+	end
+
+	method boolean ContainsNameToken(string source, string tokens)
+		-- Checks comma-delimited placement-name tokens against one source name.
+		local safeSource = string.lower(self:ReadString(source, ""))
+		local safeTokens = self:ReadString(tokens, "")
+		if safeSource == "" or safeTokens == "" then
+			return false
+		end
+		local startIndex = 1
+		while startIndex <= string.len(safeTokens) do
+			local commaIndex, commaEndIndex = string.find(safeTokens, ",", startIndex)
+			local token = ""
+			if commaIndex == nil then
+				token = string.sub(safeTokens, startIndex)
+				startIndex = string.len(safeTokens) + 1
+			else
+				token = string.sub(safeTokens, startIndex, commaIndex - 1)
+				startIndex = commaIndex + 1
+			end
+			token = string.lower(self:TrimString(token))
+			if token ~= "" and string.find(safeSource, token, 1, true) ~= nil then
+				return true
+			end
+		end
+		return false
+	end
+
+	method string TrimString(string value)
+		-- Trims whitespace around comma-delimited config tokens.
+		local safeValue = self:ReadString(value, "")
+		local trimmed = string.match(safeValue, "^%s*(.-)%s*$")
+		return trimmed
 	end
 
 	method boolean IsTargetInsideHitboxes(any context, Entity targetEntity)
@@ -1617,9 +2039,34 @@ script BRSkillSystem extends Logic
 		return math.max(0.03, self:ReadNumber(self.ChainCastCooldownSeconds, 0.18))
 	end
 
+	method number GetUniqueSkillCooldownSeconds()
+		-- Returns the minimum cooldown between character unique skills.
+		return math.max(0.05, self:ReadNumber(self.UniqueSkillCooldownSeconds, 1.4))
+	end
+
 	method number GetSkillMovementSpeedRate()
 		-- Returns the movement speed multiplier during a non-virtual skill cast.
 		return math.max(0, math.min(1, self:ReadNumber(self.SkillMovementSpeedRate, 0.45)))
+	end
+
+	method number GetPlayerBoundsCheckSeconds()
+		-- Returns the polling interval for player map-bound recovery.
+		return math.max(0.02, self:ReadNumber(self.PlayerBoundsCheckSeconds, 0.08))
+	end
+
+	method number GetPlayerBoundsPadding()
+		-- Returns tolerance around map bounds before recovery triggers.
+		return math.max(0, self:ReadNumber(self.PlayerBoundsPadding, 0.05))
+	end
+
+	method number GetSafeFootholdYOffset()
+		-- Returns the small lift applied when storing a foothold position.
+		return math.max(0, self:ReadNumber(self.SafeFootholdYOffset, 0.04))
+	end
+
+	method number GetSafeFootholdSearchDistance()
+		-- Returns extra downward search room for fallback foothold recovery.
+		return math.max(1, self:ReadNumber(self.SafeFootholdSearchDistance, 8))
 	end
 
 	method number GetSkillTargetPadding()
@@ -1643,6 +2090,48 @@ script BRSkillSystem extends Logic
 		self:Log("reset user=" .. userId)
 	end
 
+	method boolean GrantUserExperience(string userId, number amount, string sourceId)
+		-- Grants skill-chain experience and unlocks chain slots through levels.
+		self:EnsureRuntime()
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+
+		local reward = math.max(0, math.floor(self:ReadNumber(amount, 0)))
+		if reward <= 0 then
+			return false
+		end
+
+		self:NormalizeUserLevelState(state)
+		local oldLevel = self:GetUserLevel(state)
+		local oldSlots = self:GetUnlockedChainSlotCount(state)
+		state.Experience = math.max(0, math.floor(self:ReadNumber(state.Experience, 0))) + reward
+
+		local leveled = false
+		while self:CanLevelUpState(state) == true do
+			local required = self:GetRequiredExperienceForNextLevel(state.Level)
+			if state.Experience < required then
+				break
+			end
+			state.Experience = state.Experience - required
+			state.Level = math.min(self:GetMaxSkillLevel(), math.floor(self:ReadNumber(state.Level, self:GetStartingSkillLevel())) + 1)
+			leveled = true
+		end
+
+		self:NormalizeUserState(state)
+		local newLevel = self:GetUserLevel(state)
+		local newSlots = self:GetUnlockedChainSlotCount(state)
+		self:NotifyUserChanged(userId)
+		self:Log("experience user=" .. userId
+			.. " amount=" .. tostring(reward)
+			.. " level=" .. tostring(oldLevel) .. "->" .. tostring(newLevel)
+			.. " slots=" .. tostring(oldSlots) .. "->" .. tostring(newSlots)
+			.. " exp=" .. tostring(state.Experience)
+			.. " source=" .. self:ReadString(sourceId, "unknown"))
+		return leveled
+	end
+
 	method any CreateUserState()
 		-- Creates a fresh user state with a horizontal skill chain.
 		return {
@@ -1650,6 +2139,8 @@ script BRSkillSystem extends Logic
 			Equipped = {},
 			EquippedChainSlots = {},
 			BagSlots = {},
+			Level = self:GetStartingSkillLevel(),
+			Experience = 0,
 			NextInstanceId = 1
 		}
 	end
@@ -1790,6 +2281,10 @@ script BRSkillSystem extends Logic
 		end
 
 		local slotIndex = self:ClampChainSlot(chainSlot)
+		if self:IsChainSlotUnlocked(state, slotIndex) ~= true then
+			self:Log("chain equip failed user=" .. userId .. " slot=" .. tostring(slotIndex) .. " reason=locked")
+			return false
+		end
 		local sourceBagSlot = self:GetBagSlotIndexByInstanceId(state, part.InstanceId)
 		local targetInstanceId = state.EquippedChainSlots[slotIndex]
 		if targetInstanceId ~= nil and targetInstanceId ~= part.InstanceId and self:FindPartInState(state, targetInstanceId) ~= nil then
@@ -1978,26 +2473,62 @@ script BRSkillSystem extends Logic
 	end
 
 	method Entity FindDropTemplateEntity(Entity mapEntity)
-		-- Finds a placed skill part box that can be cloned for a dropped pickup.
+		-- Finds a named placed skill part box that can be cloned for a dropped pickup.
 		if mapEntity == nil then
 			return nil
 		end
 		local preferred = { "SkillPartBox", "LobbySkillPartBoxA", "LobbySkillPartBoxB", "LobbySkillPartBoxC" }
 		for index, name in ipairs(preferred) do
 			local entity = mapEntity:GetChildByName(name, false)
-			if entity ~= nil and entity:GetComponent("script.BRPartBox") ~= nil then
+			if entity ~= nil and self:GetPartBoxComponent(entity) ~= nil then
 				return entity
 			end
+		end
+		local namedTemplate = self:FindNamedPartBoxTemplate(mapEntity)
+		if namedTemplate ~= nil then
+			return namedTemplate
 		end
 		if mapEntity.Children == nil then
 			return nil
 		end
 		for index, child in ipairs(mapEntity.Children:ToTable()) do
-			if child ~= nil and child:GetComponent("script.BRPartBox") ~= nil then
+			if child ~= nil and self:GetPartBoxComponent(child) ~= nil then
 				return child
 			end
 		end
 		return nil
+	end
+
+	method Entity FindNamedPartBoxTemplate(Entity entity)
+		-- Recursively finds the first box whose placement name marks it as a part box.
+		if entity == nil then
+			return nil
+		end
+		if self:IsPartBoxPlacementName(entity.Name) == true and self:GetPartBoxComponent(entity) ~= nil then
+			return entity
+		end
+		if entity.Children == nil then
+			return nil
+		end
+		for index, child in ipairs(entity.Children:ToTable()) do
+			local found = self:FindNamedPartBoxTemplate(child)
+			if found ~= nil then
+				return found
+			end
+		end
+		return nil
+	end
+
+	method any GetPartBoxComponent(Entity entity)
+		-- Returns the part-box component from an entity.
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRPartBox")
+		if component == nil then
+			component = entity:GetComponent("BRPartBox")
+		end
+		return component
 	end
 
 	method boolean MoveChainSlot(string userId, number fromChainSlot, number toChainSlot)
@@ -2010,6 +2541,10 @@ script BRSkillSystem extends Logic
 		local fromIndex = self:ClampChainSlot(fromChainSlot)
 		local toIndex = self:ClampChainSlot(toChainSlot)
 		if fromIndex == toIndex then
+			return false
+		end
+		if self:IsChainSlotUnlocked(state, fromIndex) ~= true or self:IsChainSlotUnlocked(state, toIndex) ~= true then
+			self:Log("chain move skipped user=" .. userId .. " from=" .. tostring(fromIndex) .. " to=" .. tostring(toIndex) .. " reason=locked")
 			return false
 		end
 
@@ -2235,11 +2770,11 @@ script BRSkillSystem extends Logic
 		self:EnsureRuntime()
 		self._T.snapshotVersions[userId] = self:ReadNumber(self._T.snapshotVersions[userId], 0) + 1
 		local snapshot = self:BuildUserSnapshot(userId)
-		self:PushUserSnapshot(userId, snapshot.PanelText, snapshot.HasParts, snapshot.ChainText, snapshot.BagText, snapshot.RecipeText, snapshot.Version)
+		self:PushUserSnapshot(userId, snapshot.PanelText, snapshot.HasParts, snapshot.ChainText, snapshot.BagText, snapshot.RecipeText, snapshot.Version, snapshot.Level, snapshot.Experience, snapshot.RequiredExperience, snapshot.UnlockedSlots)
 	end
 
 	@ExecSpace("Client")
-	method void PushUserSnapshot(string userId, string panelText, boolean hasParts, string chainText, string bagText, string recipeText, number version)
+	method void PushUserSnapshot(string userId, string panelText, boolean hasParts, string chainText, string bagText, string recipeText, number version, number level, number experience, number requiredExperience, number unlockedSlots)
 		-- Receives the local player's skill panel snapshot.
 		local localPlayer = _UserService.LocalPlayer
 		if localPlayer == nil or localPlayer.PlayerComponent == nil then
@@ -2255,6 +2790,10 @@ script BRSkillSystem extends Logic
 		self._T.localBagText = self:ReadString(bagText, "")
 		self._T.localRecipeText = self:ReadString(recipeText, self:BuildEmptyRecipeText())
 		self._T.localSnapshotVersion = self:ReadNumber(version, 0)
+		self._T.localSkillLevel = math.max(1, math.floor(self:ReadNumber(level, 1)))
+		self._T.localSkillExperience = math.max(0, math.floor(self:ReadNumber(experience, 0)))
+		self._T.localSkillRequiredExperience = math.max(1, math.floor(self:ReadNumber(requiredExperience, 1)))
+		self._T.localUnlockedChainSlots = math.max(1, math.floor(self:ReadNumber(unlockedSlots, self:GetBaseUnlockedChainSlots())))
 		self._T.localPanelUpdatedAt = _UtilLogic.ElapsedSeconds
 	end
 
@@ -2300,6 +2839,30 @@ script BRSkillSystem extends Logic
 		return self:ReadNumber(self._T.localSnapshotVersion, 0)
 	end
 
+	@ExecSpace("Client")
+	method number GetLocalSkillLevel()
+		-- Returns the latest local skill-chain level for HUD display.
+		return math.max(1, math.floor(self:ReadNumber(self._T.localSkillLevel, self:GetStartingSkillLevel())))
+	end
+
+	@ExecSpace("Client")
+	method number GetLocalSkillExperience()
+		-- Returns the current skill-chain experience inside the current level.
+		return math.max(0, math.floor(self:ReadNumber(self._T.localSkillExperience, 0)))
+	end
+
+	@ExecSpace("Client")
+	method number GetLocalRequiredExperience()
+		-- Returns the experience required for the next visible chain level.
+		return math.max(1, math.floor(self:ReadNumber(self._T.localSkillRequiredExperience, self:GetExperiencePerLevel())))
+	end
+
+	@ExecSpace("Client")
+	method number GetLocalUnlockedChainSlots()
+		-- Returns how many chain slots are currently unlocked for the local user.
+		return math.max(1, math.floor(self:ReadNumber(self._T.localUnlockedChainSlots, self:GetBaseUnlockedChainSlots())))
+	end
+
 	method any BuildUserSnapshot(string userId)
 		-- Builds synchronized text for the player's skill chain panel.
 		local state = self:GetUserState(userId)
@@ -2319,13 +2882,17 @@ script BRSkillSystem extends Logic
 			ChainText = self:BuildChainSnapshotText(state),
 			BagText = self:BuildBagSnapshotText(state),
 			RecipeText = self:BuildRecipeText(state),
+			Level = self:GetUserLevel(state),
+			Experience = self:GetUserExperience(state),
+			RequiredExperience = self:GetRequiredExperienceForNextLevel(self:GetUserLevel(state)),
+			UnlockedSlots = self:GetUnlockedChainSlotCount(state),
 			Version = self:ReadNumber(self._T.snapshotVersions[userId], 0)
 		}
 	end
 
 	method string BuildEquippedText(any state)
 		-- Builds a horizontal chain summary.
-		return "Chain " .. tostring(self:GetChainSlotCount()) .. "x1: " .. self:BuildChainLineText(state)
+		return "Chain " .. tostring(self:GetUnlockedChainSlotCount(state)) .. "/" .. tostring(self:GetChainSlotCount()) .. "x1: " .. self:BuildChainLineText(state)
 			.. "\n" .. self:BuildChainDetailText(state)
 	end
 
@@ -2393,11 +2960,18 @@ script BRSkillSystem extends Logic
 		for slotIndex = 1, self:GetChainSlotCount() do
 			local instanceId = math.floor(self:ReadNumber(chain.Slots[slotIndex], 0))
 			local part = self:FindPartInState(state, instanceId)
+			local locked = chain.Locked ~= nil and chain.Locked[slotIndex] == true
 			local shortText = "-"
 			local displayName = "-"
 			local skillKey = "-"
 			local tier = math.floor(self:ReadNumber(chain.Tiers[slotIndex], 0))
-			if part ~= nil then
+			if locked == true then
+				instanceId = 0
+				shortText = "LOCK"
+				displayName = "LOCKED"
+				skillKey = "LOCKED"
+				tier = -1
+			elseif part ~= nil then
 				shortText = self:GetPartShortText(part)
 				displayName = self:SanitizeRecordText(self:GetSkillName(part))
 				skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
@@ -2474,9 +3048,13 @@ script BRSkillSystem extends Logic
 		-- Returns the panel text before the first snapshot arrives.
 		local chainText = ""
 		for slotIndex = 1, self:GetChainSlotCount() do
-			chainText = chainText .. "[" .. tostring(slotIndex) .. ":-]"
+			if slotIndex <= self:GetBaseUnlockedChainSlots() then
+				chainText = chainText .. "[" .. tostring(slotIndex) .. ":-]"
+			else
+				chainText = chainText .. "[" .. tostring(slotIndex) .. ":LOCK]"
+			end
 		end
-		return "SKILLS\nChain " .. tostring(self:GetChainSlotCount()) .. "x1: " .. chainText .. "\nSkill: empty\nBag(0): empty"
+		return "SKILLS\nChain " .. tostring(self:GetBaseUnlockedChainSlots()) .. "/" .. tostring(self:GetChainSlotCount()) .. "x1: " .. chainText .. "\nSkill: empty\nBag(0): empty"
 	end
 
 	method number GetPanelMaxPartRows()
@@ -2536,11 +3114,13 @@ script BRSkillSystem extends Logic
 		if state.NextInstanceId == nil then
 			state.NextInstanceId = #state.Parts + 1
 		end
+		self:NormalizeUserLevelState(state)
 
 		local used = {}
+		local unlockedSlotCount = self:GetUnlockedChainSlotCount(state)
 		for slotIndex = 1, self:GetChainSlotCount() do
 			local instanceId = state.EquippedChainSlots[slotIndex]
-			if instanceId ~= nil and self:FindPartInState(state, instanceId) ~= nil then
+			if slotIndex <= unlockedSlotCount and instanceId ~= nil and self:FindPartInState(state, instanceId) ~= nil then
 				used[instanceId] = true
 				state.Equipped["Chain" .. tostring(slotIndex)] = instanceId
 			else
@@ -2574,6 +3154,8 @@ script BRSkillSystem extends Logic
 		local chain = {
 			Slots = {},
 			Tiers = {},
+			Locked = {},
+			UnlockedCount = 0,
 			FilledCount = 0,
 			HighestTier = 0,
 			HighestTierInstanceId = nil
@@ -2583,12 +3165,21 @@ script BRSkillSystem extends Logic
 		end
 		self:NormalizeUserState(state)
 		local slotCount = self:GetChainSlotCount()
+		local unlockedSlotCount = self:GetUnlockedChainSlotCount(state)
+		chain.UnlockedCount = unlockedSlotCount
 		local previousSkillKey = ""
 		local currentTier = 0
 		for slotIndex = 1, slotCount do
-			local instanceId = state.EquippedChainSlots[slotIndex]
-			local part = self:FindPartInState(state, instanceId)
-			if instanceId ~= nil and part ~= nil then
+			if slotIndex > unlockedSlotCount then
+				chain.Slots[slotIndex] = nil
+				chain.Tiers[slotIndex] = -1
+				chain.Locked[slotIndex] = true
+				previousSkillKey = ""
+				currentTier = 0
+			else
+				local instanceId = state.EquippedChainSlots[slotIndex]
+				local part = self:FindPartInState(state, instanceId)
+				if instanceId ~= nil and part ~= nil then
 				local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
 				if skillKey ~= "" and skillKey == previousSkillKey then
 					currentTier = self:ClampSkillTier(currentTier + 1)
@@ -2604,11 +3195,12 @@ script BRSkillSystem extends Logic
 					chain.HighestTier = currentTier
 					chain.HighestTierInstanceId = instanceId
 				end
-			else
+				else
 				chain.Slots[slotIndex] = nil
 				chain.Tiers[slotIndex] = 0
 				previousSkillKey = ""
 				currentTier = 0
+				end
 			end
 		end
 		return chain
@@ -2665,7 +3257,7 @@ script BRSkillSystem extends Logic
 	method number FindFirstEmptyChainSlot(any state)
 		-- Finds the first empty slot in the skill chain.
 		self:NormalizeUserState(state)
-		for slotIndex = 1, self:GetChainSlotCount() do
+		for slotIndex = 1, self:GetUnlockedChainSlotCount(state) do
 			if state.EquippedChainSlots[slotIndex] == nil then
 				return slotIndex
 			end
@@ -2793,6 +3385,221 @@ script BRSkillSystem extends Logic
 		return Vector2(position.x, position.y)
 	end
 
+	method Entity GetEntityMap(Entity entity)
+		-- Resolves the current map entity for one entity.
+		if entity == nil then
+			return nil
+		end
+		if entity.CurrentMap ~= nil then
+			return entity.CurrentMap
+		end
+		local mapName = self:ReadString(entity.CurrentMapName, "")
+		if mapName == "" then
+			return nil
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. mapName)
+	end
+
+	method any GetMapBoundsForEntity(Entity entity)
+		-- Reads the map-part custom bound used by camera and movement clamps.
+		local mapEntity = self:GetEntityMap(entity)
+		if mapEntity == nil or mapEntity.MapComponent == nil or mapEntity.MapComponent.UseCustomBound ~= true then
+			return nil
+		end
+		local leftBottom = mapEntity.MapComponent.LeftBottom
+		local rightTop = mapEntity.MapComponent.RightTop
+		if leftBottom == nil or rightTop == nil or rightTop.x <= leftBottom.x or rightTop.y <= leftBottom.y then
+			return nil
+		end
+		return {
+			Left = leftBottom.x,
+			Bottom = leftBottom.y,
+			Right = rightTop.x,
+			Top = rightTop.y,
+			MapName = self:ReadString(mapEntity.Name, self:ReadString(entity.CurrentMapName, ""))
+		}
+	end
+
+	method Vector2 ClampPositionToMapBounds(Entity entity, Vector2 position)
+		-- Clamps a world position to an entity's current map custom bound.
+		if position == nil then
+			return Vector2(0, 0)
+		end
+		local bounds = self:GetMapBoundsForEntity(entity)
+		if bounds == nil then
+			return position
+		end
+		return Vector2(
+			math.max(bounds.Left, math.min(bounds.Right, position.x)),
+			math.max(bounds.Bottom, math.min(bounds.Top, position.y))
+		)
+	end
+
+	method Vector2 ClampContextPositionToMapBounds(any context, Vector2 position)
+		-- Clamps a context position using the source or caster map.
+		if context == nil then
+			return position
+		end
+		local entity = context.SourceEntity
+		if entity == nil then
+			entity = context.CasterEntity
+		end
+		return self:ClampPositionToMapBounds(entity, position)
+	end
+
+	method boolean IsPositionOutsideMapBounds(Entity entity, Vector2 position, number padding)
+		-- Checks whether a position has left an entity's current map custom bound.
+		if position == nil then
+			return false
+		end
+		local bounds = self:GetMapBoundsForEntity(entity)
+		if bounds == nil then
+			return false
+		end
+		local pad = math.max(0, self:ReadNumber(padding, 0))
+		return position.x < bounds.Left - pad
+			or position.x > bounds.Right + pad
+			or position.y < bounds.Bottom - pad
+			or position.y > bounds.Top + pad
+	end
+
+	method void TickPlayerBoundsReturn(number delta)
+		-- Periodically remembers grounded positions and returns out-of-bound players.
+		if self.EnablePlayerBoundsReturn ~= true then
+			return
+		end
+		if _UserService == nil or _UserService.UserEntities == nil then
+			return
+		end
+		self._T.playerBoundsCheckTimer = self:ReadNumber(self._T.playerBoundsCheckTimer, 0) + self:ReadNumber(delta, 0)
+		if self._T.playerBoundsCheckTimer < self:GetPlayerBoundsCheckSeconds() then
+			return
+		end
+		self._T.playerBoundsCheckTimer = 0
+		for index, playerEntity in ipairs(_UserService.UserEntities.Values) do
+			self:UpdatePlayerBoundsReturnState(playerEntity)
+		end
+	end
+
+	method void UpdatePlayerBoundsReturnState(Entity playerEntity)
+		-- Updates one player's safe foothold or returns them to it.
+		if playerEntity == nil or isvalid(playerEntity) == false or playerEntity.PlayerComponent == nil then
+			return
+		end
+		if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+			return
+		end
+		if self:GetMapBoundsForEntity(playerEntity) == nil then
+			return
+		end
+
+		local userId = self:GetUserIdFromPlayer(playerEntity)
+		if userId == "" then
+			return
+		end
+		local position = self:GetEntityPosition2(playerEntity)
+		if self:IsPositionOutsideMapBounds(playerEntity, position, self:GetPlayerBoundsPadding()) == true then
+			self:ReturnPlayerToLastSafeFoothold(playerEntity, userId, position)
+			return
+		end
+		self:RememberPlayerFootholdPosition(playerEntity, userId)
+	end
+
+	method void RememberPlayerFootholdPosition(Entity playerEntity, string userId)
+		-- Stores the latest grounded foothold position for jump/out-of-bound recovery.
+		if playerEntity == nil or playerEntity.RigidbodyComponent == nil then
+			return
+		end
+		if playerEntity.RigidbodyComponent:IsOnGround() ~= true then
+			return
+		end
+		local position = self:GetEntityPosition2(playerEntity)
+		local safePosition = Vector2(position.x, position.y)
+		local foothold = playerEntity.RigidbodyComponent:GetCurrentFoothold()
+		if foothold ~= nil then
+			safePosition = Vector2(position.x, foothold:GetYByX(position.x) + self:GetSafeFootholdYOffset())
+		end
+		safePosition = self:ClampPositionToMapBounds(playerEntity, safePosition)
+		local bounds = self:GetMapBoundsForEntity(playerEntity)
+		local mapName = ""
+		if bounds ~= nil then
+			mapName = self:ReadString(bounds.MapName, "")
+		end
+		self._T.lastSafeFootholdByUser[self:ReadString(userId, "")] = {
+			X = safePosition.x,
+			Y = safePosition.y,
+			MapName = mapName
+		}
+	end
+
+	method void ReturnPlayerToLastSafeFoothold(Entity playerEntity, string userId, Vector2 fromPosition)
+		-- Moves an out-of-bound player back to the latest remembered foothold.
+		local safePosition = self:GetStoredSafeFootholdPosition(playerEntity, userId)
+		if safePosition == nil then
+			safePosition = self:FindNearestSafeFootholdPosition(playerEntity, fromPosition)
+		end
+		if safePosition == nil then
+			safePosition = self:GetFallbackMapBoundPosition(playerEntity)
+		end
+		if safePosition == nil then
+			return
+		end
+		safePosition = self:ClampPositionToMapBounds(playerEntity, safePosition)
+		self:MoveEntityToWorldPosition(playerEntity, safePosition)
+		self:ApplyLocalSkillMovementPosition(safePosition, "boundsReturn", self:ReadString(userId, ""))
+		self._T.lastSafeFootholdByUser[self:ReadString(userId, "")] = {
+			X = safePosition.x,
+			Y = safePosition.y,
+			MapName = self:ReadString(playerEntity.CurrentMapName, "")
+		}
+		self:Log("bounds return user=" .. self:ReadString(userId, "") .. " from=(" .. tostring(fromPosition.x) .. "," .. tostring(fromPosition.y) .. ") to=(" .. tostring(safePosition.x) .. "," .. tostring(safePosition.y) .. ")")
+	end
+
+	method any GetStoredSafeFootholdPosition(Entity playerEntity, string userId)
+		-- Reads a stored safe position if it belongs to the same map.
+		local record = self._T.lastSafeFootholdByUser[self:ReadString(userId, "")]
+		if record == nil then
+			return nil
+		end
+		local currentMapName = self:ReadString(playerEntity.CurrentMapName, "")
+		local recordMapName = self:ReadString(record.MapName, currentMapName)
+		if currentMapName ~= "" and recordMapName ~= "" and currentMapName ~= recordMapName then
+			return nil
+		end
+		local position = Vector2(self:ReadNumber(record.X, 0), self:ReadNumber(record.Y, 0))
+		if self:IsPositionOutsideMapBounds(playerEntity, position, 0) == true then
+			return nil
+		end
+		return position
+	end
+
+	method any FindNearestSafeFootholdPosition(Entity playerEntity, Vector2 position)
+		-- Searches downward inside the current map for a foothold fallback.
+		local mapEntity = self:GetEntityMap(playerEntity)
+		local bounds = self:GetMapBoundsForEntity(playerEntity)
+		if mapEntity == nil or mapEntity.FootholdComponent == nil or bounds == nil then
+			return nil
+		end
+		local x = self:ReadNumber(position.x, 0)
+		x = math.max(bounds.Left, math.min(bounds.Right, x))
+		local rayStart = Vector2(x, bounds.Top + 1)
+		local searchDistance = math.max(1, bounds.Top - bounds.Bottom + self:GetSafeFootholdSearchDistance())
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDistance)
+		if foothold == nil then
+			return nil
+		end
+		return Vector2(x, foothold:GetYByX(x) + self:GetSafeFootholdYOffset())
+	end
+
+	method any GetFallbackMapBoundPosition(Entity entity)
+		-- Falls back to the custom-bound center if no foothold is available.
+		local bounds = self:GetMapBoundsForEntity(entity)
+		if bounds == nil then
+			return nil
+		end
+		return Vector2((bounds.Left + bounds.Right) * 0.5, (bounds.Bottom + bounds.Top) * 0.5)
+	end
+
 	method number GetEquippedPartSlotIndex(any state, any part)
 		-- Returns the slot index where a part is equipped.
 		if state == nil or part == nil then
@@ -2828,6 +3635,106 @@ script BRSkillSystem extends Logic
 		-- Clamps slot indexes to the spare bag bounds.
 		local value = math.floor(self:ReadNumber(bagSlot, 1))
 		return math.max(1, math.min(self:GetBagSlotCount(), value))
+	end
+
+	method void NormalizeUserLevelState(any state)
+		-- Ensures level and experience fields exist on a user state.
+		if state == nil then
+			return
+		end
+		local minLevel = self:GetStartingSkillLevel()
+		local maxLevel = self:GetMaxSkillLevel()
+		state.Level = math.max(minLevel, math.min(maxLevel, math.floor(self:ReadNumber(state.Level, minLevel))))
+		state.Experience = math.max(0, math.floor(self:ReadNumber(state.Experience, 0)))
+	end
+
+	method number GetStartingSkillLevel()
+		-- Returns the first skill-chain progression level.
+		return math.max(1, math.floor(self:ReadNumber(self.StartingSkillLevel, 1)))
+	end
+
+	method number GetBaseUnlockedChainSlots()
+		-- Returns how many chain slots are available at the starting level.
+		return math.max(1, math.min(self:GetChainSlotCount(), math.floor(self:ReadNumber(self.BaseUnlockedChainSlots, 2))))
+	end
+
+	method number GetChainSlotsPerLevel()
+		-- Returns how many slots unlock per skill-chain level.
+		return math.max(0, math.floor(self:ReadNumber(self.ChainSlotsPerLevel, 1)))
+	end
+
+	method number GetExperiencePerLevel()
+		-- Returns the experience required for one skill-chain level.
+		return math.max(1, math.floor(self:ReadNumber(self.ExperiencePerLevel, 1)))
+	end
+
+	method number GetMaxSkillLevel()
+		-- Returns the highest level needed to unlock every configured chain slot.
+		local startLevel = self:GetStartingSkillLevel()
+		local baseSlots = self:GetBaseUnlockedChainSlots()
+		local slotsPerLevel = self:GetChainSlotsPerLevel()
+		local missingSlots = math.max(0, self:GetChainSlotCount() - baseSlots)
+		if missingSlots <= 0 or slotsPerLevel <= 0 then
+			return startLevel
+		end
+		return startLevel + math.ceil(missingSlots / slotsPerLevel)
+	end
+
+	method number GetUserLevel(any state)
+		-- Returns a safe skill-chain level from a user state.
+		if state == nil then
+			return self:GetStartingSkillLevel()
+		end
+		return math.max(self:GetStartingSkillLevel(), math.min(self:GetMaxSkillLevel(), math.floor(self:ReadNumber(state.Level, self:GetStartingSkillLevel()))))
+	end
+
+	method number GetUserExperience(any state)
+		-- Returns current in-level skill-chain experience.
+		if state == nil then
+			return 0
+		end
+		return math.max(0, math.floor(self:ReadNumber(state.Experience, 0)))
+	end
+
+	method number GetUnlockedChainSlotCount(any state)
+		-- Returns the number of currently usable chain slots for a user state.
+		if state == nil then
+			return self:GetUnlockedChainSlotCountForLevel(self:GetStartingSkillLevel())
+		end
+		return self:GetUnlockedChainSlotCountForLevel(self:GetUserLevel(state))
+	end
+
+	method number GetUnlockedChainSlotCountForLevel(number level)
+		-- Calculates unlocked chain slots from a skill-chain level.
+		local startLevel = self:GetStartingSkillLevel()
+		local safeLevel = math.max(startLevel, math.floor(self:ReadNumber(level, startLevel)))
+		local slots = self:GetBaseUnlockedChainSlots() + math.max(0, safeLevel - startLevel) * self:GetChainSlotsPerLevel()
+		return math.max(1, math.min(self:GetChainSlotCount(), slots))
+	end
+
+	method number GetRequiredExperienceForNextLevel(number level)
+		-- Returns the experience cost to reach the next skill-chain level.
+		return self:GetExperiencePerLevel()
+	end
+
+	method boolean CanLevelUpState(any state)
+		-- Returns whether the user can still unlock more chain slots.
+		if state == nil then
+			return false
+		end
+		if self:GetUserLevel(state) >= self:GetMaxSkillLevel() then
+			return false
+		end
+		return self:GetUnlockedChainSlotCount(state) < self:GetChainSlotCount()
+	end
+
+	method boolean IsChainSlotUnlocked(any state, number slotIndex)
+		-- Checks whether a chain slot is usable for the current user state.
+		local safeSlot = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlot <= 0 then
+			return false
+		end
+		return safeSlot <= self:GetUnlockedChainSlotCount(state)
 	end
 
 	method number GetChainSlotCount()

@@ -1,0 +1,736 @@
+@Component
+script BRBattleBotController extends Component
+
+	property boolean EnableBattleBot = true
+
+	property string BotId = ""
+
+	property number MaxHp = 100
+
+	property number MaxLives = 2
+
+	property number CurrentLives = 2
+
+	property number AttackDamage = 18
+
+	property number AttackCooldownSeconds = 0.8
+
+	property number AttackRangeX = 1.25
+
+	property number AttackRangeY = 1.0
+
+	property number SightRange = 9
+
+	property number MoveSpeed = 1.15
+
+	property number JumpCooldownSeconds = 1.2
+
+	property number ReviveDelaySeconds = 3.5
+
+	property number ReviveHpPercent = 0.6
+
+	property number HitInvincibleSeconds = 0.2
+
+	property number WanderMinSeconds = 0.65
+
+	property number WanderMaxSeconds = 1.45
+
+	property boolean EnableBTDebugLog = false
+
+	@Sync
+	property number CurrentHp = 100
+
+	@Sync
+	property string BotState = "Ready"
+
+	property number spawnX = 0
+
+	property number spawnY = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		if self.EnableBattleBot == false then
+			return
+		end
+
+		self:EnsureRuntime()
+		if self.BotId == "" then
+			self.BotId = self:BuildDefaultBotId()
+		end
+		if self.spawnX == 0 and self.spawnY == 0 then
+			local position = self:GetEntityPosition2(self.Entity)
+			self.spawnX = position.x
+			self.spawnY = position.y
+		end
+		self.CurrentHp = math.max(1, math.floor(self:ReadNumber(self.CurrentHp, self.MaxHp)))
+		self.CurrentLives = math.max(1, math.floor(self:ReadNumber(self.CurrentLives, self.MaxLives)))
+		self.BotState = "ALIVE"
+		self:ConfigureMovement()
+		self:SetupBehaviourTree()
+		self:RegisterToBattleLogic()
+		self:UpdateNameTag()
+		log("[BRBot] ready id=" .. self.BotId .. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()) .. " lives=" .. tostring(self.CurrentLives))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnEndPlay()
+		local battleLogic = self:GetBattleLogic()
+		if battleLogic ~= nil then
+			battleLogic:UnregisterBattleBot(self:ReadString(self.BotId, ""))
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnUpdate(number delta)
+		if self.EnableBattleBot == false or self:IsAlive() == false then
+			return
+		end
+		self:ReturnToSpawnIfOutOfBounds()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void InitializeBattleBot(string botId, Vector2 spawnPosition, number maxHp, number lives)
+		self:EnsureRuntime()
+		self.BotId = self:ReadString(botId, self:BuildDefaultBotId())
+		if spawnPosition ~= nil then
+			self.spawnX = spawnPosition.x
+			self.spawnY = spawnPosition.y
+			self:MoveToPosition(spawnPosition)
+		end
+		self.MaxHp = math.max(1, math.floor(self:ReadNumber(maxHp, self.MaxHp)))
+		self.MaxLives = math.max(1, math.floor(self:ReadNumber(lives, self.MaxLives)))
+		self.CurrentLives = self.MaxLives
+		self.CurrentHp = self.MaxHp
+		self.BotState = "ALIVE"
+		self:ConfigureMovement()
+		self:SetupBehaviourTree()
+		self:RegisterToBattleLogic()
+		self:UpdateNameTag()
+		log("[BRBot] initialized id=" .. self.BotId .. " spawn=(" .. tostring(self.spawnX) .. "," .. tostring(self.spawnY) .. ")")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SetupBehaviourTree()
+		if self.Entity == nil or self.Entity.AIComponent == nil then
+			log("[BRBot] missing AIComponent id=" .. self:ReadString(self.BotId, ""))
+			return
+		end
+
+		local ai = self.Entity.AIComponent
+
+		local root = SelectorNode("BattleBotRoot")
+		local attackSequence = SequenceNode("AttackSequence")
+		local chaseSequence = SequenceNode("ChaseSequence")
+		local findAttack = ai:CreateNode("BRBTFindTarget", "FindTargetForAttack")
+		local attackTarget = ai:CreateNode("BRBTAttackTarget", "AttackTarget")
+		local findMove = ai:CreateNode("BRBTFindTarget", "FindTargetForMove")
+		local moveTarget = ai:CreateNode("BRBTMoveToTarget", "MoveToTarget")
+		local wander = ai:CreateNode("BRBTWander", "Wander")
+
+		if findAttack == nil or attackTarget == nil or findMove == nil or moveTarget == nil or wander == nil then
+			log("[BRBot] BT node create failed. refresh scripts/codeblocks first. id=" .. self:ReadString(self.BotId, ""))
+			return
+		end
+
+		attackSequence:AttachChild(findAttack)
+		attackSequence:AttachChild(attackTarget)
+
+		chaseSequence:AttachChild(findMove)
+		chaseSequence:AttachChild(moveTarget)
+
+		root:AttachChild(attackSequence)
+		root:AttachChild(chaseSequence)
+		root:AttachChild(wander)
+		ai:SetRootNode(root)
+	end
+
+	@ExecSpace("ServerOnly")
+	method any BTFindTarget(number delta)
+		if self:IsAlive() == false then
+			return BehaviourTreeStatus.Failure
+		end
+
+		local target = self:FindNearestTarget()
+		if target == nil then
+			self:SetTarget(nil)
+			return BehaviourTreeStatus.Failure
+		end
+		self:SetTarget(target)
+		return BehaviourTreeStatus.Success
+	end
+
+	@ExecSpace("ServerOnly")
+	method any BTAttackTarget(number delta)
+		if self:IsAlive() == false then
+			return BehaviourTreeStatus.Failure
+		end
+
+		local target = self:GetTarget()
+		if self:IsTargetValid(target) == false then
+			return BehaviourTreeStatus.Failure
+		end
+		if self:IsTargetInAttackRange(target) == false then
+			return BehaviourTreeStatus.Failure
+		end
+
+		self:StopMove()
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.nextAttackAt, 0) then
+			return BehaviourTreeStatus.Running
+		end
+
+		self._T.nextAttackAt = now + self:GetAttackCooldownSeconds()
+		self:FaceTarget(target)
+		self:ApplyAttackToTarget(target)
+		return BehaviourTreeStatus.Running
+	end
+
+	@ExecSpace("ServerOnly")
+	method any BTMoveToTarget(number delta)
+		if self:IsAlive() == false then
+			return BehaviourTreeStatus.Failure
+		end
+
+		local target = self:GetTarget()
+		if self:IsTargetValid(target) == false then
+			return BehaviourTreeStatus.Failure
+		end
+		if self:IsTargetInAttackRange(target) == true then
+			self:StopMove()
+			return BehaviourTreeStatus.Success
+		end
+
+		self:MoveToward(target, delta)
+		return BehaviourTreeStatus.Running
+	end
+
+	@ExecSpace("ServerOnly")
+	method any BTWander(number delta)
+		if self:IsAlive() == false then
+			return BehaviourTreeStatus.Failure
+		end
+
+		local now = self:Now()
+		if now >= self:ReadNumber(self._T.nextWanderAt, 0) then
+			local direction = -1
+			if _UtilLogic:RandomDouble() >= 0.5 then
+				direction = 1
+			end
+			self._T.wanderDirection = direction
+			local minSeconds = self:GetWanderMinSeconds()
+			local maxSeconds = self:GetWanderMaxSeconds()
+			self._T.nextWanderAt = now + minSeconds + _UtilLogic:RandomDouble() * math.max(0.01, maxSeconds - minSeconds)
+		end
+		self:MoveDirection(self:ReadNumber(self._T.wanderDirection, 1), delta)
+		return BehaviourTreeStatus.Running
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyBotDamage(Entity attackerEntity, number rawDamage, string source)
+		if self.EnableBattleBot == false or self:IsAlive() == false then
+			return
+		end
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.invincibleUntil, 0) then
+			return
+		end
+
+		local damage = math.max(1, math.floor(self:ReadNumber(rawDamage, 1)))
+		self.CurrentHp = math.max(0, self.CurrentHp - damage)
+		self._T.invincibleUntil = now + self:GetHitInvincibleSeconds()
+		self:FlashHit()
+		self:UpdateNameTag()
+		log("[BRBot] hit id=" .. self.BotId .. " damage=" .. tostring(damage) .. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()) .. " source=" .. self:ReadString(source, "skill"))
+
+		if self.CurrentHp <= 0 then
+			self:HandleFatalDamage(attackerEntity, source)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void HandleFatalDamage(Entity attackerEntity, string source)
+		if self.BotState == "REVIVE" or self.BotState == "OUT" then
+			return
+		end
+
+		self.CurrentLives = math.max(0, math.floor(self:ReadNumber(self.CurrentLives, self.MaxLives)) - 1)
+		self.CurrentHp = 0
+		self:StopMove()
+		self:SetAIEnabled(false)
+
+		if self.CurrentLives > 0 then
+			self.BotState = "REVIVE"
+			self.Entity.Visible = false
+			self:UpdateNameTag()
+			_TimerService:SetTimerOnce(function() self:ReviveBot() end, self:GetReviveDelaySeconds())
+			log("[BRBot] revive pending id=" .. self.BotId .. " lives=" .. tostring(self.CurrentLives))
+		else
+			self.BotState = "OUT"
+			self.Entity.Visible = false
+			self:UpdateNameTag()
+			log("[BRBot] out id=" .. self.BotId .. " source=" .. self:ReadString(source, "unknown"))
+		end
+
+		self:RewardPlayerAttacker(attackerEntity, source)
+		self:NotifyBattleLogicChanged("bot-death")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ReviveBot()
+		if self.BotState ~= "REVIVE" then
+			return
+		end
+
+		self.Entity.Enable = true
+		self.Entity.Visible = true
+		self.CurrentHp = math.max(1, math.ceil(self:GetMaxHp() * self:GetReviveHpPercent()))
+		self.BotState = "ALIVE"
+		self:MoveToPosition(Vector2(self.spawnX, self.spawnY))
+		self:SetAIEnabled(true)
+		self._T.invincibleUntil = self:Now() + 1.0
+		self:UpdateNameTag()
+		self:NotifyBattleLogicChanged("bot-revive")
+		log("[BRBot] revived id=" .. self.BotId .. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()))
+	end
+
+	method Entity FindNearestTarget()
+		local best = nil
+		local bestDistance = self:GetSightRange()
+		local position = self:GetEntityPosition2(self.Entity)
+		local mapName = self:ReadString(self.Entity.CurrentMapName, "")
+
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users ~= nil then
+			for index, target in ipairs(users) do
+				if self:IsTargetValid(target) == true then
+					local distance = self:GetDistance(position, self:GetEntityPosition2(target))
+					if distance < bestDistance then
+						bestDistance = distance
+						best = target
+					end
+				end
+			end
+		end
+
+		local battleLogic = self:GetBattleLogic()
+		if battleLogic ~= nil then
+			local botTarget = battleLogic:FindNearestAliveBotTarget(self.Entity, position, bestDistance)
+			if botTarget ~= nil and self:IsTargetValid(botTarget) == true then
+				best = botTarget
+			end
+		end
+
+		return best
+	end
+
+	method boolean IsTargetValid(Entity target)
+		if target == nil or isvalid(target) == false or self.Entity == nil then
+			return false
+		end
+		if target.Id == self.Entity.Id then
+			return false
+		end
+		if target.CurrentMapName ~= self.Entity.CurrentMapName then
+			return false
+		end
+		if target.PlayerComponent ~= nil then
+			return target.PlayerComponent:IsDead() == false and target.PlayerComponent.Hp > 0
+		end
+
+		local bot = self:GetBattleBotController(target)
+		return bot ~= nil and bot:IsAlive() == true
+	end
+
+	method boolean IsTargetInAttackRange(Entity target)
+		local selfPosition = self:GetEntityPosition2(self.Entity)
+		local targetPosition = self:GetEntityPosition2(target)
+		return math.abs(targetPosition.x - selfPosition.x) <= self:GetAttackRangeX()
+			and math.abs(targetPosition.y - selfPosition.y) <= self:GetAttackRangeY()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyAttackToTarget(Entity target)
+		if target == nil then
+			return
+		end
+		if target.PlayerComponent ~= nil then
+			local battleLogic = self:GetBattleLogic()
+			if battleLogic ~= nil then
+				battleLogic:ApplyDamageToPlayerFromBot(self.Entity, target, self:GetAttackDamage(), "bot:" .. self.BotId)
+			end
+			return
+		end
+
+		local bot = self:GetBattleBotController(target)
+		if bot ~= nil then
+			bot:ApplyBotDamage(self.Entity, self:GetAttackDamage(), "bot:" .. self.BotId)
+		end
+	end
+
+	method void MoveToward(Entity target, number delta)
+		local selfPosition = self:GetEntityPosition2(self.Entity)
+		local targetPosition = self:GetEntityPosition2(target)
+		local direction = 1
+		if targetPosition.x < selfPosition.x then
+			direction = -1
+		end
+		self:MoveDirection(direction, delta)
+		self:TryJumpToward(targetPosition)
+	end
+
+	method void MoveDirection(number direction, number delta)
+		local safeDirection = 1
+		if self:ReadNumber(direction, 1) < 0 then
+			safeDirection = -1
+		end
+		self._T.lookDirection = safeDirection
+		if self.Entity.SpriteRendererComponent ~= nil then
+			self.Entity.SpriteRendererComponent.FlipX = safeDirection < 0
+		end
+		if self.Entity.MovementComponent ~= nil then
+			self.Entity.MovementComponent.InputSpeed = self:GetMoveSpeed()
+			self.Entity.MovementComponent:MoveToDirection(Vector2(safeDirection, 0), self:ReadNumber(delta, 0.033))
+		elseif self.Entity.RigidbodyComponent ~= nil then
+			self.Entity.RigidbodyComponent.MoveVelocity = Vector2(safeDirection * self:GetMoveSpeed(), 0)
+		end
+	end
+
+	method void TryJumpToward(Vector2 targetPosition)
+		if targetPosition == nil or self.Entity == nil or self.Entity.RigidbodyComponent == nil or self.Entity.MovementComponent == nil then
+			return
+		end
+		if targetPosition.y <= self:GetEntityPosition2(self.Entity).y + 0.45 then
+			return
+		end
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.nextJumpAt, 0) then
+			return
+		end
+		if self.Entity.RigidbodyComponent:IsOnGround() ~= true then
+			return
+		end
+		self._T.nextJumpAt = now + self:GetJumpCooldownSeconds()
+		self.Entity.MovementComponent:Jump()
+	end
+
+	method void StopMove()
+		if self.Entity == nil then
+			return
+		end
+		if self.Entity.MovementComponent ~= nil then
+			self.Entity.MovementComponent:Stop()
+		end
+		if self.Entity.RigidbodyComponent ~= nil then
+			self.Entity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+		end
+	end
+
+	method void FaceTarget(Entity target)
+		if target == nil then
+			return
+		end
+		local selfPosition = self:GetEntityPosition2(self.Entity)
+		local targetPosition = self:GetEntityPosition2(target)
+		if targetPosition.x < selfPosition.x then
+			self._T.lookDirection = -1
+			if self.Entity.SpriteRendererComponent ~= nil then
+				self.Entity.SpriteRendererComponent.FlipX = true
+			end
+		else
+			self._T.lookDirection = 1
+			if self.Entity.SpriteRendererComponent ~= nil then
+				self.Entity.SpriteRendererComponent.FlipX = false
+			end
+		end
+	end
+
+	method void ConfigureMovement()
+		if self.Entity == nil then
+			return
+		end
+		if self.Entity.RigidbodyComponent ~= nil then
+			self.Entity.RigidbodyComponent.Enable = true
+			self.Entity.RigidbodyComponent.KinematicMove = false
+			self.Entity.RigidbodyComponent.IsolatedMove = false
+			self.Entity.RigidbodyComponent.IgnoreMoveBoundary = true
+			self.Entity.RigidbodyComponent.Gravity = 1
+			self.Entity.RigidbodyComponent.WalkSpeed = self:GetMoveSpeed()
+			self.Entity.RigidbodyComponent.WalkJump = 1.4
+			self.Entity.RigidbodyComponent:PositionReset()
+		end
+		if self.Entity.MovementComponent ~= nil then
+			self.Entity.MovementComponent.InputSpeed = self:GetMoveSpeed()
+			self.Entity.MovementComponent.JumpForce = 1.4
+		end
+	end
+
+	method void MoveToPosition(Vector2 position)
+		if self.Entity == nil or position == nil then
+			return
+		end
+		local clamped = position
+		if _BRSkillSystem ~= nil then
+			clamped = _BRSkillSystem:ClampPositionToMapBounds(self.Entity, position)
+		end
+		if self.Entity.MovementComponent ~= nil then
+			self.Entity.MovementComponent:Stop()
+			self.Entity.MovementComponent:SetWorldPosition(clamped)
+		end
+		if self.Entity.RigidbodyComponent ~= nil then
+			self.Entity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			self.Entity.RigidbodyComponent:SetWorldPosition(clamped)
+			self.Entity.RigidbodyComponent:PositionReset()
+		elseif self.Entity.TransformComponent ~= nil then
+			self.Entity.TransformComponent.Position = Vector3(clamped.x, clamped.y, 0)
+		end
+	end
+
+	method void ReturnToSpawnIfOutOfBounds()
+		if _BRSkillSystem == nil then
+			return
+		end
+		local position = self:GetEntityPosition2(self.Entity)
+		if _BRSkillSystem:IsPositionOutsideMapBounds(self.Entity, position, 0.2) ~= true then
+			return
+		end
+		self:MoveToPosition(Vector2(self.spawnX, self.spawnY))
+		log("[BRBot] bounds return id=" .. self.BotId .. " to=(" .. tostring(self.spawnX) .. "," .. tostring(self.spawnY) .. ")")
+	end
+
+	method void SetAIEnabled(boolean enabled)
+		if self.Entity ~= nil and self.Entity.AIComponent ~= nil then
+			self.Entity.AIComponent.Enable = enabled
+		end
+	end
+
+	method void SetTarget(Entity target)
+		self._T.targetEntity = target
+		if self.Entity ~= nil and self.Entity.AIComponent ~= nil and self.Entity.AIComponent.BlackBoard ~= nil then
+			if target ~= nil then
+				self.Entity.AIComponent.BlackBoard:SetEntity("Target", target)
+			end
+		end
+	end
+
+	method Entity GetTarget()
+		if self._T.targetEntity ~= nil and isvalid(self._T.targetEntity) then
+			return self._T.targetEntity
+		end
+		if self.Entity ~= nil and self.Entity.AIComponent ~= nil and self.Entity.AIComponent.BlackBoard ~= nil then
+			return self.Entity.AIComponent.BlackBoard:GetEntity("Target")
+		end
+		return nil
+	end
+
+	method boolean IsAlive()
+		return self.EnableBattleBot == true and self.BotState == "ALIVE" and self.CurrentHp > 0
+	end
+
+	method boolean IsContending()
+		return self.BotState ~= "OUT" and self.CurrentLives > 0
+	end
+
+	method boolean IsSkillTargetValid()
+		return self:IsAlive()
+	end
+
+	method any GetBattleBotController(Entity entity)
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRBattleBotController")
+		if component == nil then
+			component = entity:GetComponent("BRBattleBotController")
+		end
+		return component
+	end
+
+	method void RegisterToBattleLogic()
+		local battleLogic = self:GetBattleLogic()
+		if battleLogic ~= nil then
+			battleLogic:RegisterBattleBot(self.Entity, self.BotId)
+		end
+	end
+
+	method void NotifyBattleLogicChanged(string reason)
+		local battleLogic = self:GetBattleLogic()
+		if battleLogic == nil then
+			return
+		end
+		battleLogic:UpdateAlivePlayerCount()
+		battleLogic:UpdateLifeSummary()
+		battleLogic:CheckLastManStanding(self:ReadString(reason, "bot"))
+	end
+
+	method any GetBattleLogic()
+		local mapName = ""
+		if self.Entity ~= nil and self.Entity.CurrentMapName ~= nil then
+			mapName = self:ReadString(self.Entity.CurrentMapName, "")
+		end
+		if mapName == "" then
+			return nil
+		end
+		local entity = _EntityService:GetEntityByPath("/maps/" .. mapName .. "/BattleLogic")
+		if entity == nil then
+			return nil
+		end
+		return entity:GetComponent("script.BRBattleLogic")
+	end
+
+	method void RewardPlayerAttacker(Entity attackerEntity, string source)
+		if attackerEntity == nil or attackerEntity.PlayerComponent == nil or _BRSkillSystem == nil then
+			return
+		end
+		local userId = self:ReadString(attackerEntity.PlayerComponent.UserId, "")
+		if userId == "" then
+			return
+		end
+		_BRSkillSystem:GrantUserExperience(userId, 1, "bot:" .. self:ReadString(source, "kill"))
+	end
+
+	method void FlashHit()
+		if self.Entity == nil or self.Entity.SpriteRendererComponent == nil then
+			return
+		end
+		self.Entity.SpriteRendererComponent.Color = Color(1, 0.32, 0.26, 1)
+		_TimerService:SetTimerOnce(function() self:RestoreColor() end, 0.12)
+	end
+
+	method void RestoreColor()
+		if self.Entity == nil or self.Entity.SpriteRendererComponent == nil then
+			return
+		end
+		self.Entity.SpriteRendererComponent.Color = Color(1, 1, 1, 1)
+	end
+
+	method void UpdateNameTag()
+		if self.Entity == nil or self.Entity.NameTagComponent == nil then
+			return
+		end
+		self.Entity.NameTagComponent.Name = "AI " .. self:ReadString(self.BotId, "BOT") .. "\n" .. self.BotState .. " " .. tostring(math.floor(self.CurrentHp)) .. "/" .. tostring(self:GetMaxHp()) .. " L" .. tostring(math.floor(self.CurrentLives))
+		if self.BotState == "OUT" then
+			self.Entity.NameTagComponent.FontColor = Color(0.75, 0.75, 0.75, 1)
+		elseif self.BotState == "REVIVE" then
+			self.Entity.NameTagComponent.FontColor = Color(0.45, 0.75, 1, 1)
+		else
+			self.Entity.NameTagComponent.FontColor = Color(1, 0.88, 0.35, 1)
+		end
+	end
+
+	method void EnsureRuntime()
+		if self._T.nextAttackAt == nil then
+			self._T.nextAttackAt = 0
+		end
+		if self._T.nextJumpAt == nil then
+			self._T.nextJumpAt = 0
+		end
+		if self._T.nextWanderAt == nil then
+			self._T.nextWanderAt = 0
+		end
+		if self._T.wanderDirection == nil then
+			self._T.wanderDirection = 1
+		end
+		if self._T.lookDirection == nil then
+			self._T.lookDirection = 1
+		end
+		if self._T.invincibleUntil == nil then
+			self._T.invincibleUntil = 0
+		end
+	end
+
+	method string BuildDefaultBotId()
+		if self.Entity ~= nil and self.Entity.Id ~= nil and self.Entity.Id ~= "" then
+			return "AI_" .. string.sub(self.Entity.Id, 1, 8)
+		end
+		return "AI_" .. tostring(math.floor(self:Now() * 1000))
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method number GetDistance(Vector2 a, Vector2 b)
+		if a == nil or b == nil then
+			return 999999
+		end
+		local dx = a.x - b.x
+		local dy = a.y - b.y
+		return math.sqrt(dx * dx + dy * dy)
+	end
+
+	method number GetMaxHp()
+		return math.max(1, math.floor(self:ReadNumber(self.MaxHp, 100)))
+	end
+
+	method number GetAttackDamage()
+		return math.max(1, math.floor(self:ReadNumber(self.AttackDamage, 18)))
+	end
+
+	method number GetAttackCooldownSeconds()
+		return math.max(0.1, self:ReadNumber(self.AttackCooldownSeconds, 0.8))
+	end
+
+	method number GetAttackRangeX()
+		return math.max(0.2, self:ReadNumber(self.AttackRangeX, 1.25))
+	end
+
+	method number GetAttackRangeY()
+		return math.max(0.2, self:ReadNumber(self.AttackRangeY, 1.0))
+	end
+
+	method number GetSightRange()
+		return math.max(1, self:ReadNumber(self.SightRange, 9))
+	end
+
+	method number GetMoveSpeed()
+		return math.max(0.1, self:ReadNumber(self.MoveSpeed, 1.15))
+	end
+
+	method number GetJumpCooldownSeconds()
+		return math.max(0.2, self:ReadNumber(self.JumpCooldownSeconds, 1.2))
+	end
+
+	method number GetReviveDelaySeconds()
+		return math.max(0.5, self:ReadNumber(self.ReviveDelaySeconds, 3.5))
+	end
+
+	method number GetReviveHpPercent()
+		return math.max(0.05, math.min(1, self:ReadNumber(self.ReviveHpPercent, 0.6)))
+	end
+
+	method number GetHitInvincibleSeconds()
+		return math.max(0, self:ReadNumber(self.HitInvincibleSeconds, 0.2))
+	end
+
+	method number GetWanderMinSeconds()
+		return math.max(0.1, self:ReadNumber(self.WanderMinSeconds, 0.65))
+	end
+
+	method number GetWanderMaxSeconds()
+		return math.max(self:GetWanderMinSeconds(), self:ReadNumber(self.WanderMaxSeconds, 1.45))
+	end
+
+	method number Now()
+		return _UtilLogic.ElapsedSeconds
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

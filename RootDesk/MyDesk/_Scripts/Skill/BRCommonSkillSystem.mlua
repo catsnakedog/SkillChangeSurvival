@@ -1,0 +1,614 @@
+@Logic
+script BRCommonSkillSystem extends Logic
+
+	property boolean EnableCommonSkills = true
+
+	property boolean VerboseLog = true
+
+	property number UniqueCooldownSeconds = 0.35
+
+	property number BlinkCooldownSeconds = 1.2
+
+	property number BlinkDistance = 2.8
+
+	property number NimbusToggleCooldownSeconds = 0.35
+
+	property number NimbusMoveSpeed = 5.2
+
+	property boolean BlockNimbusInBattleMap = true
+
+	property boolean NimbusUseFlyAnimation = true
+
+	property string NimbusEffectRUID = "7bca38a8c5384706804ace2688b02045"
+
+	property number NimbusEffectLocalX = 0
+
+	property number NimbusEffectLocalY = -0.42
+
+	property number NimbusEffectScale = 1.2
+
+	property number NimbusEffectAlpha = 0.95
+
+	property number NimbusEffectPlayRate = 1.0
+
+	property integer NimbusEffectOrderInLayer = 20
+
+	property any inputKeyDownHandler = nil
+
+	property number localNextUniqueAt = 0
+
+	property number localNextBlinkAt = 0
+
+	property number localNextNimbusToggleAt = 0
+
+	property boolean localNimbusActive = false
+
+	property integer localNimbusEffectSerial = 0
+
+	method void OnBeginPlay()
+		-- Initializes common skill input on the client and portal-lock state on the server.
+		self:EnsureRuntime()
+		if self:IsClient() then
+			self:StartClientInput()
+		end
+		if self:IsServer() then
+			self:Log("ready common=Unique/Blink/Nimbus")
+		end
+	end
+
+	method void OnEndPlay()
+		if self:IsClient() then
+			self:StopNimbusEffect()
+			self:SetLocalNimbusActive(false, "endplay")
+			self:StopClientInput()
+		end
+	end
+
+	method void OnUpdate(number delta)
+		if self:IsClient() then
+			self:TickLocalNimbus(delta)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StartClientInput()
+		if self.EnableCommonSkills ~= true then
+			return
+		end
+		if self.inputKeyDownHandler ~= nil then
+			return
+		end
+		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnCommonSkillKeyDown)
+		log("[BRCommonSkill] client input ready unique=Q blink=W nimbus=E")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StopClientInput()
+		if self.inputKeyDownHandler ~= nil then
+			_InputService:DisconnectEvent(KeyDownEvent, self.inputKeyDownHandler)
+		end
+		self.inputKeyDownHandler = nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnCommonSkillKeyDown(KeyDownEvent event)
+		if event == nil or self.EnableCommonSkills ~= true then
+			return
+		end
+		if event.key == KeyboardKey.Q then
+			self:TryUseUniqueSkill()
+		elseif event.key == KeyboardKey.W then
+			self:TryBlink()
+		elseif event.key == KeyboardKey.E then
+			self:TryToggleNimbus()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void TryUseUniqueSkill()
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self:ReadNumber(self.localNextUniqueAt, 0) then
+			return
+		end
+		self.localNextUniqueAt = now + self:GetUniqueCooldownSeconds()
+
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return
+		end
+		if localPlayer.PlayerComponent:IsDead() == true or localPlayer.PlayerComponent.Hp <= 0 then
+			return
+		end
+
+		if _BRSkillSystem ~= nil then
+			local userId = self:ReadString(localPlayer.PlayerComponent.UserId, "")
+			local uniqueSkillKey = "UniqueHero"
+			if _BRCharacterSystem ~= nil then
+				uniqueSkillKey = _BRCharacterSystem:GetLocalUniqueSkillKey()
+			end
+			_BRSkillSystem:RequestCastUniqueSkill(userId, uniqueSkillKey)
+			log("[BRCommonSkill] unique request user=" .. userId .. " skill=" .. uniqueSkillKey)
+		else
+			log("[BRCommonSkill] unique skipped reason=noSkillSystem")
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void TryBlink()
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self:ReadNumber(self.localNextBlinkAt, 0) then
+			return
+		end
+
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil or localPlayer.RigidbodyComponent == nil then
+			return
+		end
+		if localPlayer.PlayerComponent:IsDead() == true or localPlayer.PlayerComponent.Hp <= 0 then
+			return
+		end
+
+		self.localNextBlinkAt = now + self:GetBlinkCooldownSeconds()
+		local position = self:GetEntityPosition2(localPlayer)
+		local direction = self:GetFacingDirection(localPlayer)
+		local distance = self:GetBlinkDistance()
+		local target = Vector2(position.x + direction * distance, position.y)
+		target = self:ClampPositionToMapBounds(localPlayer, target)
+
+		localPlayer.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+		localPlayer.RigidbodyComponent:SetWorldPosition(target)
+		localPlayer.RigidbodyComponent:PositionReset()
+		log("[BRCommonSkill] blink dir=" .. tostring(direction) .. " distance=" .. tostring(distance) .. " target=(" .. tostring(target.x) .. "," .. tostring(target.y) .. ")")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void TryToggleNimbus()
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self:ReadNumber(self.localNextNimbusToggleAt, 0) then
+			return
+		end
+		self.localNextNimbusToggleAt = now + self:GetNimbusToggleCooldownSeconds()
+		self:SetLocalNimbusActive(self.localNimbusActive ~= true, "toggle")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetLocalNimbusActive(boolean active, string reason)
+		self:EnsureRuntime()
+		local nextActive = active == true
+		if self.localNimbusActive == nextActive then
+			return
+		end
+
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil or localPlayer.RigidbodyComponent == nil then
+			return
+		end
+		if nextActive == true and self:CanStartNimbus(localPlayer) ~= true then
+			log("[BRCommonSkill] nimbus blocked reason=combatOrInvalid")
+			return
+		end
+
+		if nextActive == true then
+			self:CaptureNimbusBackup(localPlayer)
+			self:ApplyNimbusMovement(localPlayer)
+			self:PlayNimbusVisual(localPlayer, true)
+			self.localNimbusActive = true
+			self:SetNimbusActiveServer(true)
+			log("[BRCommonSkill] nimbus on reason=" .. self:ReadString(reason, "unknown"))
+		else
+			self:RestoreNimbusMovement(localPlayer)
+			self:PlayNimbusVisual(localPlayer, false)
+			self.localNimbusActive = false
+			self:SetNimbusActiveServer(false)
+			log("[BRCommonSkill] nimbus off reason=" .. self:ReadString(reason, "unknown"))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void TickLocalNimbus(number delta)
+		if self.localNimbusActive ~= true then
+			return
+		end
+
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.RigidbodyComponent == nil or localPlayer.PlayerComponent == nil then
+			self:StopNimbusEffect()
+			self.localNimbusActive = false
+			self:SetNimbusActiveServer(false)
+			return
+		end
+		if self:CanKeepNimbus(localPlayer) ~= true then
+			self:SetLocalNimbusActive(false, "auto")
+			return
+		end
+
+		self:ApplyNimbusMovement(localPlayer)
+		local dx = 0
+		local dy = 0
+		if _InputService:IsKeyPressed(KeyboardKey.RightArrow) == true then
+			dx = dx + 1
+		end
+		if _InputService:IsKeyPressed(KeyboardKey.LeftArrow) == true then
+			dx = dx - 1
+		end
+		if _InputService:IsKeyPressed(KeyboardKey.UpArrow) == true then
+			dy = dy + 1
+		end
+		if _InputService:IsKeyPressed(KeyboardKey.DownArrow) == true then
+			dy = dy - 1
+		end
+
+		if dx ~= 0 and dy ~= 0 then
+			local inv = 1 / math.sqrt(2)
+			dx = dx * inv
+			dy = dy * inv
+		end
+		if localPlayer.PlayerControllerComponent ~= nil then
+			if dx > 0 then
+				localPlayer.PlayerControllerComponent.LookDirectionX = 1
+			elseif dx < 0 then
+				localPlayer.PlayerControllerComponent.LookDirectionX = -1
+			end
+		end
+		local speed = self:GetNimbusMoveSpeed()
+		local velocity = Vector2(dx * speed, dy * speed)
+		local position = self:GetEntityPosition2(localPlayer)
+		local nextPosition = Vector2(position.x + velocity.x * self:ReadNumber(delta, 0), position.y + velocity.y * self:ReadNumber(delta, 0))
+		if self:IsPositionOutsideMapBounds(localPlayer, nextPosition, 0) == true then
+			local clampedPosition = self:ClampPositionToMapBounds(localPlayer, nextPosition)
+			localPlayer.RigidbodyComponent:SetWorldPosition(clampedPosition)
+			localPlayer.RigidbodyComponent:PositionReset()
+			if math.abs(clampedPosition.x - nextPosition.x) > 0.001 then
+				dx = 0
+			end
+			if math.abs(clampedPosition.y - nextPosition.y) > 0.001 then
+				dy = 0
+			end
+			velocity = Vector2(dx * speed, dy * speed)
+			log("[BRCommonSkill] nimbus clamp pos=(" .. tostring(clampedPosition.x) .. "," .. tostring(clampedPosition.y) .. ")")
+		end
+		localPlayer.RigidbodyComponent.MoveVelocity = velocity
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean CanStartNimbus(Entity playerEntity)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
+		end
+		if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+		if self.BlockNimbusInBattleMap == true and self:IsBattleMap(playerEntity) == true then
+			return false
+		end
+		return true
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean CanKeepNimbus(Entity playerEntity)
+		return self:CanStartNimbus(playerEntity)
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsBattleMap(Entity playerEntity)
+		if playerEntity == nil then
+			return false
+		end
+		local mapName = self:ReadString(playerEntity.CurrentMapName, "")
+		if mapName == "" then
+			return false
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. mapName .. "/BattleLogic") ~= nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void CaptureNimbusBackup(Entity playerEntity)
+		if playerEntity == nil or playerEntity.RigidbodyComponent == nil then
+			return
+		end
+		self._T.localNimbusBackup = {
+			KinematicMove = playerEntity.RigidbodyComponent.KinematicMove,
+			Gravity = playerEntity.RigidbodyComponent.Gravity,
+			IgnoreMoveBoundary = playerEntity.RigidbodyComponent.IgnoreMoveBoundary,
+			EnableKinematicMoveJump = playerEntity.RigidbodyComponent.EnableKinematicMoveJump,
+			KinematicMoveAcceleration = playerEntity.RigidbodyComponent.KinematicMoveAcceleration,
+			MoveVelocity = playerEntity.RigidbodyComponent.MoveVelocity,
+			InputSpeed = nil,
+			PlayerControllerEnable = nil
+		}
+		if playerEntity.MovementComponent ~= nil then
+			self._T.localNimbusBackup.InputSpeed = playerEntity.MovementComponent.InputSpeed
+		end
+		if playerEntity.PlayerControllerComponent ~= nil then
+			self._T.localNimbusBackup.PlayerControllerEnable = playerEntity.PlayerControllerComponent.Enable
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyNimbusMovement(Entity playerEntity)
+		if playerEntity == nil or playerEntity.RigidbodyComponent == nil then
+			return
+		end
+		if playerEntity.PlayerControllerComponent ~= nil then
+			playerEntity.PlayerControllerComponent.Enable = false
+		end
+		playerEntity.RigidbodyComponent.KinematicMove = true
+		playerEntity.RigidbodyComponent.Gravity = 0
+		playerEntity.RigidbodyComponent.IgnoreMoveBoundary = false
+		playerEntity.RigidbodyComponent.EnableKinematicMoveJump = false
+		playerEntity.RigidbodyComponent.KinematicMoveAcceleration = Vector2(10, 10)
+		if playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent.InputSpeed = 0
+			playerEntity.MovementComponent:Stop()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RestoreNimbusMovement(Entity playerEntity)
+		if playerEntity == nil or playerEntity.RigidbodyComponent == nil then
+			return
+		end
+		local backup = self._T.localNimbusBackup
+		if backup ~= nil then
+			playerEntity.RigidbodyComponent.KinematicMove = backup.KinematicMove == true
+			playerEntity.RigidbodyComponent.Gravity = self:ReadNumber(backup.Gravity, 1)
+			playerEntity.RigidbodyComponent.IgnoreMoveBoundary = backup.IgnoreMoveBoundary == true
+			playerEntity.RigidbodyComponent.EnableKinematicMoveJump = backup.EnableKinematicMoveJump ~= false
+			if backup.KinematicMoveAcceleration ~= nil then
+				playerEntity.RigidbodyComponent.KinematicMoveAcceleration = backup.KinematicMoveAcceleration
+			end
+			if backup.MoveVelocity ~= nil then
+				playerEntity.RigidbodyComponent.MoveVelocity = backup.MoveVelocity
+			else
+				playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			end
+			if playerEntity.MovementComponent ~= nil and backup.InputSpeed ~= nil then
+				playerEntity.MovementComponent.InputSpeed = self:ReadNumber(backup.InputSpeed, playerEntity.MovementComponent.InputSpeed)
+				playerEntity.MovementComponent:Stop()
+			end
+			if playerEntity.PlayerControllerComponent ~= nil and backup.PlayerControllerEnable ~= nil then
+				playerEntity.PlayerControllerComponent.Enable = backup.PlayerControllerEnable == true
+			end
+		else
+			playerEntity.RigidbodyComponent.KinematicMove = false
+			playerEntity.RigidbodyComponent.Gravity = 1
+			playerEntity.RigidbodyComponent.EnableKinematicMoveJump = true
+			playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			if playerEntity.PlayerControllerComponent ~= nil then
+				playerEntity.PlayerControllerComponent.Enable = true
+			end
+		end
+		playerEntity.RigidbodyComponent:PositionReset()
+		self._T.localNimbusBackup = nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayNimbusVisual(Entity playerEntity, boolean active)
+		if playerEntity == nil then
+			if active ~= true then
+				self:StopNimbusEffect()
+			end
+			return
+		end
+		if active == true then
+			self:StartNimbusEffect(playerEntity)
+		else
+			self:StopNimbusEffect()
+		end
+		if self.NimbusUseFlyAnimation ~= true then
+			return
+		end
+		local actionState = MapleAvatarBodyActionState.Stand
+		if active == true then
+			actionState = MapleAvatarBodyActionState.Fly
+		end
+		playerEntity:SendEvent(BodyActionStateChangeEvent(true, actionState, 0, 2147483647, 1))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StartNimbusEffect(Entity playerEntity)
+		self:StopNimbusEffect()
+		if playerEntity == nil or _EffectService == nil then
+			return
+		end
+
+		local ruid = self:ReadString(self.NimbusEffectRUID, "")
+		if ruid == "" then
+			return
+		end
+
+		local scale = math.max(0.05, self:ReadNumber(self.NimbusEffectScale, 1.2))
+		local alpha = math.max(0, math.min(1, self:ReadNumber(self.NimbusEffectAlpha, 0.95)))
+		local options = {}
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = math.floor(self:ReadNumber(self.NimbusEffectOrderInLayer, 20))
+		options["Alpha"] = alpha
+		options["PlayRate"] = math.max(0.1, self:ReadNumber(self.NimbusEffectPlayRate, 1.0))
+		options["IgnoreMapLayerCheck"] = true
+
+		local serial = _EffectService:PlayEffectAttached(
+			ruid,
+			playerEntity,
+			Vector3(self:ReadNumber(self.NimbusEffectLocalX, 0), self:ReadNumber(self.NimbusEffectLocalY, -0.42), 0),
+			0,
+			Vector3(scale, scale, 1),
+			true,
+			options
+		)
+		self.localNimbusEffectSerial = math.floor(self:ReadNumber(serial, 0))
+		if self.localNimbusEffectSerial <= 0 then
+			log("[BRCommonSkill] nimbus effect failed ruid=" .. ruid)
+		else
+			log("[BRCommonSkill] nimbus effect start ruid=" .. ruid .. " serial=" .. tostring(self.localNimbusEffectSerial))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StopNimbusEffect()
+		local serial = math.floor(self:ReadNumber(self.localNimbusEffectSerial, 0))
+		if serial <= 0 then
+			self.localNimbusEffectSerial = 0
+			return
+		end
+		if _EffectService ~= nil then
+			_EffectService:RemoveEffect(serial)
+		end
+		self.localNimbusEffectSerial = 0
+		log("[BRCommonSkill] nimbus effect stop serial=" .. tostring(serial))
+	end
+
+	@ExecSpace("Server")
+	method void SetNimbusActiveServer(boolean active)
+		self:EnsureRuntime()
+		local userId = self:ReadString(senderUserId, "")
+		if userId == "" then
+			return
+		end
+		self._T.serverNimbusByUserId[userId] = active == true
+		self:Log("nimbus server user=" .. userId .. " active=" .. tostring(active == true))
+	end
+
+	method boolean IsNimbusActiveForUser(string userId)
+		self:EnsureRuntime()
+		return self._T.serverNimbusByUserId[self:ReadString(userId, "")] == true
+	end
+
+	@ExecSpace("Client")
+	method boolean IsLocalNimbusActive()
+		return self.localNimbusActive == true
+	end
+
+	@ExecSpace("ClientOnly")
+	method Vector2 GetEntityPosition2(Entity entity)
+		-- Reads an entity world position as Vector2.
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	@ExecSpace("ClientOnly")
+	method Vector2 ClampPositionToMapBounds(Entity entity, Vector2 position)
+		-- Clamps a world position to the current map's playable custom bound.
+		if position == nil then
+			return Vector2(0, 0)
+		end
+		local bounds = self:GetMapBounds(entity)
+		if bounds == nil then
+			return position
+		end
+		return Vector2(
+			math.max(bounds.Left, math.min(bounds.Right, position.x)),
+			math.max(bounds.Bottom, math.min(bounds.Top, position.y))
+		)
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsPositionOutsideMapBounds(Entity entity, Vector2 position, number padding)
+		-- Checks whether a world position is outside the current map's custom bound.
+		if position == nil then
+			return false
+		end
+		local bounds = self:GetMapBounds(entity)
+		if bounds == nil then
+			return false
+		end
+		local pad = math.max(0, self:ReadNumber(padding, 0))
+		return position.x < bounds.Left - pad
+			or position.x > bounds.Right + pad
+			or position.y < bounds.Bottom - pad
+			or position.y > bounds.Top + pad
+	end
+
+	@ExecSpace("ClientOnly")
+	method any GetMapBounds(Entity entity)
+		-- Reads the map-part custom bound used by the camera clamp.
+		if entity == nil then
+			return nil
+		end
+		local mapEntity = entity.CurrentMap
+		if mapEntity == nil then
+			local mapName = self:ReadString(entity.CurrentMapName, "")
+			if mapName ~= "" then
+				mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
+			end
+		end
+		if mapEntity == nil or mapEntity.MapComponent == nil or mapEntity.MapComponent.UseCustomBound ~= true then
+			return nil
+		end
+		local leftBottom = mapEntity.MapComponent.LeftBottom
+		local rightTop = mapEntity.MapComponent.RightTop
+		if leftBottom == nil or rightTop == nil or rightTop.x <= leftBottom.x or rightTop.y <= leftBottom.y then
+			return nil
+		end
+		return {
+			Left = leftBottom.x,
+			Bottom = leftBottom.y,
+			Right = rightTop.x,
+			Top = rightTop.y
+		}
+	end
+
+	@ExecSpace("ClientOnly")
+	method number GetFacingDirection(Entity entity)
+		if entity ~= nil and entity.PlayerControllerComponent ~= nil then
+			local value = tonumber(entity.PlayerControllerComponent.LookDirectionX)
+			if value ~= nil and value < 0 then
+				return -1
+			end
+		end
+		if entity ~= nil and entity.SpriteRendererComponent ~= nil and entity.SpriteRendererComponent.FlipX == true then
+			return -1
+		end
+		return 1
+	end
+
+	method void EnsureRuntime()
+		if self._T.serverNimbusByUserId == nil then
+			self._T.serverNimbusByUserId = {}
+		end
+	end
+
+	method number GetUniqueCooldownSeconds()
+		return math.max(0.05, self:ReadNumber(self.UniqueCooldownSeconds, 0.35))
+	end
+
+	method number GetBlinkCooldownSeconds()
+		return math.max(0.05, self:ReadNumber(self.BlinkCooldownSeconds, 1.2))
+	end
+
+	method number GetBlinkDistance()
+		return math.max(0.1, self:ReadNumber(self.BlinkDistance, 2.8))
+	end
+
+	method number GetNimbusToggleCooldownSeconds()
+		return math.max(0.05, self:ReadNumber(self.NimbusToggleCooldownSeconds, 0.35))
+	end
+
+	method number GetNimbusMoveSpeed()
+		return math.max(0.1, self:ReadNumber(self.NimbusMoveSpeed, 5.2))
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRCommonSkill] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

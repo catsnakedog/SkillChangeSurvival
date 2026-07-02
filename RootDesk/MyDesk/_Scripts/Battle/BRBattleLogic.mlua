@@ -138,6 +138,8 @@ script BRBattleLogic extends Component
 		self._T.lastLifeSummary = ""
 		self._T.preparedPlayers = {}
 		self._T.knownParticipants = {}
+		self._T.botRecords = {}
+		self._T.knownBotParticipants = {}
 		self._T.matchEndRequested = false
 		self._T.lastPositions = {}
 		self._T.basePhysicsStats = {}
@@ -185,6 +187,8 @@ script BRBattleLogic extends Component
 		self._T.lastLifeSummary = ""
 		self._T.preparedPlayers = {}
 		self._T.knownParticipants = {}
+		self._T.botRecords = {}
+		self._T.knownBotParticipants = {}
 		self._T.matchEndRequested = false
 		self._T.lastPositions = {}
 		self._T.basePhysicsStats = {}
@@ -257,6 +261,7 @@ script BRBattleLogic extends Component
 			end
 		end
 		
+		self:RefreshBattleBots()
 		self:UpdateAlivePlayerCount()
 		self:UpdateLifeSummary()
 	end
@@ -665,6 +670,43 @@ script BRBattleLogic extends Component
 		end
 	end
 
+	@ExecSpace("ServerOnly")
+	method void RefreshBattleBots()
+		-- Drops stale AI records. Spawned bots register themselves when initialized.
+		self:EnsureServerRuntimeTables()
+
+		for botId, record in pairs(self._T.botRecords) do
+			if self:GetBotControllerFromRecord(record) == nil then
+				self._T.botRecords[botId] = nil
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RegisterBattleBot(Entity botEntity, string botId)
+		-- Adds a spawned AI to the same contender pool used by last-man-standing.
+		self:EnsureServerRuntimeTables()
+		local safeBotId = self:ReadString(botId, "")
+		if safeBotId == "" or botEntity == nil then
+			return
+		end
+
+		self._T.botRecords[safeBotId] = {
+			Entity = botEntity
+		}
+		self._T.knownBotParticipants[safeBotId] = true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UnregisterBattleBot(string botId)
+		self:EnsureServerRuntimeTables()
+		local safeBotId = self:ReadString(botId, "")
+		if safeBotId == "" then
+			return
+		end
+		self._T.botRecords[safeBotId] = nil
+	end
+
 	@ExecSpace("Client")
 	method void ApplyLocalLifeRespawnPosition(Vector2 position, string reason)
 		-- Mirrors a server revive teleport on the owning client.
@@ -826,6 +868,43 @@ script BRBattleLogic extends Component
 	end
 
 	@ExecSpace("ServerOnly")
+	method void ApplyDamageToPlayerFromBot(Entity botEntity, Entity targetEntity, number rawDamage, string source)
+		-- Lets BT-controlled AI damage real players while reusing the battle life system.
+		self:EnsureServerRuntimeTables()
+		if botEntity == nil or targetEntity == nil or targetEntity.PlayerComponent == nil then
+			return
+		end
+		if targetEntity.CurrentMapName ~= self:GetBattleMapName() then
+			return
+		end
+		local targetPlayer = targetEntity.PlayerComponent
+		if targetPlayer:IsDead() == true or targetPlayer.Hp <= 0 then
+			return
+		end
+
+		local userId = self:ReadString(targetPlayer.UserId, "")
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.invincibleUntil[userId], 0) then
+			return
+		end
+
+		local damage = math.max(1, math.floor(self:ReadNumber(rawDamage, self:GetBasicAttackDamage())))
+		targetPlayer.Hp = math.max(0, targetPlayer.Hp - damage)
+		self._T.invincibleUntil[userId] = now + self:GetHitInvincibleSeconds()
+		self:LockPortalUse(userId, now)
+		self:Log("bot damage target=" .. userId .. " bot=" .. self:GetBotId(botEntity) .. " damage=" .. tostring(damage) .. " hp=" .. tostring(targetPlayer.Hp) .. " source=" .. self:ReadString(source, "bot"))
+
+		if targetPlayer.Hp <= 0 then
+			self:HandlePlayerFatalDeath(botEntity, targetEntity, "bot:" .. self:ReadString(source, "attack"))
+		else
+			self:PlayBodyAction(targetEntity, MapleAvatarBodyActionState.Hit, true, 1)
+		end
+
+		self:UpdateAlivePlayerCount()
+		self:UpdateLifeSummary()
+	end
+
+	@ExecSpace("ServerOnly")
 	method void LockPortalUse(string userId, number now)
 		-- Blocks portal movement briefly after combat contact.
 		self:EnsureServerRuntimeTables()
@@ -886,6 +965,8 @@ script BRBattleLogic extends Component
 		local attackerId = ""
 		if attackerEntity ~= nil and attackerEntity.PlayerComponent ~= nil then
 			attackerId = attackerEntity.PlayerComponent.UserId
+		elseif attackerEntity ~= nil then
+			attackerId = self:GetBotId(attackerEntity)
 		end
 		local deathRoomKey = self:GetLogicalRoomKeyForEntity(targetEntity)
 
@@ -1040,7 +1121,7 @@ script BRBattleLogic extends Component
 	@ExecSpace("Server")
 	method void RequestReviveOptionsForUser(string requestedUserId)
 		-- Pushes the caller's current selectable revive rooms to the client UI.
-		local userId = self:GetSenderUserId()
+		local userId = self:ReadString(senderUserId, "")
 		if userId == "" then
 			userId = self:ReadString(requestedUserId, "")
 		end
@@ -1059,7 +1140,7 @@ script BRBattleLogic extends Component
 	@ExecSpace("Server")
 	method void RequestReviveAtForUser(number row, number column, string requestedUserId)
 		-- Validates and performs a selected revive location.
-		local userId = self:GetSenderUserId()
+		local userId = self:ReadString(senderUserId, "")
 		if userId == "" then
 			userId = self:ReadString(requestedUserId, "")
 		end
@@ -1442,35 +1523,43 @@ script BRBattleLogic extends Component
 	method string BuildLifeSummary(string mapName)
 		-- Formats current life state records as user,lives,max,state,seconds.
 		local users = _UserService:GetUsersByMapName(self:ReadString(mapName, self:GetBattleMapName()))
-		if users == nil then
-			return ""
-		end
 
 		local now = self:Now()
 		local records = ""
-		for index, playerEntity in ipairs(users) do
-			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
-				local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
-				if userId ~= "" and self._T.playerHandlers[userId] ~= nil then
-					local maxLives = self:GetDefaultLives()
-					local lives = math.max(0, math.floor(self:ReadNumber(self._T.lives[userId], maxLives)))
-					local state = self:ReadString(self._T.lifeState[userId], "ALIVE")
-					if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
-						if self._T.pendingRevive[userId] == true then
-							state = "REVIVE"
-						elseif lives <= 0 then
-							state = "OUT"
+		if users ~= nil then
+			for index, playerEntity in ipairs(users) do
+				if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+					local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+					if userId ~= "" and self._T.playerHandlers[userId] ~= nil then
+						local maxLives = self:GetDefaultLives()
+						local lives = math.max(0, math.floor(self:ReadNumber(self._T.lives[userId], maxLives)))
+						local state = self:ReadString(self._T.lifeState[userId], "ALIVE")
+						if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+							if self._T.pendingRevive[userId] == true then
+								state = "REVIVE"
+							elseif lives <= 0 then
+								state = "OUT"
+							end
+						elseif self._T.pendingRevive[userId] ~= true and lives > 0 then
+							state = "ALIVE"
 						end
-					elseif self._T.pendingRevive[userId] ~= true and lives > 0 then
-						state = "ALIVE"
-					end
 
-					local remaining = 0
-					if state == "REVIVE" then
-						remaining = math.max(0, math.ceil(self:ReadNumber(self._T.reviveUntil[userId], now) - now))
+						local remaining = 0
+						if state == "REVIVE" then
+							remaining = math.max(0, math.ceil(self:ReadNumber(self._T.reviveUntil[userId], now) - now))
+						end
+						records = self:AppendLifeRecord(records, userId, lives, maxLives, state, remaining)
 					end
-					records = self:AppendLifeRecord(records, userId, lives, maxLives, state, remaining)
 				end
+			end
+		end
+		for botId, record in pairs(self._T.botRecords) do
+			local bot = self:GetBotControllerFromRecord(record)
+			if bot ~= nil then
+				local maxLives = math.max(1, math.floor(self:ReadNumber(bot.MaxLives, self:GetDefaultLives())))
+				local lives = math.max(0, math.floor(self:ReadNumber(bot.CurrentLives, maxLives)))
+				local state = self:ReadString(bot.BotState, "ALIVE")
+				records = self:AppendLifeRecord(records, botId, lives, maxLives, state, 0)
 			end
 		end
 		return records
@@ -1541,6 +1630,12 @@ script BRBattleLogic extends Component
 				result.WinnerUserId = self:ReadString(userId, "")
 			end
 		end
+		for botId, known in pairs(self._T.knownBotParticipants) do
+			if known == true and self:IsBotStillContending(botId) == true then
+				result.Count = result.Count + 1
+				result.WinnerUserId = self:ReadString(botId, "")
+			end
+		end
 		return result
 	end
 
@@ -1562,11 +1657,29 @@ script BRBattleLogic extends Component
 		return true
 	end
 
+	method boolean IsBotStillContending(string botId)
+		local safeBotId = self:ReadString(botId, "")
+		if safeBotId == "" or self._T.botRecords == nil then
+			return false
+		end
+		local record = self._T.botRecords[safeBotId]
+		local bot = self:GetBotControllerFromRecord(record)
+		if bot == nil then
+			return false
+		end
+		return bot:IsContending() == true
+	end
+
 	method number GetKnownParticipantCount()
 		-- Counts every participant registered during this match lifecycle.
 		self:EnsureServerRuntimeTables()
 		local count = 0
 		for userId, known in pairs(self._T.knownParticipants) do
+			if known == true then
+				count = count + 1
+			end
+		end
+		for botId, known in pairs(self._T.knownBotParticipants) do
 			if known == true then
 				count = count + 1
 			end
@@ -1588,6 +1701,7 @@ script BRBattleLogic extends Component
 				end
 			end
 		end
+		count = count + self:GetAliveBotCount()
 		
 		self.AlivePlayerCount = count
 		if self._T.matchEndRequested == true then
@@ -1662,6 +1776,12 @@ script BRBattleLogic extends Component
 		if self._T.knownParticipants == nil then
 			self._T.knownParticipants = {}
 		end
+		if self._T.botRecords == nil then
+			self._T.botRecords = {}
+		end
+		if self._T.knownBotParticipants == nil then
+			self._T.knownBotParticipants = {}
+		end
 		if self._T.matchEndRequested == nil then
 			self._T.matchEndRequested = false
 		end
@@ -1724,6 +1844,67 @@ script BRBattleLogic extends Component
 
 	method number GetBasicAttackDamage()
 		return math.max(1, math.floor(self:ReadNumber(self.BasicAttackDamage, 20)))
+	end
+
+	method number GetAliveBotCount()
+		self:EnsureServerRuntimeTables()
+		local count = 0
+		for botId, record in pairs(self._T.botRecords) do
+			local bot = self:GetBotControllerFromRecord(record)
+			if bot ~= nil and bot:IsAlive() == true then
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	method Entity FindNearestAliveBotTarget(Entity sourceEntity, Vector2 origin, number maxDistance)
+		self:EnsureServerRuntimeTables()
+		local best = nil
+		local bestDistance = math.max(0, self:ReadNumber(maxDistance, 0))
+		for botId, record in pairs(self._T.botRecords) do
+			local bot = self:GetBotControllerFromRecord(record)
+			if bot ~= nil and bot.Entity ~= nil and sourceEntity ~= nil and bot.Entity.Id ~= sourceEntity.Id and bot:IsAlive() == true then
+				local targetPosition = self:GetEntityPosition2(bot.Entity)
+				local dx = targetPosition.x - origin.x
+				local dy = targetPosition.y - origin.y
+				local distance = math.sqrt(dx * dx + dy * dy)
+				if distance < bestDistance then
+					bestDistance = distance
+					best = bot.Entity
+				end
+			end
+		end
+		return best
+	end
+
+	method any GetBotControllerFromRecord(any record)
+		if record == nil or record.Entity == nil or isvalid(record.Entity) == false then
+			return nil
+		end
+		return self:GetBattleBotController(record.Entity)
+	end
+
+	method string GetBotId(Entity entity)
+		if entity == nil then
+			return ""
+		end
+		local bot = self:GetBattleBotController(entity)
+		if bot == nil then
+			return ""
+		end
+		return self:ReadString(bot.BotId, "")
+	end
+
+	method any GetBattleBotController(Entity entity)
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRBattleBotController")
+		if component == nil then
+			component = entity:GetComponent("BRBattleBotController")
+		end
+		return component
 	end
 
 	method number GetAdjustedBattleMaxHp(Entity playerEntity)
@@ -1868,10 +2049,6 @@ script BRBattleLogic extends Component
 
 	method number Now()
 		return _UtilLogic.ElapsedSeconds
-	end
-
-	method string GetSenderUserId()
-		return self:ReadString(senderUserId, "")
 	end
 
 	method string ReadString(any value, string fallback)

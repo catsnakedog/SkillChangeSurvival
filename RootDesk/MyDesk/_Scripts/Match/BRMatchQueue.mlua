@@ -87,18 +87,25 @@ script BRMatchQueue extends Logic
 
 	method string EncodeQueueField(any value)
 		local text = tostring(self:ReadString(value, ""))
-		text = string.gsub(text, "|", "_")
-		text = string.gsub(text, "\n", "_")
-		text = string.gsub(text, "\r", "_")
-		return text
+		local result = ""
+		local length = string.len(text)
+		for index = 1, length do
+			local character = string.sub(text, index, index)
+			if character == "|" or character == "\n" or character == "\r" then
+				result = result .. "_"
+			else
+				result = result .. character
+			end
+		end
+		return result
 	end
 
 	method any SplitQueueLine(string line)
 		local fields = {}
 		local startIndex = 1
 		while #fields < 7 do
-			local separatorIndex = string.find(line, "|", startIndex, true)
-			if separatorIndex == nil then
+			local separatorIndex = self:FindQueueSeparator(line, startIndex)
+			if separatorIndex <= 0 then
 				table.insert(fields, string.sub(line, startIndex))
 				break
 			end
@@ -107,6 +114,20 @@ script BRMatchQueue extends Logic
 			startIndex = separatorIndex + 1
 		end
 		return fields
+	end
+
+	method number FindQueueSeparator(string line, number startIndex)
+		-- Finds the next queue separator without relying on multi-return string APIs.
+		local safeLine = self:ReadString(line, "")
+		local index = math.max(1, math.floor(self:ReadNumber(startIndex, 1)))
+		local length = string.len(safeLine)
+		while index <= length do
+			if string.sub(safeLine, index, index) == "|" then
+				return index
+			end
+			index = index + 1
+		end
+		return 0
 	end
 
 	method boolean CleanExpiredTickets(any queue, number now)

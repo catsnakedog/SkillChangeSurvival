@@ -7,6 +7,8 @@ script BRItemPickupSystem extends Logic
 
 	property boolean VerboseLog = true
 
+	property string PartBoxNameTokens = "SkillPartBox,LobbySkillPartBox,PartBox,SupplyBox,SupplyPoint"
+
 	property any inputKeyDownHandler = nil
 
 	property number clientNextPickupRequestAt = 0
@@ -134,9 +136,19 @@ script BRItemPickupSystem extends Logic
 
 	@ExecSpace("ServerOnly")
 	method boolean TryOpenPartBox(Entity mapEntity, Entity playerEntity)
-		-- Attempts nearby skill part boxes.
+		-- Attempts named skill part boxes first, then falls back to component scan.
 		if mapEntity == nil or playerEntity == nil then
 			return false
+		end
+
+		local namedBoxes = {}
+		local seen = {}
+		self:CollectNamedPartBoxes(mapEntity, namedBoxes, seen)
+		for index, entity in ipairs(namedBoxes) do
+			local box = self:GetPartBoxComponent(entity)
+			if box ~= nil and box:TryOpenForPlayer(playerEntity) == true then
+				return true
+			end
 		end
 
 		local components = mapEntity:GetChildComponentsByTypeName("script.BRPartBox", true)
@@ -150,11 +162,100 @@ script BRItemPickupSystem extends Logic
 		for index, component in ipairs(components) do
 			---@type BRPartBox
 			local box = component
-			if box ~= nil and box:TryOpenForPlayer(playerEntity) == true then
+			local key = ""
+			if box ~= nil and box.Entity ~= nil then
+				key = self:GetEntityKey(box.Entity)
+			end
+			if box ~= nil and seen[key] ~= true and box:TryOpenForPlayer(playerEntity) == true then
 				return true
 			end
 		end
 		return false
+	end
+
+	method void CollectNamedPartBoxes(Entity entity, any result, any seen)
+		-- Recursively collects part-box entities by placement name.
+		if entity == nil then
+			return
+		end
+		if self:IsPartBoxPlacementName(entity.Name) == true then
+			self:AddNamedPartBox(entity, result, seen)
+		end
+		if entity.Children == nil then
+			return
+		end
+		for index, child in ipairs(entity.Children:ToTable()) do
+			self:CollectNamedPartBoxes(child, result, seen)
+		end
+	end
+
+	method void AddNamedPartBox(Entity entity, any result, any seen)
+		-- Adds one named part box once when it has the box component.
+		if entity == nil or result == nil or seen == nil then
+			return
+		end
+		if self:GetPartBoxComponent(entity) == nil then
+			return
+		end
+		local key = self:GetEntityKey(entity)
+		if key == "" or seen[key] == true then
+			return
+		end
+		seen[key] = true
+		table.insert(result, entity)
+	end
+
+	method any GetPartBoxComponent(Entity entity)
+		-- Returns the part-box component from an entity.
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRPartBox")
+		if component == nil then
+			component = entity:GetComponent("BRPartBox")
+		end
+		return component
+	end
+
+	method boolean IsPartBoxPlacementName(string entityName)
+		-- Checks whether an entity name is intended as a part-box placement.
+		return self:ContainsNameToken(self:ReadString(entityName, ""), self.PartBoxNameTokens)
+	end
+
+	method boolean ContainsNameToken(string source, string tokens)
+		-- Checks comma-delimited placement-name tokens against one source name.
+		local safeSource = self:ReadString(source, "")
+		local safeTokens = self:ReadString(tokens, "")
+		if safeSource == "" or safeTokens == "" then
+			return false
+		end
+		local startIndex = 1
+		while startIndex <= string.len(safeTokens) do
+			local commaIndex, commaEndIndex = string.find(safeTokens, ",", startIndex)
+			local token = ""
+			if commaIndex == nil then
+				token = string.sub(safeTokens, startIndex)
+				startIndex = string.len(safeTokens) + 1
+			else
+				token = string.sub(safeTokens, startIndex, commaIndex - 1)
+				startIndex = commaIndex + 1
+			end
+			if token ~= "" and string.find(safeSource, token) ~= nil then
+				return true
+			end
+		end
+		return false
+	end
+
+	method string GetEntityKey(Entity entity)
+		-- Returns a stable key for duplicate filtering.
+		if entity == nil then
+			return ""
+		end
+		if entity.Id ~= nil and entity.Id ~= "" then
+			return tostring(entity.Id)
+		end
+		return self:ReadString(entity.Name, "")
 	end
 
 	method boolean IsPlayerValid(Entity playerEntity)

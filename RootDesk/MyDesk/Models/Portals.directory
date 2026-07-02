@@ -1,0 +1,23 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "directory://b22401752bc4460ba3a80369f7009ca4",
+  "ContentType": "x-mod/directory",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.5.0.0",
+  "StudioVersion": "",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "entry_id": "directory://b22401752bc4460ba3a80369f7009ca4",
+      "name": "Portals",
+      "lock": false,
+      "folding": false,
+      "nameEditable": true
+    }
+  }
+}

@@ -1,0 +1,231 @@
+@Logic
+script BRCharacterSystem extends Logic
+
+	property string DefaultCharacterKey = "Hero"
+
+	property boolean VerboseLog = true
+
+	property number clientSnapshotTimerId = 0
+
+	method void OnBeginPlay()
+		self:EnsureRuntime()
+		if self:IsServer() then
+			self:Log("ready catalog=" .. tostring(#self:GetCharacterCatalog()))
+		end
+		if self:IsClient() then
+			self.clientSnapshotTimerId = _TimerService:SetTimerOnce(function() self:RequestCharacterSnapshot() end, 0.2)
+		end
+	end
+
+	method void OnEndPlay()
+		if self.clientSnapshotTimerId ~= nil and self.clientSnapshotTimerId > 0 then
+			_TimerService:ClearTimer(self.clientSnapshotTimerId)
+		end
+		self.clientSnapshotTimerId = 0
+	end
+
+	@ExecSpace("Server")
+	method void RequestCharacterSnapshot()
+		local userId = self:ReadString(senderUserId, "")
+		if userId == "" then
+			return
+		end
+		local key = self:GetServerCharacterKey(userId)
+		self:ApplyCharacterClient(userId, key, "snapshot")
+		self:Log("snapshot user=" .. userId .. " key=" .. key)
+	end
+
+	@ExecSpace("Server")
+	method void RequestCycleCharacter(string source)
+		local userId = self:ReadString(senderUserId, "")
+		if userId == "" then
+			return
+		end
+		local currentKey = self:GetServerCharacterKey(userId)
+		local nextKey = self:GetNextCharacterKey(currentKey)
+		self:SetServerCharacterKeyForUser(userId, nextKey, "cycle:" .. self:ReadString(source, "unknown"))
+	end
+
+	@ExecSpace("Server")
+	method void RequestSetCharacter(string characterKey, string source)
+		local userId = self:ReadString(senderUserId, "")
+		if userId == "" then
+			return
+		end
+		self:SetServerCharacterKeyForUser(userId, characterKey, "set:" .. self:ReadString(source, "unknown"))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SetServerCharacterKeyForUser(string userId, string characterKey, string reason)
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		local safeKey = self:NormalizeCharacterKey(characterKey)
+		self._T.serverCharacterByUserId[safeUserId] = safeKey
+		self:ApplyCharacterClient(safeUserId, safeKey, reason)
+		if _BRSkillSystem ~= nil then
+			_BRSkillSystem:NotifyUserChanged(safeUserId)
+		end
+		self:Log("changed user=" .. safeUserId .. " key=" .. safeKey .. " reason=" .. self:ReadString(reason, ""))
+	end
+
+	@ExecSpace("Client")
+	method void ApplyCharacterClient(string userId, string characterKey, string reason)
+		local localUserId = self:GetLocalUserId()
+		if localUserId == "" or localUserId ~= self:ReadString(userId, "") then
+			return
+		end
+		local safeKey = self:NormalizeCharacterKey(characterKey)
+		self._T.localCharacterKey = safeKey
+		self:Log("local key=" .. safeKey .. " reason=" .. self:ReadString(reason, ""))
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalCharacterKey()
+		self:EnsureRuntime()
+		local key = self:ReadString(self._T.localCharacterKey, "")
+		if key == "" then
+			key = self:GetDefaultCharacterKey()
+			self._T.localCharacterKey = key
+		end
+		return key
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalUniqueSkillKey()
+		-- Returns the local character's dedicated unique skill key.
+		local data = self:GetCharacterData(self:GetLocalCharacterKey())
+		if data == nil then
+			return "UniqueHero"
+		end
+		return self:ReadString(data.UniqueSkillKey, "UniqueHero")
+	end
+
+	method string GetServerUniqueSkillKey(string userId)
+		-- Returns the server-authoritative unique skill key for one user.
+		local data = self:GetCharacterData(self:GetServerCharacterKey(userId))
+		if data == nil then
+			return "UniqueHero"
+		end
+		return self:ReadString(data.UniqueSkillKey, "UniqueHero")
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalCharacterDisplayName()
+		local data = self:GetCharacterData(self:GetLocalCharacterKey())
+		if data == nil then
+			return "Hero"
+		end
+		return self:ReadString(data.DisplayName, "Hero")
+	end
+
+	method string GetServerCharacterKey(string userId)
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return self:GetDefaultCharacterKey()
+		end
+		local key = self:ReadString(self._T.serverCharacterByUserId[safeUserId], "")
+		if self:GetCharacterData(key) == nil then
+			key = self:GetDefaultCharacterKey()
+			self._T.serverCharacterByUserId[safeUserId] = key
+		end
+		return key
+	end
+
+	method string GetNextCharacterKey(string characterKey)
+		local catalog = self:GetCharacterCatalog()
+		local currentIndex = self:GetCharacterIndex(characterKey)
+		local nextIndex = currentIndex + 1
+		if nextIndex > #catalog then
+			nextIndex = 1
+		end
+		local data = catalog[nextIndex]
+		if data == nil then
+			return self:GetDefaultCharacterKey()
+		end
+		return self:ReadString(data.Key, self:GetDefaultCharacterKey())
+	end
+
+	method string NormalizeCharacterKey(string characterKey)
+		local key = self:ReadString(characterKey, "")
+		if self:GetCharacterData(key) ~= nil then
+			return key
+		end
+		return self:GetDefaultCharacterKey()
+	end
+
+	method string GetDefaultCharacterKey()
+		local key = self:ReadString(self.DefaultCharacterKey, "Hero")
+		if self:GetCharacterData(key) ~= nil then
+			return key
+		end
+		return "Hero"
+	end
+
+	method any GetCharacterData(string characterKey)
+		local key = self:ReadString(characterKey, "")
+		if key == "" then
+			return nil
+		end
+		local catalog = self:GetCharacterCatalog()
+		for index, data in ipairs(catalog) do
+			if data ~= nil and self:ReadString(data.Key, "") == key then
+				return data
+			end
+		end
+		return nil
+	end
+
+	method number GetCharacterIndex(string characterKey)
+		local key = self:NormalizeCharacterKey(characterKey)
+		local catalog = self:GetCharacterCatalog()
+		for index, data in ipairs(catalog) do
+			if data ~= nil and self:ReadString(data.Key, "") == key then
+				return index
+			end
+		end
+		return 1
+	end
+
+	method any GetCharacterCatalog()
+		self:EnsureRuntime()
+		if self._T.characterCatalog == nil then
+			self._T.characterCatalog = {
+				{ Key = "Hero", DisplayName = "Hero", UniqueSkillKey = "UniqueHero" },
+				{ Key = "Storm", DisplayName = "Storm", UniqueSkillKey = "UniqueStorm" },
+				{ Key = "Arcane", DisplayName = "Arcane", UniqueSkillKey = "UniqueArcane" }
+			}
+		end
+		return self._T.characterCatalog
+	end
+
+	method string GetLocalUserId()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return ""
+		end
+		return self:ReadString(localPlayer.PlayerComponent.UserId, "")
+	end
+
+	method void EnsureRuntime()
+		if self._T.serverCharacterByUserId == nil then
+			self._T.serverCharacterByUserId = {}
+		end
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRCharacter] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

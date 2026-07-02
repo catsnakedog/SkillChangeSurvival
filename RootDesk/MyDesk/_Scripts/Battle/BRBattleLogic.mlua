@@ -1040,7 +1040,7 @@ script BRBattleLogic extends Component
 	@ExecSpace("Server")
 	method void RequestReviveOptionsForUser(string requestedUserId)
 		-- Pushes the caller's current selectable revive rooms to the client UI.
-		local userId = self:GetSenderUserId()
+		local userId = self:ReadString(senderUserId, "")
 		if userId == "" then
 			userId = self:ReadString(requestedUserId, "")
 		end
@@ -1059,7 +1059,7 @@ script BRBattleLogic extends Component
 	@ExecSpace("Server")
 	method void RequestReviveAtForUser(number row, number column, string requestedUserId)
 		-- Validates and performs a selected revive location.
-		local userId = self:GetSenderUserId()
+		local userId = self:ReadString(senderUserId, "")
 		if userId == "" then
 			userId = self:ReadString(requestedUserId, "")
 		end
@@ -1868,10 +1868,6 @@ script BRBattleLogic extends Component
 
 	method number Now()
 		return _UtilLogic.ElapsedSeconds
-	end
-
-	method string GetSenderUserId()
-		return self:ReadString(senderUserId, "")
 	end
 
 	method string ReadString(any value, string fallback)

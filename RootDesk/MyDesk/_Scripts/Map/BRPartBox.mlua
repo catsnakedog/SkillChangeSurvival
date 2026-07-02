@@ -125,14 +125,25 @@ script BRPartBox extends Component
 		self:SetVisualAvailable(false)
 		
 		local userId = playerEntity.PlayerComponent.UserId
-		local result = nil
+		local result = {}
+		local hasResult = false
 		if _BRSkillSystem ~= nil then
-			result = _BRSkillSystem:OpenBoxForUser(userId, self.DropCount, self.AutoEquipOnDrop, self.Entity.Id)
+			local openResult = _BRSkillSystem:OpenBoxForUser(userId, self.DropCount, self.AutoEquipOnDrop, self.Entity.Id)
+			if openResult ~= nil then
+				result = openResult
+				hasResult = true
+			end
 		end
 		
-		if result ~= nil and result.LastPart ~= nil then
-			self:ShowPickupLabel(playerEntity, _BRSkillSystem:GetPartSummary(result.LastPart))
-			self:Log("open user=" .. userId .. " part=" .. result.LastPart.PartId)
+		local lastPart = {}
+		local hasLastPart = false
+		if hasResult == true and result.LastPart ~= nil then
+			lastPart = result.LastPart
+			hasLastPart = true
+		end
+		if hasLastPart == true and _BRSkillSystem ~= nil then
+			self:ShowPickupLabel(playerEntity, _BRSkillSystem:GetPartSummary(lastPart))
+			self:Log("open user=" .. userId .. " part=" .. self:ReadString(lastPart.PartId, ""))
 		else
 			self:Log("open user=" .. userId .. " part=nil")
 		end

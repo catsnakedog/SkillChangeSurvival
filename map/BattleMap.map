@@ -841,6 +841,112 @@
           ],
           "@version": 1
         }
+      },
+      {
+        "id": "12a53997-8dfe-4257-84a8-1e5d413f22c9",
+        "path": "/maps/BattleMap/BattleChainMonster",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
+        "jsonString": {
+          "name": "BattleChainMonster",
+          "path": "/maps/BattleMap/BattleChainMonster",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 9,
+          "pathConstraints": "///",
+          "revision": 1,
+          "modelId": null,
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0,
+                "y": 2.25,
+                "z": 999.997
+              },
+              "QuaternionRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
+              },
+              "Scale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.PolygonRendererComponent",
+              "Color": {
+                "r": 0.87,
+                "g": 0.68,
+                "b": 0.32,
+                "a": 1
+              },
+              "IgnoreMapLayerCheck": true,
+              "MaterialId": "",
+              "OrderInLayer": 34,
+              "Points": [
+                {
+                  "x": -0.42,
+                  "y": 0
+                },
+                {
+                  "x": 0.42,
+                  "y": 0
+                },
+                {
+                  "x": 0.34,
+                  "y": 1.45
+                },
+                {
+                  "x": -0.34,
+                  "y": 1.45
+                }
+              ],
+              "SortingLayer": "MapLayer0",
+              "UseCustomUVs": false,
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.NameTagComponent",
+              "Bold": true,
+              "FontColor": {
+                "r": 1,
+                "g": 0.92,
+                "b": 0.58,
+                "a": 1
+              },
+              "FontOffset": {
+                "x": 0,
+                "y": 0
+              },
+              "FontSize": 0.75,
+              "Name": "CHAIN MONSTER\nReady",
+              "NameTagRUID": {
+                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
+              },
+              "OffsetY": 1.62,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRTrainingDummy",
+              "Enable": true,
+              "EnableTrainingDummy": true,
+              "MaxHp": 600,
+              "ResetDelaySeconds": 3,
+              "DamageFlashSeconds": 0.12,
+              "VerboseLog": true,
+              "NameTagTitle": "CHAIN MONSTER",
+              "GrantSkillExperienceOnBreak": true,
+              "SkillExperienceReward": 1
+            }
+          ],
+          "@version": 1
+        }
       }
     ]
   }

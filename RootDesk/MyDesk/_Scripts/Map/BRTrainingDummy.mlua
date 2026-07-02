@@ -11,6 +11,14 @@ script BRTrainingDummy extends Component
 
 	property boolean VerboseLog = true
 
+	property string NameTagTitle = "CHAIN MONSTER"
+
+	property boolean GrantSkillExperienceOnBreak = true
+
+	property number SkillExperienceReward = 1
+
+	property boolean PauseMovementWhenBroken = true
+
 	@Sync
 	property number CurrentHp = 500
 
@@ -56,6 +64,7 @@ script BRTrainingDummy extends Component
 			.. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()))
 
 		if self.CurrentHp <= 0 then
+			self:GrantBreakReward(attackerEntity, source)
 			self:BreakDummy()
 		else
 			self:FlashHit()
@@ -63,18 +72,51 @@ script BRTrainingDummy extends Component
 	end
 
 	@ExecSpace("ServerOnly")
+	method void GrantBreakReward(Entity attackerEntity, string source)
+		-- Grants skill-chain experience to the attacker when the dummy breaks.
+		if self.GrantSkillExperienceOnBreak ~= true then
+			return
+		end
+		if _BRSkillSystem == nil then
+			self:Log("reward skipped reason=noSkillSystem")
+			return
+		end
+
+		local userId = self:GetUserId(attackerEntity)
+		if userId == "" then
+			self:Log("reward skipped reason=noAttacker")
+			return
+		end
+
+		local reward = self:GetSkillExperienceReward()
+		if reward <= 0 then
+			return
+		end
+
+		local leveled = _BRSkillSystem:GrantUserExperience(userId, reward, self:ReadString(source, "dummy"))
+		self:Log("reward user=" .. userId
+			.. " exp=" .. tostring(reward)
+			.. " leveled=" .. tostring(leveled)
+			.. " source=" .. self:ReadString(source, "dummy"))
+	end
+
+	@ExecSpace("ServerOnly")
 	method void ResetDummy()
+		-- Restores the dummy state and lets moving dummy-monsters resume AI.
 		self:ClearTimers()
 		self.CurrentHp = self:GetMaxHp()
 		self.DummyStatus = "Ready"
+		self:SetMovementPaused(false)
 		self:SetDummyColor(Color(0.87, 0.68, 0.32, 1))
 		self:UpdateNameTag()
 	end
 
 	@ExecSpace("ServerOnly")
 	method void BreakDummy()
+		-- Marks the dummy as broken and pauses moving monster AI until reset.
 		self:ClearFlashTimer()
 		self.DummyStatus = "Broken"
+		self:SetMovementPaused(true)
 		self:SetDummyColor(Color(0.4, 0.4, 0.4, 1))
 		self:UpdateNameTag()
 		self:Log("broken resetIn=" .. tostring(self:GetResetDelaySeconds()))
@@ -118,7 +160,7 @@ script BRTrainingDummy extends Component
 		if self.Entity == nil or self.Entity.NameTagComponent == nil then
 			return
 		end
-		self.Entity.NameTagComponent.Name = "TRAINING DUMMY\n" .. self:ReadString(self.DummyStatus, "Ready")
+		self.Entity.NameTagComponent.Name = self:ReadString(self.NameTagTitle, "CHAIN MONSTER") .. "\n" .. self:ReadString(self.DummyStatus, "Ready")
 		if self.CurrentHp <= 0 then
 			self.Entity.NameTagComponent.FontColor = Color(0.75, 0.75, 0.75, 1)
 		else
@@ -128,14 +170,76 @@ script BRTrainingDummy extends Component
 
 	@ExecSpace("ServerOnly")
 	method void SetDummyColor(Color color)
+		-- Applies dummy color feedback to polygon dummies and sprite monsters.
 		if self.Entity == nil or self.Entity.PolygonRendererComponent == nil then
+			if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil then
+				self:CaptureBaseSpriteColor()
+				if self:IsReadyDummyColor(color) == true then
+					self.Entity.SpriteRendererComponent.Color = self:GetBaseSpriteColor()
+				else
+					self.Entity.SpriteRendererComponent.Color = color
+				end
+			end
 			return
 		end
 		self.Entity.PolygonRendererComponent.Color = color
 	end
 
 	@ExecSpace("ServerOnly")
+	method void SetMovementPaused(boolean paused)
+		-- Stops native monster movement while the dummy is broken.
+		if self.PauseMovementWhenBroken ~= true or self.Entity == nil then
+			return
+		end
+		if self.Entity.AIWanderComponent ~= nil then
+			self.Entity.AIWanderComponent.Enable = not paused
+		end
+		if self.Entity.AIChaseComponent ~= nil then
+			self.Entity.AIChaseComponent.Enable = not paused
+		end
+		if paused == true then
+			if self.Entity.MovementComponent ~= nil then
+				self.Entity.MovementComponent:Stop()
+			end
+			if self.Entity.RigidbodyComponent ~= nil then
+				self.Entity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			end
+		end
+	end
+
+	method void CaptureBaseSpriteColor()
+		-- Caches the sprite's original color so reset does not tint monsters gold.
+		if self._T.baseSpriteColor ~= nil then
+			return
+		end
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil then
+			self._T.baseSpriteColor = self.Entity.SpriteRendererComponent.Color
+		else
+			self._T.baseSpriteColor = Color(1, 1, 1, 1)
+		end
+	end
+
+	method Color GetBaseSpriteColor()
+		-- Returns the cached default sprite color.
+		if self._T.baseSpriteColor == nil then
+			self:CaptureBaseSpriteColor()
+		end
+		return self._T.baseSpriteColor
+	end
+
+	method boolean IsReadyDummyColor(Color color)
+		-- Distinguishes the polygon-only ready tint from hit or broken feedback colors.
+		if color == nil then
+			return false
+		end
+		return math.abs(color.r - 0.87) < 0.01
+			and math.abs(color.g - 0.68) < 0.01
+			and math.abs(color.b - 0.32) < 0.01
+	end
+
+	@ExecSpace("ServerOnly")
 	method void ClearTimers()
+		-- Clears reset and flash timers.
 		self:ClearFlashTimer()
 		if self.resetTimerId ~= nil and self.resetTimerId > 0 then
 			_TimerService:ClearTimer(self.resetTimerId)
@@ -175,6 +279,10 @@ script BRTrainingDummy extends Component
 
 	method number GetDamageFlashSeconds()
 		return math.max(0.03, self:ReadNumber(self.DamageFlashSeconds, 0.12))
+	end
+
+	method number GetSkillExperienceReward()
+		return math.max(0, math.floor(self:ReadNumber(self.SkillExperienceReward, 1)))
 	end
 
 	method string ReadString(any value, string fallback)

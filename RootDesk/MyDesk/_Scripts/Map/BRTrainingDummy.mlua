@@ -11,6 +11,12 @@ script BRTrainingDummy extends Component
 
 	property boolean VerboseLog = true
 
+	property string NameTagTitle = "CHAIN MONSTER"
+
+	property boolean GrantSkillExperienceOnBreak = true
+
+	property number SkillExperienceReward = 1
+
 	@Sync
 	property number CurrentHp = 500
 
@@ -56,10 +62,40 @@ script BRTrainingDummy extends Component
 			.. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()))
 
 		if self.CurrentHp <= 0 then
+			self:GrantBreakReward(attackerEntity, source)
 			self:BreakDummy()
 		else
 			self:FlashHit()
 		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void GrantBreakReward(Entity attackerEntity, string source)
+		-- Grants skill-chain experience to the attacker when the dummy breaks.
+		if self.GrantSkillExperienceOnBreak ~= true then
+			return
+		end
+		if _BRSkillSystem == nil then
+			self:Log("reward skipped reason=noSkillSystem")
+			return
+		end
+
+		local userId = self:GetUserId(attackerEntity)
+		if userId == "" then
+			self:Log("reward skipped reason=noAttacker")
+			return
+		end
+
+		local reward = self:GetSkillExperienceReward()
+		if reward <= 0 then
+			return
+		end
+
+		local leveled = _BRSkillSystem:GrantUserExperience(userId, reward, self:ReadString(source, "dummy"))
+		self:Log("reward user=" .. userId
+			.. " exp=" .. tostring(reward)
+			.. " leveled=" .. tostring(leveled)
+			.. " source=" .. self:ReadString(source, "dummy"))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -118,7 +154,7 @@ script BRTrainingDummy extends Component
 		if self.Entity == nil or self.Entity.NameTagComponent == nil then
 			return
 		end
-		self.Entity.NameTagComponent.Name = "TRAINING DUMMY\n" .. self:ReadString(self.DummyStatus, "Ready")
+		self.Entity.NameTagComponent.Name = self:ReadString(self.NameTagTitle, "CHAIN MONSTER") .. "\n" .. self:ReadString(self.DummyStatus, "Ready")
 		if self.CurrentHp <= 0 then
 			self.Entity.NameTagComponent.FontColor = Color(0.75, 0.75, 0.75, 1)
 		else
@@ -175,6 +211,10 @@ script BRTrainingDummy extends Component
 
 	method number GetDamageFlashSeconds()
 		return math.max(0.03, self:ReadNumber(self.DamageFlashSeconds, 0.12))
+	end
+
+	method number GetSkillExperienceReward()
+		return math.max(0, math.floor(self:ReadNumber(self.SkillExperienceReward, 1)))
 	end
 
 	method string ReadString(any value, string fallback)

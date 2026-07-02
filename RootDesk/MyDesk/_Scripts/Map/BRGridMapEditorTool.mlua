@@ -21,6 +21,8 @@ script BRGridMapEditorTool extends Component
 
 	property Entity RoomTemplate = ""
 
+	property boolean AllowRuntimeRoomCloning = false
+
 	property string SupplyChildName = "SupplyBox"
 
 	property number SupplyOffsetX = 0
@@ -31,18 +33,18 @@ script BRGridMapEditorTool extends Component
 
 	method void OnBeginPlay()
 		-- Logs the current grid authoring settings when the tool entity loads.
-		self:Log("ready grid=" .. tostring(self:GetColumns()) .. "x" .. tostring(self:GetRows()) .. " parts=" .. tostring(self:GetMapPartCount()) .. " fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. " pool=" .. tostring(self:GetPoolPartCount()) .. " room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. ") gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. ") number=" .. self:GetPartRangeText())
+		self:Log("ready grid=" .. tostring(self:GetColumns()) .. "x" .. tostring(self:GetRows()) .. " parts=" .. tostring(self:GetMapPartCount()) .. " fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. " pool=" .. tostring(self:GetPoolPartCount()) .. " room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. ") gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. ") number=" .. self:GetPartRangeText() .. " runtimeClone=" .. tostring(self:IsRuntimeRoomCloningAllowed()))
 	end
 
 	@InspectorButton("Generate Grid Preview")
 	method void GenerateGridPreview()
-		-- Reuses existing rooms and creates only missing rooms.
+		-- Reuses persisted rooms only; runtime cloning is opt-in to avoid local-only room entities.
 		self:SyncGeneratedGrid(true, false, "generated")
 	end
 
 	@InspectorButton("Sync Grid Preview")
 	method void SyncGridPreview()
-		-- Reuses existing rooms, creates missing rooms, and reapplies outer spacing only.
+		-- Reuses persisted rooms only; runtime cloning is opt-in to avoid local-only room entities.
 		self:SyncGeneratedGrid(true, false, "synced")
 	end
 
@@ -184,11 +186,12 @@ script BRGridMapEditorTool extends Component
 		-- Synchronizes generated rooms with current grid settings without destroying existing rooms.
 		local root = self:GetGeneratedRoot()
 		local template = self:GetRoomTemplate()
+		local allowRuntimeClone = createMissing == true and self:IsRuntimeRoomCloningAllowed() == true
 		if root == nil then
 			self:Log("sync skipped: root missing")
 			return
 		end
-		if createMissing == true and template == nil then
+		if allowRuntimeClone == true and template == nil then
 			self:Log("sync skipped: template missing")
 			return
 		end
@@ -211,7 +214,7 @@ script BRGridMapEditorTool extends Component
 			local roomWasCreated = false
 			if room ~= nil then
 				reusedCount = reusedCount + 1
-			elseif createMissing == true then
+			elseif allowRuntimeClone == true then
 				room = self:CloneRoomFromTemplate(template, root, roomName)
 				if room ~= nil then
 					createdCount = createdCount + 1
@@ -240,7 +243,7 @@ script BRGridMapEditorTool extends Component
 		end
 
 		local boundsText = self:SyncMapBoundsFromGrid()
-		local summary = "grid=" .. tostring(columns) .. "x" .. tostring(rows) .. ", parts=" .. tostring(self:GetMapPartCount()) .. ", fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. ", pool=" .. tostring(self:GetPoolPartCount()) .. ", number=" .. self:GetPartRangeText() .. ", room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. "), gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. "), reused=" .. tostring(reusedCount) .. ", created=" .. tostring(createdCount) .. ", missing=" .. tostring(missingCount)
+		local summary = "grid=" .. tostring(columns) .. "x" .. tostring(rows) .. ", parts=" .. tostring(self:GetMapPartCount()) .. ", fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. ", pool=" .. tostring(self:GetPoolPartCount()) .. ", number=" .. self:GetPartRangeText() .. ", room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. "), gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. "), runtimeClone=" .. tostring(allowRuntimeClone) .. ", reused=" .. tostring(reusedCount) .. ", created=" .. tostring(createdCount) .. ", missing=" .. tostring(missingCount)
 		self:Log(self:ReadString(actionName, "synced") .. " " .. summary .. ", hiddenOutOfRange=" .. tostring(hiddenOutOfRange) .. ", bounds=" .. boundsText)
 	end
 
@@ -312,6 +315,9 @@ script BRGridMapEditorTool extends Component
 
 	method Entity CloneRoomFromTemplate(Entity template, Entity root, string roomName)
 		-- Clones one room from the hidden template and attaches it under the generated root.
+		if self:IsRuntimeRoomCloningAllowed() == false then
+			return nil
+		end
 		if template == nil or root == nil then
 			return nil
 		end
@@ -756,6 +762,9 @@ script BRGridMapEditorTool extends Component
 
 	method Entity CloneTemplateChild(Entity room, string childName)
 		-- Clones a named child from the room template under the given room.
+		if self:IsRuntimeRoomCloningAllowed() == false then
+			return nil
+		end
 		if room == nil then
 			return nil
 		end
@@ -780,6 +789,11 @@ script BRGridMapEditorTool extends Component
 			child:AttachTo(room)
 		end
 		return child
+	end
+
+	method boolean IsRuntimeRoomCloningAllowed()
+		-- Keeps editor-generated rooms persistent by default instead of making local-only clones.
+		return self.AllowRuntimeRoomCloning == true
 	end
 
 	method void ApplyLabelTransform(Entity label)

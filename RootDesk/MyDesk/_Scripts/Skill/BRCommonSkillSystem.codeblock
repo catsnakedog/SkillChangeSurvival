@@ -1,0 +1,33 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "codeblock://60573e9d-f823-4683-a9ce-b1e295cad6cd",
+  "ContentType": "x-mod/codeblock",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.5.0.0",
+  "StudioVersion": "",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "CoreVersion": {
+        "Major": 0,
+        "Minor": 2
+      },
+      "ScriptVersion": {
+        "Major": 1,
+        "Minor": 1
+      },
+      "Description": "",
+      "Id": "60573e9d-f823-4683-a9ce-b1e295cad6cd",
+      "Language": 1,
+      "Name": "BRCommonSkillSystem",
+      "Type": 5,
+      "Source": 0,
+      "Target": null
+    }
+  }
+}

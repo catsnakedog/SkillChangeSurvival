@@ -174,16 +174,26 @@ script BRBattleLauncher extends Logic
 		local safeMatchId = self:ReadString(matchId, "")
 		local safeMapName = self:ReadString(targetMapName, "")
 
-		local entry = nil
+		local entry = {}
+		local hasEntry = false
 		if safeMatchId ~= "" then
-			entry = self._T.activeMatchesById[safeMatchId]
+			local idEntry = self._T.activeMatchesById[safeMatchId]
+			if idEntry ~= nil then
+				entry = idEntry
+				hasEntry = true
+			end
 		end
-		if entry == nil and safeMapName ~= "" then
-			entry = self._T.activeMatchesByMap[safeMapName]
+		if hasEntry == false and safeMapName ~= "" then
+			local mapEntry = self._T.activeMatchesByMap[safeMapName]
+			if mapEntry ~= nil then
+				entry = mapEntry
+				hasEntry = true
+			end
 		end
-		if entry ~= nil then
-			if entry["LoadingTimerId"] ~= nil and entry["LoadingTimerId"] > 0 then
-				_TimerService:ClearTimer(entry["LoadingTimerId"])
+		if hasEntry == true then
+			local loadingTimerId = math.floor(self:ReadNumber(entry["LoadingTimerId"], 0))
+			if loadingTimerId > 0 then
+				_TimerService:ClearTimer(loadingTimerId)
 				entry["LoadingTimerId"] = 0
 			end
 			safeMatchId = self:ReadString(entry["MatchId"], safeMatchId)

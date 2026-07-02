@@ -1,0 +1,23 @@
+@BTNode
+script BRBTAttackTarget extends BTNode
+
+	method any OnBehave(number delta)
+		local controller = self:GetController()
+		if controller == nil then
+			return BehaviourTreeStatus.Failure
+		end
+		return controller:BTAttackTarget(delta)
+	end
+
+	method any GetController()
+		if self.ParentAI == nil or self.ParentAI.Entity == nil then
+			return nil
+		end
+		local controller = self.ParentAI.Entity:GetComponent("script.BRBattleBotController")
+		if controller == nil then
+			controller = self.ParentAI.Entity:GetComponent("BRBattleBotController")
+		end
+		return controller
+	end
+
+end

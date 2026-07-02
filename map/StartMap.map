@@ -5449,7 +5449,7 @@
       {
         "id": "a9c4902e-f9ea-464c-9e2c-6c7962d49d99",
         "path": "/maps/StartMap/monster-2435",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.StateAnimationComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.MovementComponent,MOD.Core.AIWanderComponent,MOD.Core.StateComponent,MOD.Core.HitComponent,MOD.Core.DamageSkinSpawnerComponent",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.StateAnimationComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.MovementComponent,MOD.Core.AIWanderComponent,MOD.Core.StateComponent,MOD.Core.HitComponent,MOD.Core.DamageSkinSpawnerComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
         "jsonString": {
           "name": "monster-2435",
           "path": "/maps/StartMap/monster-2435",
@@ -5548,6 +5548,40 @@
             {
               "@type": "MOD.Core.DamageSkinSpawnerComponent",
               "Enable": true
+            },
+            {
+              "@type": "MOD.Core.NameTagComponent",
+              "Bold": true,
+              "FontColor": {
+                "r": 1,
+                "g": 0.92,
+                "b": 0.58,
+                "a": 1
+              },
+              "FontOffset": {
+                "x": 0,
+                "y": 0
+              },
+              "FontSize": 0.62,
+              "Name": "MOVING DUMMY\nReady",
+              "NameTagRUID": {
+                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
+              },
+              "OffsetY": 1.25,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRTrainingDummy",
+              "Enable": true,
+              "EnableTrainingDummy": true,
+              "MaxHp": 500,
+              "ResetDelaySeconds": 3,
+              "DamageFlashSeconds": 0.12,
+              "VerboseLog": true,
+              "NameTagTitle": "MOVING DUMMY",
+              "GrantSkillExperienceOnBreak": true,
+              "SkillExperienceReward": 1,
+              "PauseMovementWhenBroken": true
             }
           ],
           "@version": 1
@@ -5556,7 +5590,7 @@
       {
         "id": "da781a4d-a2c3-4da2-9933-9dde71d7134c",
         "path": "/maps/StartMap/monster-2435_1",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.StateAnimationComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.MovementComponent,MOD.Core.AIWanderComponent,MOD.Core.StateComponent,MOD.Core.HitComponent,MOD.Core.DamageSkinSpawnerComponent",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.StateAnimationComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.MovementComponent,MOD.Core.AIWanderComponent,MOD.Core.StateComponent,MOD.Core.HitComponent,MOD.Core.DamageSkinSpawnerComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
         "jsonString": {
           "name": "monster-2435_1",
           "path": "/maps/StartMap/monster-2435_1",
@@ -5655,6 +5689,40 @@
             {
               "@type": "MOD.Core.DamageSkinSpawnerComponent",
               "Enable": true
+            },
+            {
+              "@type": "MOD.Core.NameTagComponent",
+              "Bold": true,
+              "FontColor": {
+                "r": 1,
+                "g": 0.92,
+                "b": 0.58,
+                "a": 1
+              },
+              "FontOffset": {
+                "x": 0,
+                "y": 0
+              },
+              "FontSize": 0.62,
+              "Name": "MOVING DUMMY\nReady",
+              "NameTagRUID": {
+                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
+              },
+              "OffsetY": 1.25,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRTrainingDummy",
+              "Enable": true,
+              "EnableTrainingDummy": true,
+              "MaxHp": 500,
+              "ResetDelaySeconds": 3,
+              "DamageFlashSeconds": 0.12,
+              "VerboseLog": true,
+              "NameTagTitle": "MOVING DUMMY",
+              "GrantSkillExperienceOnBreak": true,
+              "SkillExperienceReward": 1,
+              "PauseMovementWhenBroken": true
             }
           ],
           "@version": 1
@@ -5663,7 +5731,7 @@
       {
         "id": "50667094-0544-4cdf-84d4-c87e681c08d6",
         "path": "/maps/StartMap/monster-2435_2",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.StateAnimationComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.MovementComponent,MOD.Core.AIWanderComponent,MOD.Core.StateComponent,MOD.Core.HitComponent,MOD.Core.DamageSkinSpawnerComponent",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.StateAnimationComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.MovementComponent,MOD.Core.AIWanderComponent,MOD.Core.StateComponent,MOD.Core.HitComponent,MOD.Core.DamageSkinSpawnerComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
         "jsonString": {
           "name": "monster-2435_2",
           "path": "/maps/StartMap/monster-2435_2",
@@ -5762,6 +5830,40 @@
             {
               "@type": "MOD.Core.DamageSkinSpawnerComponent",
               "Enable": true
+            },
+            {
+              "@type": "MOD.Core.NameTagComponent",
+              "Bold": true,
+              "FontColor": {
+                "r": 1,
+                "g": 0.92,
+                "b": 0.58,
+                "a": 1
+              },
+              "FontOffset": {
+                "x": 0,
+                "y": 0
+              },
+              "FontSize": 0.62,
+              "Name": "MOVING DUMMY\nReady",
+              "NameTagRUID": {
+                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
+              },
+              "OffsetY": 1.25,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRTrainingDummy",
+              "Enable": true,
+              "EnableTrainingDummy": true,
+              "MaxHp": 500,
+              "ResetDelaySeconds": 3,
+              "DamageFlashSeconds": 0.12,
+              "VerboseLog": true,
+              "NameTagTitle": "MOVING DUMMY",
+              "GrantSkillExperienceOnBreak": true,
+              "SkillExperienceReward": 1,
+              "PauseMovementWhenBroken": true
             }
           ],
           "@version": 1
@@ -6889,7 +6991,7 @@
       {
         "id": "d23d1875-3058-41c6-b3bf-40fbd415328a",
         "path": "/maps/StartMap/monster-2435_3",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.StateAnimationComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.MovementComponent,MOD.Core.AIWanderComponent,MOD.Core.StateComponent,MOD.Core.HitComponent,MOD.Core.DamageSkinSpawnerComponent",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.StateAnimationComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.MovementComponent,MOD.Core.AIWanderComponent,MOD.Core.StateComponent,MOD.Core.HitComponent,MOD.Core.DamageSkinSpawnerComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
         "jsonString": {
           "name": "monster-2435_3",
           "path": "/maps/StartMap/monster-2435_3",
@@ -6993,6 +7095,40 @@
             {
               "@type": "MOD.Core.DamageSkinSpawnerComponent",
               "Enable": true
+            },
+            {
+              "@type": "MOD.Core.NameTagComponent",
+              "Bold": true,
+              "FontColor": {
+                "r": 1,
+                "g": 0.92,
+                "b": 0.58,
+                "a": 1
+              },
+              "FontOffset": {
+                "x": 0,
+                "y": 0
+              },
+              "FontSize": 0.62,
+              "Name": "MOVING DUMMY\nReady",
+              "NameTagRUID": {
+                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
+              },
+              "OffsetY": 1.25,
+              "Enable": true
+            },
+            {
+              "@type": "script.BRTrainingDummy",
+              "Enable": true,
+              "EnableTrainingDummy": true,
+              "MaxHp": 500,
+              "ResetDelaySeconds": 3,
+              "DamageFlashSeconds": 0.12,
+              "VerboseLog": true,
+              "NameTagTitle": "MOVING DUMMY",
+              "GrantSkillExperienceOnBreak": true,
+              "SkillExperienceReward": 1,
+              "PauseMovementWhenBroken": true
             }
           ],
           "@version": 1

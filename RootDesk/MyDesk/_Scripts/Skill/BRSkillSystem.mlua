@@ -1800,7 +1800,7 @@ script BRSkillSystem extends Logic
 
 	method boolean ContainsNameToken(string source, string tokens)
 		-- Checks comma-delimited placement-name tokens against one source name.
-		local safeSource = self:ReadString(source, "")
+		local safeSource = string.lower(self:ReadString(source, ""))
 		local safeTokens = self:ReadString(tokens, "")
 		if safeSource == "" or safeTokens == "" then
 			return false
@@ -1816,11 +1816,19 @@ script BRSkillSystem extends Logic
 				token = string.sub(safeTokens, startIndex, commaIndex - 1)
 				startIndex = commaIndex + 1
 			end
-			if token ~= "" and string.find(safeSource, token) ~= nil then
+			token = string.lower(self:TrimString(token))
+			if token ~= "" and string.find(safeSource, token, 1, true) ~= nil then
 				return true
 			end
 		end
 		return false
+	end
+
+	method string TrimString(string value)
+		-- Trims whitespace around comma-delimited config tokens.
+		local safeValue = self:ReadString(value, "")
+		local trimmed = string.match(safeValue, "^%s*(.-)%s*$")
+		return trimmed
 	end
 
 	method boolean IsTargetInsideHitboxes(any context, Entity targetEntity)

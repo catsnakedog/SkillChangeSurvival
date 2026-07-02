@@ -1826,19 +1826,19 @@
                     "Id": 58,
                     "StartPoint": {
                       "x": 7.9039,
-                      "y": 2.07
+                      "y": 2.0722
                     },
                     "EndPoint": {
                       "x": 9.2739,
-                      "y": 2.14
+                      "y": 2.1422
                     },
                     "Variance": {
                       "x": 0.998697162,
-                      "y": 0.0510284528
+                      "y": 0.0510282777
                     }
                   },
                   {
-                    "Length": 1.81859851,
+                    "Length": 1.81859839,
                     "NextFootholdId": 0,
                     "PreviousFootholdId": 58,
                     "groupID": 18,
@@ -1857,15 +1857,15 @@
                     "Id": 59,
                     "StartPoint": {
                       "x": 9.2739,
-                      "y": 2.14
+                      "y": 2.1422
                     },
                     "EndPoint": {
                       "x": 10.9439,
-                      "y": 1.42
+                      "y": 1.4222
                     },
                     "Variance": {
-                      "x": 0.9182896,
-                      "y": -0.395909339
+                      "x": 0.918289661,
+                      "y": -0.3959093
                     }
                   },
                   {
@@ -1888,11 +1888,11 @@
                     "Id": 60,
                     "StartPoint": {
                       "x": 7.9839,
-                      "y": 1.03
+                      "y": 1.0322
                     },
                     "EndPoint": {
                       "x": 9.2439,
-                      "y": 1.09
+                      "y": 1.0922
                     },
                     "Variance": {
                       "x": 0.9988681,
@@ -1919,11 +1919,11 @@
                     "Id": 61,
                     "StartPoint": {
                       "x": 9.2439,
-                      "y": 1.09
+                      "y": 1.0922
                     },
                     "EndPoint": {
                       "x": 10.7939,
-                      "y": 0.61
+                      "y": 0.6122
                     },
                     "Variance": {
                       "x": 0.9552444,
@@ -1950,11 +1950,11 @@
                     "Id": 62,
                     "StartPoint": {
                       "x": 5.2339,
-                      "y": -0.79
+                      "y": -0.7878
                     },
                     "EndPoint": {
                       "x": 9.2239,
-                      "y": -0.79
+                      "y": -0.7878
                     },
                     "Variance": {
                       "x": 1.0,
@@ -1981,11 +1981,11 @@
                     "Id": 63,
                     "StartPoint": {
                       "x": 9.2239,
-                      "y": -0.79
+                      "y": -0.7878
                     },
                     "EndPoint": {
                       "x": 10.7439,
-                      "y": -0.81
+                      "y": -0.8078
                     },
                     "Variance": {
                       "x": 0.9999134,
@@ -2012,11 +2012,11 @@
                     "Id": 64,
                     "StartPoint": {
                       "x": 5.0739,
-                      "y": -0.93
+                      "y": -0.9278
                     },
                     "EndPoint": {
                       "x": 9.2539,
-                      "y": -0.95
+                      "y": -0.9478
                     },
                     "Variance": {
                       "x": 0.9999886,
@@ -2043,11 +2043,11 @@
                     "Id": 65,
                     "StartPoint": {
                       "x": 9.2539,
-                      "y": -0.95
+                      "y": -0.9478
                     },
                     "EndPoint": {
                       "x": 10.8439,
-                      "y": -0.97
+                      "y": -0.9678
                     },
                     "Variance": {
                       "x": 0.9999209,
@@ -2074,11 +2074,11 @@
                     "Id": 66,
                     "StartPoint": {
                       "x": 5.9939,
-                      "y": 1.05
+                      "y": 1.0522
                     },
                     "EndPoint": {
                       "x": 7.7439,
-                      "y": 1.12
+                      "y": 1.1222
                     },
                     "Variance": {
                       "x": 0.999201,
@@ -2105,15 +2105,15 @@
                     "Id": 67,
                     "StartPoint": {
                       "x": 5.3039,
-                      "y": 0.96
+                      "y": 0.9622
                     },
                     "EndPoint": {
                       "x": 5.9739,
-                      "y": 0.97
+                      "y": 0.9722
                     },
                     "Variance": {
                       "x": 0.999888659,
-                      "y": 0.014923784
+                      "y": 0.0149236945
                     }
                   },
                   {
@@ -2136,11 +2136,11 @@
                     "Id": 68,
                     "StartPoint": {
                       "x": 4.9539,
-                      "y": 1.93
+                      "y": 1.9322
                     },
                     "EndPoint": {
                       "x": 6.1339,
-                      "y": 1.97
+                      "y": 1.9722
                     },
                     "Variance": {
                       "x": 0.9994259,
@@ -2167,11 +2167,11 @@
                     "Id": 69,
                     "StartPoint": {
                       "x": 5.7239,
-                      "y": 2.7
+                      "y": 2.7022
                     },
                     "EndPoint": {
                       "x": 5.9639,
-                      "y": 2.92
+                      "y": 2.9222
                     },
                     "Variance": {
                       "x": 0.7371545,
@@ -2198,11 +2198,11 @@
                     "Id": 70,
                     "StartPoint": {
                       "x": 5.9639,
-                      "y": 2.92
+                      "y": 2.9222
                     },
                     "EndPoint": {
                       "x": 6.8539,
-                      "y": 3.13
+                      "y": 3.1322
                     },
                     "Variance": {
                       "x": 0.9732735,
@@ -2229,11 +2229,11 @@
                     "Id": 71,
                     "StartPoint": {
                       "x": 6.8539,
-                      "y": 3.13
+                      "y": 3.1322
                     },
                     "EndPoint": {
                       "x": 8.5439,
-                      "y": 3.17
+                      "y": 3.1722
                     },
                     "Variance": {
                       "x": 0.999720037,
@@ -2260,15 +2260,15 @@
                     "Id": 72,
                     "StartPoint": {
                       "x": 8.5439,
-                      "y": 3.17
+                      "y": 3.1722
                     },
                     "EndPoint": {
                       "x": 9.5639,
-                      "y": 3.01
+                      "y": 3.0122
                     },
                     "Variance": {
                       "x": 0.987919569,
-                      "y": -0.154967785
+                      "y": -0.154967561
                     }
                   },
                   {
@@ -2291,11 +2291,11 @@
                     "Id": 73,
                     "StartPoint": {
                       "x": 9.5639,
-                      "y": 3.01
+                      "y": 3.0122
                     },
                     "EndPoint": {
                       "x": 10.1039,
-                      "y": 2.8
+                      "y": 2.8022
                     },
                     "Variance": {
                       "x": 0.9320047,
@@ -2322,11 +2322,11 @@
                     "Id": 74,
                     "StartPoint": {
                       "x": 10.1039,
-                      "y": 2.8
+                      "y": 2.8022
                     },
                     "EndPoint": {
                       "x": 10.3439,
-                      "y": 2.57
+                      "y": 2.5722
                     },
                     "Variance": {
                       "x": 0.721987844,
@@ -2334,7 +2334,7 @@
                     }
                   },
                   {
-                    "Length": 0.863539338,
+                    "Length": 0.863539159,
                     "NextFootholdId": 76,
                     "PreviousFootholdId": 0,
                     "groupID": 25,
@@ -2353,19 +2353,19 @@
                     "Id": 75,
                     "StartPoint": {
                       "x": 6.0039,
-                      "y": 3.25
+                      "y": 3.2522
                     },
                     "EndPoint": {
                       "x": 6.4139,
-                      "y": 4.01
+                      "y": 4.0122
                     },
                     "Variance": {
-                      "x": 0.47479,
-                      "y": 0.8800991
+                      "x": 0.4747901,
+                      "y": 0.880099058
                     }
                   },
                   {
-                    "Length": 1.09402907,
+                    "Length": 1.09402943,
                     "NextFootholdId": 77,
                     "PreviousFootholdId": 75,
                     "groupID": 25,
@@ -2384,19 +2384,19 @@
                     "Id": 76,
                     "StartPoint": {
                       "x": 6.4139,
-                      "y": 4.01
+                      "y": 4.0122
                     },
                     "EndPoint": {
                       "x": 7.2939,
-                      "y": 4.66
+                      "y": 4.6622
                     },
                     "Variance": {
-                      "x": 0.8043663,
-                      "y": 0.5941338
+                      "x": 0.804366052,
+                      "y": 0.594134033
                     }
                   },
                   {
-                    "Length": 0.737563431,
+                    "Length": 0.7375633,
                     "NextFootholdId": 78,
                     "PreviousFootholdId": 76,
                     "groupID": 25,
@@ -2415,15 +2415,15 @@
                     "Id": 77,
                     "StartPoint": {
                       "x": 7.2939,
-                      "y": 4.66
+                      "y": 4.6622
                     },
                     "EndPoint": {
                       "x": 8.0139,
-                      "y": 4.82
+                      "y": 4.8222
                     },
                     "Variance": {
-                      "x": 0.976186931,
-                      "y": 0.216930941
+                      "x": 0.9761871,
+                      "y": 0.21693033
                     }
                   },
                   {
@@ -2446,11 +2446,11 @@
                     "Id": 78,
                     "StartPoint": {
                       "x": 8.0139,
-                      "y": 4.82
+                      "y": 4.8222
                     },
                     "EndPoint": {
                       "x": 9.0039,
-                      "y": 4.38
+                      "y": 4.3822
                     },
                     "Variance": {
                       "x": 0.9138115,
@@ -2458,7 +2458,7 @@
                     }
                   },
                   {
-                    "Length": 1.08894491,
+                    "Length": 1.08894455,
                     "NextFootholdId": 80,
                     "PreviousFootholdId": 78,
                     "groupID": 25,
@@ -2477,19 +2477,19 @@
                     "Id": 79,
                     "StartPoint": {
                       "x": 9.0039,
-                      "y": 4.38
+                      "y": 4.3822
                     },
                     "EndPoint": {
                       "x": 9.7739,
-                      "y": 3.61
+                      "y": 3.6122
                     },
                     "Variance": {
-                      "x": 0.7071069,
-                      "y": -0.70710665
+                      "x": 0.7071071,
+                      "y": -0.7071065
                     }
                   },
                   {
-                    "Length": 0.7376311,
+                    "Length": 0.7376313,
                     "NextFootholdId": 0,
                     "PreviousFootholdId": 79,
                     "groupID": 25,
@@ -2508,19 +2508,19 @@
                     "Id": 80,
                     "StartPoint": {
                       "x": 9.7739,
-                      "y": 3.61
+                      "y": 3.6122
                     },
                     "EndPoint": {
                       "x": 9.9739,
-                      "y": 2.9
+                      "y": 2.9022
                     },
                     "Variance": {
-                      "x": 0.271137983,
+                      "x": 0.2711379,
                       "y": -0.9625405
                     }
                   },
                   {
-                    "Length": 0.3577712,
+                    "Length": 0.35777095,
                     "NextFootholdId": 82,
                     "PreviousFootholdId": 0,
                     "groupID": 26,
@@ -2539,19 +2539,19 @@
                     "Id": 81,
                     "StartPoint": {
                       "x": 7.7539,
-                      "y": 5.2
+                      "y": 5.2022
                     },
                     "EndPoint": {
                       "x": 8.0739,
-                      "y": 5.36
+                      "y": 5.3622
                     },
                     "Variance": {
-                      "x": 0.8944269,
-                      "y": 0.447214127
+                      "x": 0.8944275,
+                      "y": 0.447213084
                     }
                   },
                   {
-                    "Length": 0.2501999,
+                    "Length": 0.250199944,
                     "NextFootholdId": 83,
                     "PreviousFootholdId": 81,
                     "groupID": 26,
@@ -2570,15 +2570,15 @@
                     "Id": 82,
                     "StartPoint": {
                       "x": 8.0739,
-                      "y": 5.36
+                      "y": 5.3622
                     },
                     "EndPoint": {
                       "x": 8.3239,
-                      "y": 5.37
+                      "y": 5.3722
                     },
                     "Variance": {
-                      "x": 0.999201,
-                      "y": 0.03996705
+                      "x": 0.9992009,
+                      "y": 0.03996895
                     }
                   },
                   {
@@ -2601,11 +2601,11 @@
                     "Id": 83,
                     "StartPoint": {
                       "x": 8.3239,
-                      "y": 5.37
+                      "y": 5.3722
                     },
                     "EndPoint": {
                       "x": 8.5239,
-                      "y": 5.08
+                      "y": 5.0822
                     },
                     "Variance": {
                       "x": 0.567732632,
@@ -3583,110 +3583,6 @@
         }
       },
       {
-        "id": "3d98e143-525f-4be9-b105-1034cd11f209",
-        "path": "/maps/StartMap/TrainingDummy",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
-        "jsonString": {
-          "name": "TrainingDummy",
-          "path": "/maps/StartMap/TrainingDummy",
-          "nameEditable": true,
-          "enable": true,
-          "visible": true,
-          "localize": false,
-          "displayOrder": 13,
-          "pathConstraints": "///",
-          "revision": 1,
-          "modelId": null,
-          "@components": [
-            {
-              "@type": "MOD.Core.TransformComponent",
-              "Rotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-              },
-              "Position": {
-                "x": 10.9780025,
-                "y": 0.632703543,
-                "z": 0.0
-              },
-              "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
-              },
-              "ZRotation": 0.0,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.PolygonRendererComponent",
-              "Color": {
-                "r": 0.87,
-                "g": 0.68,
-                "b": 0.32,
-                "a": 1.0
-              },
-              "IgnoreMapLayerCheck": true,
-              "MaterialId": "",
-              "OrderInLayer": 0,
-              "Points": [
-                {
-                  "x": -0.42,
-                  "y": 0.0
-                },
-                {
-                  "x": 0.42,
-                  "y": 0.0
-                },
-                {
-                  "x": 0.34,
-                  "y": 1.45
-                },
-                {
-                  "x": -0.34,
-                  "y": 1.45
-                }
-              ],
-              "SortingLayer": "MapLayer0",
-              "UseCustomUVs": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.NameTagComponent",
-              "Bold": true,
-              "FontColor": {
-                "r": 1.0,
-                "g": 0.92,
-                "b": 0.58,
-                "a": 1.0
-              },
-              "FontOffset": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "FontSize": 0.75,
-              "Name": "TRAINING DUMMY\nReady",
-              "NameTagRUID": {
-                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
-              },
-              "OffsetY": 1.62,
-              "Enable": true
-            },
-            {
-              "@type": "script.BRTrainingDummy",
-              "Enable": true,
-              "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
-              "ResetDelaySeconds": 3.0,
-              "DamageFlashSeconds": 0.12,
-              "VerboseLog": true
-            }
-          ],
-          "@version": 1
-        }
-      },
-      {
         "id": "9524693e-374f-490c-92dd-18dafaef711a",
         "path": "/maps/StartMap/foothold-2658",
         "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.CustomFootholdComponent",
@@ -3697,7 +3593,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 14,
+          "displayOrder": 13,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -3771,7 +3667,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 15,
+          "displayOrder": 14,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -3997,7 +3893,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 16,
+          "displayOrder": 15,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4055,7 +3951,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 17,
+          "displayOrder": 16,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4112,7 +4008,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 18,
+          "displayOrder": 17,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4170,7 +4066,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 19,
+          "displayOrder": 18,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4228,7 +4124,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 20,
+          "displayOrder": 19,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4281,7 +4177,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 21,
+          "displayOrder": 20,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4355,7 +4251,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 22,
+          "displayOrder": 21,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4449,7 +4345,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 23,
+          "displayOrder": 22,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4507,7 +4403,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 24,
+          "displayOrder": 23,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4555,214 +4451,6 @@
         }
       },
       {
-        "id": "88fd1d25-b177-4f18-a9cd-6fb2937f3e1c",
-        "path": "/maps/StartMap/TrainingDummy_1",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
-        "jsonString": {
-          "name": "TrainingDummy_1",
-          "path": "/maps/StartMap/TrainingDummy_1",
-          "nameEditable": true,
-          "enable": true,
-          "visible": true,
-          "localize": false,
-          "displayOrder": 25,
-          "pathConstraints": "///",
-          "revision": 1,
-          "modelId": null,
-          "@components": [
-            {
-              "@type": "MOD.Core.TransformComponent",
-              "Rotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-              },
-              "Position": {
-                "x": 11.96773,
-                "y": 0.629719853,
-                "z": 0.0
-              },
-              "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
-              },
-              "ZRotation": 0.0,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.PolygonRendererComponent",
-              "Color": {
-                "r": 0.87,
-                "g": 0.68,
-                "b": 0.32,
-                "a": 1.0
-              },
-              "IgnoreMapLayerCheck": true,
-              "MaterialId": "",
-              "OrderInLayer": 0,
-              "Points": [
-                {
-                  "x": -0.42,
-                  "y": 0.0
-                },
-                {
-                  "x": 0.42,
-                  "y": 0.0
-                },
-                {
-                  "x": 0.34,
-                  "y": 1.45
-                },
-                {
-                  "x": -0.34,
-                  "y": 1.45
-                }
-              ],
-              "SortingLayer": "MapLayer0",
-              "UseCustomUVs": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.NameTagComponent",
-              "Bold": true,
-              "FontColor": {
-                "r": 1.0,
-                "g": 0.92,
-                "b": 0.58,
-                "a": 1.0
-              },
-              "FontOffset": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "FontSize": 0.75,
-              "Name": "TRAINING DUMMY\nReady",
-              "NameTagRUID": {
-                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
-              },
-              "OffsetY": 1.62,
-              "Enable": true
-            },
-            {
-              "@type": "script.BRTrainingDummy",
-              "Enable": true,
-              "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
-              "ResetDelaySeconds": 3.0,
-              "DamageFlashSeconds": 0.12,
-              "VerboseLog": true
-            }
-          ],
-          "@version": 1
-        }
-      },
-      {
-        "id": "e693b074-e02a-4520-978b-905f6f543919",
-        "path": "/maps/StartMap/TrainingDummy_2",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
-        "jsonString": {
-          "name": "TrainingDummy_2",
-          "path": "/maps/StartMap/TrainingDummy_2",
-          "nameEditable": true,
-          "enable": true,
-          "visible": true,
-          "localize": false,
-          "displayOrder": 26,
-          "pathConstraints": "///",
-          "revision": 1,
-          "modelId": null,
-          "@components": [
-            {
-              "@type": "MOD.Core.TransformComponent",
-              "Rotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-              },
-              "Position": {
-                "x": 9.984323,
-                "y": 0.627703547,
-                "z": 0.0
-              },
-              "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
-              },
-              "ZRotation": 0.0,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.PolygonRendererComponent",
-              "Color": {
-                "r": 0.87,
-                "g": 0.68,
-                "b": 0.32,
-                "a": 1.0
-              },
-              "IgnoreMapLayerCheck": true,
-              "MaterialId": "",
-              "OrderInLayer": 0,
-              "Points": [
-                {
-                  "x": -0.42,
-                  "y": 0.0
-                },
-                {
-                  "x": 0.42,
-                  "y": 0.0
-                },
-                {
-                  "x": 0.34,
-                  "y": 1.45
-                },
-                {
-                  "x": -0.34,
-                  "y": 1.45
-                }
-              ],
-              "SortingLayer": "MapLayer0",
-              "UseCustomUVs": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.NameTagComponent",
-              "Bold": true,
-              "FontColor": {
-                "r": 1.0,
-                "g": 0.92,
-                "b": 0.58,
-                "a": 1.0
-              },
-              "FontOffset": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "FontSize": 0.75,
-              "Name": "TRAINING DUMMY\nReady",
-              "NameTagRUID": {
-                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
-              },
-              "OffsetY": 1.62,
-              "Enable": true
-            },
-            {
-              "@type": "script.BRTrainingDummy",
-              "Enable": true,
-              "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
-              "ResetDelaySeconds": 3.0,
-              "DamageFlashSeconds": 0.12,
-              "VerboseLog": true
-            }
-          ],
-          "@version": 1
-        }
-      },
-      {
         "id": "80ca9079-0ed2-48ab-a182-391ab7e812dd",
         "path": "/maps/StartMap/object-2657_2",
         "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent",
@@ -4773,7 +4461,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 27,
+          "displayOrder": 24,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4831,7 +4519,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 28,
+          "displayOrder": 25,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4889,7 +4577,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 29,
+          "displayOrder": 26,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -4947,7 +4635,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 30,
+          "displayOrder": 27,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5005,7 +4693,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 31,
+          "displayOrder": 28,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5063,7 +4751,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 32,
+          "displayOrder": 29,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5121,7 +4809,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 33,
+          "displayOrder": 30,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5179,7 +4867,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 34,
+          "displayOrder": 31,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5237,7 +4925,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 35,
+          "displayOrder": 32,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5311,7 +4999,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 36,
+          "displayOrder": 33,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5384,7 +5072,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 37,
+          "displayOrder": 34,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5457,7 +5145,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 38,
+          "displayOrder": 35,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5553,14 +5241,14 @@
               "@type": "MOD.Core.NameTagComponent",
               "Bold": true,
               "FontColor": {
-                "r": 1,
+                "r": 1.0,
                 "g": 0.92,
                 "b": 0.58,
-                "a": 1
+                "a": 1.0
               },
               "FontOffset": {
-                "x": 0,
-                "y": 0
+                "x": 0.0,
+                "y": 0.0
               },
               "FontSize": 0.62,
               "Name": "MOVING DUMMY\nReady",
@@ -5574,13 +5262,13 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500,
-              "ResetDelaySeconds": 3,
+              "MaxHp": 500.0,
+              "ResetDelaySeconds": 3.0,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1,
+              "SkillExperienceReward": 1.0,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -5598,7 +5286,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 39,
+          "displayOrder": 36,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5694,14 +5382,14 @@
               "@type": "MOD.Core.NameTagComponent",
               "Bold": true,
               "FontColor": {
-                "r": 1,
+                "r": 1.0,
                 "g": 0.92,
                 "b": 0.58,
-                "a": 1
+                "a": 1.0
               },
               "FontOffset": {
-                "x": 0,
-                "y": 0
+                "x": 0.0,
+                "y": 0.0
               },
               "FontSize": 0.62,
               "Name": "MOVING DUMMY\nReady",
@@ -5715,13 +5403,13 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500,
-              "ResetDelaySeconds": 3,
+              "MaxHp": 500.0,
+              "ResetDelaySeconds": 3.0,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1,
+              "SkillExperienceReward": 1.0,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -5739,7 +5427,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 40,
+          "displayOrder": 37,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5835,14 +5523,14 @@
               "@type": "MOD.Core.NameTagComponent",
               "Bold": true,
               "FontColor": {
-                "r": 1,
+                "r": 1.0,
                 "g": 0.92,
                 "b": 0.58,
-                "a": 1
+                "a": 1.0
               },
               "FontOffset": {
-                "x": 0,
-                "y": 0
+                "x": 0.0,
+                "y": 0.0
               },
               "FontSize": 0.62,
               "Name": "MOVING DUMMY\nReady",
@@ -5856,13 +5544,13 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500,
-              "ResetDelaySeconds": 3,
+              "MaxHp": 500.0,
+              "ResetDelaySeconds": 3.0,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1,
+              "SkillExperienceReward": 1.0,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -5880,7 +5568,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 41,
+          "displayOrder": 38,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -5948,7 +5636,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 42,
+          "displayOrder": 39,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6016,7 +5704,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 43,
+          "displayOrder": 40,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6090,7 +5778,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 44,
+          "displayOrder": 41,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6164,7 +5852,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 45,
+          "displayOrder": 42,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6238,7 +5926,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 46,
+          "displayOrder": 43,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6296,7 +5984,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 47,
+          "displayOrder": 44,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6370,7 +6058,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 48,
+          "displayOrder": 45,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6428,7 +6116,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 49,
+          "displayOrder": 46,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6654,7 +6342,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 50,
+          "displayOrder": 47,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6727,7 +6415,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 51,
+          "displayOrder": 48,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6795,7 +6483,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 52,
+          "displayOrder": 49,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6863,7 +6551,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 53,
+          "displayOrder": 50,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6931,7 +6619,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 54,
+          "displayOrder": 51,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -6999,7 +6687,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 55,
+          "displayOrder": 52,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7014,8 +6702,8 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": -8.900001,
-                "y": 1.0,
+                "x": -9.06567,
+                "y": 1.065,
                 "z": 0.0
               },
               "QuaternionRotation": {
@@ -7067,7 +6755,7 @@
               "@type": "MOD.Core.MovementComponent",
               "InputSpeed": 1.0,
               "JumpForce": 0.0,
-              "Enable": true
+              "Enable": false
             },
             {
               "@type": "MOD.Core.AIWanderComponent",
@@ -7100,14 +6788,14 @@
               "@type": "MOD.Core.NameTagComponent",
               "Bold": true,
               "FontColor": {
-                "r": 1,
+                "r": 1.0,
                 "g": 0.92,
                 "b": 0.58,
-                "a": 1
+                "a": 1.0
               },
               "FontOffset": {
-                "x": 0,
-                "y": 0
+                "x": 0.0,
+                "y": 0.0
               },
               "FontSize": 0.62,
               "Name": "MOVING DUMMY\nReady",
@@ -7121,118 +6809,14 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500,
-              "ResetDelaySeconds": 3,
+              "MaxHp": 500.0,
+              "ResetDelaySeconds": 3.0,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1,
+              "SkillExperienceReward": 1.0,
               "PauseMovementWhenBroken": true
-            }
-          ],
-          "@version": 1
-        }
-      },
-      {
-        "id": "a997dcd6-399c-428d-807d-ec99184870dd",
-        "path": "/maps/StartMap/TrainingDummy_3",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.PolygonRendererComponent,MOD.Core.NameTagComponent,script.BRTrainingDummy",
-        "jsonString": {
-          "name": "TrainingDummy_3",
-          "path": "/maps/StartMap/TrainingDummy_3",
-          "nameEditable": true,
-          "enable": true,
-          "visible": true,
-          "localize": false,
-          "displayOrder": 56,
-          "pathConstraints": "///",
-          "revision": 1,
-          "modelId": null,
-          "@components": [
-            {
-              "@type": "MOD.Core.TransformComponent",
-              "Rotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-              },
-              "Position": {
-                "x": -8.866713,
-                "y": 0.990000069,
-                "z": 0.0
-              },
-              "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
-              },
-              "ZRotation": 0.0,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.PolygonRendererComponent",
-              "Color": {
-                "r": 0.87,
-                "g": 0.68,
-                "b": 0.32,
-                "a": 1.0
-              },
-              "IgnoreMapLayerCheck": true,
-              "MaterialId": "",
-              "OrderInLayer": 0,
-              "Points": [
-                {
-                  "x": -0.42,
-                  "y": 0.0
-                },
-                {
-                  "x": 0.42,
-                  "y": 0.0
-                },
-                {
-                  "x": 0.34,
-                  "y": 1.45
-                },
-                {
-                  "x": -0.34,
-                  "y": 1.45
-                }
-              ],
-              "SortingLayer": "MapLayer0",
-              "UseCustomUVs": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.NameTagComponent",
-              "Bold": true,
-              "FontColor": {
-                "r": 1.0,
-                "g": 0.92,
-                "b": 0.58,
-                "a": 1.0
-              },
-              "FontOffset": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "FontSize": 0.75,
-              "Name": "TRAINING DUMMY\nReady",
-              "NameTagRUID": {
-                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
-              },
-              "OffsetY": 1.62,
-              "Enable": true
-            },
-            {
-              "@type": "script.BRTrainingDummy",
-              "Enable": true,
-              "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
-              "ResetDelaySeconds": 3.0,
-              "DamageFlashSeconds": 0.12,
-              "VerboseLog": true
             }
           ],
           "@version": 1
@@ -7249,7 +6833,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 57,
+          "displayOrder": 53,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7317,7 +6901,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 58,
+          "displayOrder": 54,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7385,7 +6969,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 59,
+          "displayOrder": 55,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7458,7 +7042,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 60,
+          "displayOrder": 56,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7532,7 +7116,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 61,
+          "displayOrder": 57,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7629,7 +7213,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 62,
+          "displayOrder": 58,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7703,7 +7287,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 63,
+          "displayOrder": 59,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7761,7 +7345,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 64,
+          "displayOrder": 60,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7835,7 +7419,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 65,
+          "displayOrder": 61,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7893,7 +7477,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 66,
+          "displayOrder": 62,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7995,7 +7579,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 67,
+          "displayOrder": 63,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8053,7 +7637,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 68,
+          "displayOrder": 64,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8153,7 +7737,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 69,
+          "displayOrder": 65,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8211,7 +7795,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 70,
+          "displayOrder": 66,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8269,7 +7853,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 71,
+          "displayOrder": 67,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8326,7 +7910,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 72,
+          "displayOrder": 68,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8383,7 +7967,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 73,
+          "displayOrder": 69,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8440,7 +8024,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 74,
+          "displayOrder": 70,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8497,7 +8081,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 75,
+          "displayOrder": 71,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8554,7 +8138,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 76,
+          "displayOrder": 72,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8612,7 +8196,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 77,
+          "displayOrder": 73,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8670,7 +8254,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 78,
+          "displayOrder": 74,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8744,7 +8328,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 79,
+          "displayOrder": 75,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8802,7 +8386,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 80,
+          "displayOrder": 76,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8876,7 +8460,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 81,
+          "displayOrder": 77,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8934,7 +8518,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 82,
+          "displayOrder": 78,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9008,7 +8592,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 83,
+          "displayOrder": 79,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9066,7 +8650,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 84,
+          "displayOrder": 80,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9140,7 +8724,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 85,
+          "displayOrder": 81,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9198,7 +8782,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 86,
+          "displayOrder": 82,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9256,7 +8840,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 87,
+          "displayOrder": 83,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9314,7 +8898,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 88,
+          "displayOrder": 84,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9388,7 +8972,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 89,
+          "displayOrder": 85,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9446,7 +9030,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 90,
+          "displayOrder": 86,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9504,7 +9088,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 91,
+          "displayOrder": 87,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9578,7 +9162,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 92,
+          "displayOrder": 88,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9636,7 +9220,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 93,
+          "displayOrder": 89,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9689,7 +9273,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 94,
+          "displayOrder": 90,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9747,7 +9331,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 95,
+          "displayOrder": 91,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9806,7 +9390,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 96,
+          "displayOrder": 92,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9864,7 +9448,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 97,
+          "displayOrder": 93,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9917,7 +9501,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 98,
+          "displayOrder": 94,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9970,7 +9554,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 99,
+          "displayOrder": 95,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -10029,7 +9613,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 100,
+          "displayOrder": 96,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -10045,7 +9629,7 @@
               "@type": "MOD.Core.TransformComponent",
               "Position": {
                 "x": 7.743869,
-                "y": 0.75,
+                "y": 0.7522079,
                 "z": 0.0
               },
               "QuaternionRotation": {

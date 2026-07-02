@@ -15,12 +15,20 @@ const els = {
   save: document.querySelector("#saveButton"),
   dryRun: document.querySelector("#dryRunButton"),
   connect: document.querySelector("#connectButton"),
+  originDryRun: document.querySelector("#originDryRunButton"),
+  originMove: document.querySelector("#originMoveButton"),
+  symmetryDryRun: document.querySelector("#symmetryDryRunButton"),
+  symmetryMove: document.querySelector("#symmetryMoveButton"),
 };
 
 els.refresh.addEventListener("click", () => refreshAll());
 els.save.addEventListener("click", () => saveCurrentMap());
 els.dryRun.addEventListener("click", () => runPlan(false));
 els.connect.addEventListener("click", () => runPlan(true));
+els.originDryRun.addEventListener("click", () => runOriginMove(false));
+els.originMove.addEventListener("click", () => runOriginMove(true));
+els.symmetryDryRun.addEventListener("click", () => runSymmetryMove(false));
+els.symmetryMove.addEventListener("click", () => runSymmetryMove(true));
 els.map.addEventListener("change", () => {
   state.map = els.map.value;
   loadRooms();
@@ -141,9 +149,62 @@ async function runPlan(apply) {
   }
 }
 
+async function runOriginMove(apply) {
+  if (!state.map) return appendLog("Map is not selected");
+  if (!state.roomPath) return appendLog("Room is not selected");
+  if (!state.linePath) return appendLog("Line parent is not selected");
+
+  const endpoint = apply ? "/api/move-line-origin" : "/api/move-line-origin/dry-run";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ map: state.map, linePath: state.linePath }),
+    });
+    const plan = data.plan ?? data.result;
+    appendLog(apply ? "Origin move result" : "Origin Dry Run result");
+    renderPlan(plan);
+    if (plan.message) appendLog(plan.message);
+    if (data.refresh) appendLog(`Maker refresh: ${JSON.stringify(data.refresh)}`);
+    if (plan.backupPath) appendLog(`Backup: ${plan.backupPath}`);
+  } catch (error) {
+    appendLog(`Failed: ${error.message}`);
+  }
+}
+
+async function runSymmetryMove(apply) {
+  if (!state.map) return appendLog("Map is not selected");
+  if (!state.roomPath) return appendLog("Room is not selected");
+
+  const endpoint = apply ? "/api/symmetry" : "/api/symmetry/dry-run";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ map: state.map, roomPath: state.roomPath }),
+    });
+    const plan = data.plan ?? data.result;
+    appendLog(apply ? "Symmetry move result" : "Symmetry Dry Run result");
+    renderPlan(plan);
+    if (plan.message) appendLog(plan.message);
+    if (data.refresh) appendLog(`Maker refresh: ${JSON.stringify(data.refresh)}`);
+  } catch (error) {
+    appendLog(`Failed: ${error.message}`);
+  }
+}
+
 function renderPlan(plan) {
+  if (plan.warnings?.length) {
+    for (const warning of plan.warnings) appendLog(`Warning: ${warning}`);
+  }
   if (plan.errors?.length) {
     for (const error of plan.errors) appendLog(`Error: ${error}`);
+    return;
+  }
+  if (plan.action === "move-line-origin") {
+    renderOriginPlan(plan);
+    return;
+  }
+  if (plan.action === "symmetry") {
+    renderSymmetryPlan(plan);
     return;
   }
   appendLog("Sorted order:");
@@ -157,6 +218,59 @@ function renderPlan(plan) {
     appendLog(`- ${change.toName}: move (${fmt(change.delta.x)}, ${fmt(change.delta.y)}) so first edge (${fmt(change.toFirstWorldBefore.x)}, ${fmt(change.toFirstWorldBefore.y)}) matches ${change.fromName} rear (${fmt(change.fromRearWorld.x)}, ${fmt(change.fromRearWorld.y)})`);
     appendLog(`  position: (${fmt(change.toPositionBefore.x)}, ${fmt(change.toPositionBefore.y)}, ${fmt(change.toPositionBefore.z)}) -> (${fmt(change.toPositionAfter.x)}, ${fmt(change.toPositionAfter.y)}, ${fmt(change.toPositionAfter.z)})`);
   }
+}
+
+function renderOriginPlan(plan) {
+  appendLog(`Line: ${plan.lineName}`);
+  appendLog(`Start foothold: ${plan.startFoothold}`);
+  appendLog(`Parent pivot target: (${fmt(plan.targetPivotWorld.x)}, ${fmt(plan.targetPivotWorld.y)})`);
+  appendLog(`Start edge: (${fmt(plan.startEdgeWorldBefore.x)}, ${fmt(plan.startEdgeWorldBefore.y)}) -> (${fmt(plan.startEdgeWorldAfter.x)}, ${fmt(plan.startEdgeWorldAfter.y)})`);
+  appendLog(`Move delta: (${fmt(plan.delta.x)}, ${fmt(plan.delta.y)})`);
+  appendLog(`Move target: ${plan.moveTarget.type}`);
+  appendLog(`Affected footholds: ${plan.affectedFootholds.length}`);
+  for (const foothold of plan.affectedFootholds) {
+    appendLog(`- ${foothold.name}: first edge (${fmt(foothold.firstEdgeWorldBefore.x)}, ${fmt(foothold.firstEdgeWorldBefore.y)}) -> (${fmt(foothold.firstEdgeWorldAfter.x)}, ${fmt(foothold.firstEdgeWorldAfter.y)})`);
+  }
+}
+
+function renderSymmetryPlan(plan) {
+  appendLog(`Room: ${plan.roomName}`);
+  appendLog(`Room world origin: (${fmt(plan.roomWorldPosition.x)}, ${fmt(plan.roomWorldPosition.y)})`);
+  appendLog(`Operations: ${plan.operations.length}`);
+  for (const operation of plan.operations) {
+    if (operation.type === "pair") {
+      appendLog(`- Pair ${operation.base}_${operation.index}: move ${operation.movedLineName} by (${fmt(operation.delta.x)}, ${fmt(operation.delta.y)})`);
+      appendEndpointLog("  left line endpoints", operation.leftEndpointsBefore);
+      appendEndpointLog("  right before", operation.rightEndpointsBefore);
+      appendLog(`  target right room: left=(${fmt(operation.targetRightEndpoints.left.x)}, ${fmt(operation.targetRightEndpoints.left.y)}), right=(${fmt(operation.targetRightEndpoints.right.x)}, ${fmt(operation.targetRightEndpoints.right.y)})`);
+      appendLog(`  right after room: left=(${fmt(operation.rightEndpointsAfter.left.x)}, ${fmt(operation.rightEndpointsAfter.left.y)}), right=(${fmt(operation.rightEndpointsAfter.right.x)}, ${fmt(operation.rightEndpointsAfter.right.y)})`);
+      appendLog(`  residual: left=(${fmt(operation.residual.leftEndpoint.x)}, ${fmt(operation.residual.leftEndpoint.y)}), right=(${fmt(operation.residual.rightEndpoint.x)}, ${fmt(operation.residual.rightEndpoint.y)})`);
+    } else if (operation.type === "center") {
+      appendLog(`- Center ${operation.lineName}: move by (${fmt(operation.delta.x)}, ${fmt(operation.delta.y)})`);
+      appendEndpointLog("  before", operation.endpointsBefore);
+      appendLog(`  after room: left=(${fmt(operation.endpointsAfter.left.x)}, ${fmt(operation.endpointsAfter.left.y)}), right=(${fmt(operation.endpointsAfter.right.x)}, ${fmt(operation.endpointsAfter.right.y)})`);
+      appendLog(`  midpoint before: (${fmt(operation.midpointBefore.x)}, ${fmt(operation.midpointBefore.y)})`);
+      appendLog(`  residual midpoint: (${fmt(operation.residual.midpoint.x)}, ${fmt(operation.residual.midpoint.y)}), yDiff=${fmt(operation.residual.yDifference)}`);
+    }
+
+    if (operation.moveTarget) {
+      appendLog(`  move target: ${operation.moveTarget.name} (${operation.moveTarget.type})`);
+      appendLog(`  line pos: (${fmt(operation.moveTarget.positionBefore.x)}, ${fmt(operation.moveTarget.positionBefore.y)}, ${fmt(operation.moveTarget.positionBefore.z)}) -> (${fmt(operation.moveTarget.positionAfter.x)}, ${fmt(operation.moveTarget.positionAfter.y)}, ${fmt(operation.moveTarget.positionAfter.z)})`);
+    } else if (operation.affectedFootholds) {
+      for (const foothold of operation.affectedFootholds) {
+        appendLog(`  ${foothold.name}: pos (${fmt(foothold.positionBefore.x)}, ${fmt(foothold.positionBefore.y)}, ${fmt(foothold.positionBefore.z)}) -> (${fmt(foothold.positionAfter.x)}, ${fmt(foothold.positionAfter.y)}, ${fmt(foothold.positionAfter.z)})`);
+      }
+    }
+  }
+}
+
+function appendEndpointLog(label, endpoints) {
+  appendLog(`${label}: left=${formatEndpoint(endpoints.left)}, right=${formatEndpoint(endpoints.right)}`);
+}
+
+function formatEndpoint(endpoint) {
+  if (!endpoint) return "none";
+  return `${endpoint.footholdName}[${endpoint.edgeIndex}:${endpoint.pointIndex}] room=(${fmt(endpoint.room.x)}, ${fmt(endpoint.room.y)})`;
 }
 
 async function api(url, options = {}) {

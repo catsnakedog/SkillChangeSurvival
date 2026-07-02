@@ -65,7 +65,7 @@ export function getLineParents(mapName, roomPath) {
   if (!room) throw new Error(`Selected Room not found: ${roomPath}`);
 
   const lines = directChildren(entities, roomPath)
-    .filter((entity) => /.+_line$/.test(entity.name))
+    .filter((entity) => isLineParentName(entity.name))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   return lines.map(toOption);
 }
@@ -83,15 +83,22 @@ export function dryRunConnect(mapName, linePath) {
   return buildConnectionPlan(context);
 }
 
+export function dryRunMoveLineToOrigin(mapName, linePath) {
+  const context = collectFootholds(mapName, linePath);
+  return buildLineOriginPlan(context);
+}
+
+export function dryRunSymmetry(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  return buildSymmetryPlan(loaded, mapName, roomPath);
+}
+
 export function applyConnect(mapName, linePath) {
   const context = collectFootholds(mapName, linePath);
   const plan = buildConnectionPlan(context);
   if (plan.errors.length > 0) {
     return { ...plan, applied: false };
   }
-
-  const backupPath = `${context.file}.${timestamp()}.bak`;
-  fs.copyFileSync(context.file, backupPath);
 
   for (const item of plan.rawFinalOffsets) {
     if (nearZero(item.offset.x) && nearZero(item.offset.y)) continue;
@@ -113,8 +120,57 @@ export function applyConnect(mapName, linePath) {
   return {
     ...plan,
     applied: true,
-    backupPath,
     message: "Moved following foothold Transform positions so each first edge point matches the previous rear edge point.",
+  };
+}
+
+export function applyMoveLineToOrigin(mapName, linePath) {
+  const context = collectFootholds(mapName, linePath);
+  const plan = buildLineOriginPlan(context);
+  if (plan.errors.length > 0) {
+    return { ...plan, applied: false };
+  }
+
+  for (const foothold of context.footholds) {
+    const position = foothold.transform.Position;
+    position.x = roundCoord((position.x ?? 0) + plan.delta.x);
+    position.y = roundCoord((position.y ?? 0) + plan.delta.y);
+  }
+
+  for (const foothold of context.footholds) {
+    for (const serialized of foothold.serialized) {
+      shiftPoint(serialized.StartPoint, plan.delta);
+      shiftPoint(serialized.EndPoint, plan.delta);
+    }
+  }
+
+  fs.writeFileSync(context.file, `${JSON.stringify(context.data, null, 2)}\n`, "utf8");
+
+  return {
+    ...plan,
+    applied: true,
+    message: "Moved child footholds so the selected line's first start edge point matches the line parent pivot.",
+  };
+}
+
+export function applySymmetry(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  const plan = buildSymmetryPlan(loaded, mapName, roomPath);
+  if (plan.errors.length > 0) {
+    return { ...plan, applied: false };
+  }
+
+  for (const operation of plan.rawOperations) {
+    if (nearZero(operation.delta.x) && nearZero(operation.delta.y)) continue;
+    shiftLineParent(operation.context, operation.delta);
+  }
+
+  fs.writeFileSync(loaded.file, `${JSON.stringify(loaded.data, null, 2)}\n`, "utf8");
+
+  return {
+    ...plan,
+    applied: true,
+    message: "Moved matching line parent objects to satisfy Room-local symmetry.",
   };
 }
 
@@ -122,10 +178,14 @@ function collectFootholds(mapName, linePath) {
   if (!linePath) throw new Error("Line parent is not selected");
 
   const loaded = loadMap(mapName);
+  return collectFootholdsFromLoaded(loaded, mapName, linePath);
+}
+
+function collectFootholdsFromLoaded(loaded, mapName, linePath) {
   const { entities } = loaded;
   const line = entities.find((entity) => entity.path === linePath);
   if (!line) throw new Error(`Selected line parent not found: ${linePath}`);
-  if (!/.+_line$/.test(line.name)) throw new Error(`Selected entity is not a *_line parent: ${line.name}`);
+  if (!isLineParentName(line.name)) throw new Error(`Selected entity is not a line parent: ${line.name}`);
 
   const rootFootholdComponent = findRootFootholdComponent(loaded.data);
   if (!rootFootholdComponent?.FootholdsByLayer) {
@@ -154,8 +214,107 @@ function collectFootholds(mapName, linePath) {
   return {
     ...loaded,
     line,
+    lineTransform: componentOf(line, TRANSFORM),
+    lineWorldPosition: getWorldPosition(line, entities),
     footholds,
   };
+}
+
+function buildSymmetryPlan(loaded, mapName, roomPath) {
+  const errors = [];
+  const warnings = [];
+  if (!roomPath) throw new Error("Room is not selected");
+
+  const { entities } = loaded;
+  const room = entities.find((entity) => entity.path === roomPath);
+  if (!room) throw new Error(`Selected Room not found: ${roomPath}`);
+
+  const roomWorldPosition = getWorldPosition(room, entities);
+  const lineEntities = directChildren(entities, roomPath)
+    .map((entity) => ({ entity, symmetry: parseLineSymmetryName(entity.name) }))
+    .filter((item) => item.symmetry);
+
+  const pairGroups = new Map();
+  const centerLines = [];
+  for (const item of lineEntities) {
+    if (item.symmetry.type === "center") {
+      centerLines.push(item.entity);
+      continue;
+    }
+
+    const key = `${item.symmetry.base}#${item.symmetry.index}`;
+    if (!pairGroups.has(key)) pairGroups.set(key, { base: item.symmetry.base, index: item.symmetry.index, left: null, right: null });
+    pairGroups.get(key)[item.symmetry.side === "l" ? "left" : "right"] = item.entity;
+  }
+
+  const rawOperations = [];
+  const operations = [];
+
+  for (const group of [...pairGroups.values()].sort((a, b) => a.base.localeCompare(b.base) || a.index - b.index)) {
+    if (!group.left || !group.right) {
+      warnings.push(`Pair skipped: ${group.base}_${group.left ? "r" : "l"}${group.index} is missing`);
+      continue;
+    }
+
+    let leftContext;
+    let rightContext;
+    try {
+      leftContext = collectFootholdsFromLoaded(loaded, mapName, group.left.path);
+      rightContext = collectFootholdsFromLoaded(loaded, mapName, group.right.path);
+    } catch (error) {
+      errors.push(`Pair ${group.base}_${group.index}: ${error.message}`);
+      continue;
+    }
+
+    const pairOperation = buildPairSymmetryOperation(leftContext, rightContext, roomWorldPosition, group);
+    if (pairOperation.errors.length > 0) {
+      errors.push(...pairOperation.errors);
+      continue;
+    }
+    rawOperations.push(pairOperation.raw);
+    operations.push(pairOperation.output);
+  }
+
+  for (const line of centerLines.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))) {
+    let context;
+    try {
+      context = collectFootholdsFromLoaded(loaded, mapName, line.path);
+    } catch (error) {
+      errors.push(`Center ${line.name}: ${error.message}`);
+      continue;
+    }
+
+    const centerOperation = buildCenterSymmetryOperation(context, roomWorldPosition);
+    if (centerOperation.errors.length > 0) {
+      errors.push(...centerOperation.errors);
+      continue;
+    }
+    rawOperations.push(centerOperation.raw);
+    operations.push(centerOperation.output);
+  }
+
+  if (rawOperations.length === 0 && errors.length === 0) {
+    warnings.push("No symmetry targets found. Expected names like floor_line_l1, floor_line_r1, or floor_line_c.");
+  }
+
+  const output = {
+    action: "symmetry",
+    applied: false,
+    errors,
+    warnings,
+    roomName: room.name,
+    roomPath,
+    roomWorldPosition: {
+      x: roundCoord(roomWorldPosition.x),
+      y: roundCoord(roomWorldPosition.y),
+    },
+    operations,
+  };
+  Object.defineProperty(output, "rawOperations", {
+    value: rawOperations,
+    enumerable: false,
+  });
+  return output;
 }
 
 function buildConnectionPlan(context) {
@@ -256,6 +415,275 @@ function buildConnectionPlan(context) {
     enumerable: false,
   });
   return output;
+}
+
+function buildLineOriginPlan(context) {
+  const errors = [];
+  const sorted = sortFootholds(context.footholds);
+  const first = sorted[0];
+
+  if (!first?.firstPoint) {
+    errors.push("Cannot select the line start edge point");
+  }
+
+  for (const foothold of sorted) {
+    if (!foothold.transform?.Position) {
+      errors.push(`Cannot edit foothold TransformComponent.Position: ${foothold.name}`);
+    }
+    if (foothold.edgePoints.length === 0) {
+      errors.push(`Cannot read foothold edge points: ${foothold.name}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    return {
+      action: "move-line-origin",
+      applied: false,
+      errors,
+      sorted: sorted.map(summarizeFoothold),
+      changes: [],
+    };
+  }
+
+  const startWorld = pointWorld(first.firstPoint, first.worldPosition);
+  const targetWorld = {
+    x: roundCoord(context.lineWorldPosition.x),
+    y: roundCoord(context.lineWorldPosition.y),
+  };
+  const delta = {
+    x: roundCoord(targetWorld.x - startWorld.x),
+    y: roundCoord(targetWorld.y - startWorld.y),
+  };
+
+  const rawMoveTarget = {
+    type: "foothold-children",
+    name: context.line.name,
+    path: context.line.path,
+    linePivotWorld: targetWorld,
+    positionBefore: null,
+    positionAfter: null,
+  };
+
+  const affectedFootholds = sorted.map((foothold) => ({
+    name: foothold.name,
+    path: foothold.path,
+    positionBefore: clonePoint3(foothold.transform.Position),
+    positionAfter: {
+      x: roundCoord((foothold.transform.Position.x ?? 0) + delta.x),
+      y: roundCoord((foothold.transform.Position.y ?? 0) + delta.y),
+      z: foothold.transform.Position.z ?? 0,
+    },
+    firstEdgeWorldBefore: foothold.firstPoint ? pointWorld(foothold.firstPoint, foothold.worldPosition) : null,
+    firstEdgeWorldAfter: foothold.firstPoint
+      ? {
+          x: roundCoord(pointWorld(foothold.firstPoint, foothold.worldPosition).x + delta.x),
+          y: roundCoord(pointWorld(foothold.firstPoint, foothold.worldPosition).y + delta.y),
+        }
+      : null,
+  }));
+
+  const output = {
+    action: "move-line-origin",
+    applied: false,
+    errors,
+    lineName: context.line.name,
+    linePath: context.line.path,
+    sorted: sorted.map(summarizeFoothold),
+    startFoothold: first.name,
+    startEdgeWorldBefore: startWorld,
+    startEdgeWorldAfter: {
+      x: roundCoord(startWorld.x + delta.x),
+      y: roundCoord(startWorld.y + delta.y),
+    },
+    targetPivotWorld: targetWorld,
+    delta,
+    moveTarget: {
+      type: rawMoveTarget.type,
+      name: rawMoveTarget.name,
+      path: rawMoveTarget.path,
+      linePivotWorld: rawMoveTarget.linePivotWorld,
+      positionBefore: rawMoveTarget.positionBefore,
+      positionAfter: rawMoveTarget.positionAfter,
+    },
+    affectedFootholds,
+    changes: [
+      {
+        lineName: context.line.name,
+        delta,
+        startFoothold: first.name,
+        startEdgeWorldBefore: startWorld,
+        startEdgeWorldAfter: {
+          x: roundCoord(startWorld.x + delta.x),
+          y: roundCoord(startWorld.y + delta.y),
+        },
+        targetPivotWorld: targetWorld,
+      },
+    ],
+  };
+  Object.defineProperty(output, "rawMoveTarget", {
+    value: rawMoveTarget,
+    enumerable: false,
+  });
+  return output;
+}
+
+function buildPairSymmetryOperation(leftContext, rightContext, roomWorldPosition, group) {
+  const errors = [];
+  const leftBounds = getLineEndpointsInRoom(leftContext, roomWorldPosition);
+  const rightBounds = getLineEndpointsInRoom(rightContext, roomWorldPosition);
+
+  if (!leftBounds.left || !leftBounds.right) errors.push(`Cannot read endpoints for ${leftContext.line.name}`);
+  if (!rightBounds.left || !rightBounds.right) errors.push(`Cannot read endpoints for ${rightContext.line.name}`);
+  if (!rightContext.lineTransform?.Position) {
+    errors.push(`Cannot edit line parent TransformComponent.Position: ${rightContext.line.name}`);
+  }
+  if (errors.length > 0) return { errors };
+
+  const targetRightLeftRoom = mirrorX(leftBounds.right.room);
+  const targetRightRightRoom = mirrorX(leftBounds.left.room);
+  const deltaFromLeft = {
+    x: roundCoord(targetRightLeftRoom.x - rightBounds.left.room.x),
+    y: roundCoord(targetRightLeftRoom.y - rightBounds.left.room.y),
+  };
+  const deltaFromRight = {
+    x: roundCoord(targetRightRightRoom.x - rightBounds.right.room.x),
+    y: roundCoord(targetRightRightRoom.y - rightBounds.right.room.y),
+  };
+  const delta = {
+    x: roundCoord((deltaFromLeft.x + deltaFromRight.x) / 2),
+    y: roundCoord((deltaFromLeft.y + deltaFromRight.y) / 2),
+  };
+
+  const rightLeftAfter = addPoint(rightBounds.left.room, delta);
+  const rightRightAfter = addPoint(rightBounds.right.room, delta);
+  const residual = {
+    leftEndpoint: {
+      x: roundCoord(rightLeftAfter.x - targetRightLeftRoom.x),
+      y: roundCoord(rightLeftAfter.y - targetRightLeftRoom.y),
+    },
+    rightEndpoint: {
+      x: roundCoord(rightRightAfter.x - targetRightRightRoom.x),
+      y: roundCoord(rightRightAfter.y - targetRightRightRoom.y),
+    },
+  };
+
+  const raw = {
+    type: "pair",
+    context: rightContext,
+    delta,
+  };
+
+  const output = {
+    type: "pair",
+    base: group.base,
+    index: group.index,
+    leftLineName: leftContext.line.name,
+    rightLineName: rightContext.line.name,
+    movedLineName: rightContext.line.name,
+    delta,
+    leftEndpointsBefore: summarizeEndpoints(leftBounds),
+    rightEndpointsBefore: summarizeEndpoints(rightBounds),
+    targetRightEndpoints: {
+      left: targetRightLeftRoom,
+      right: targetRightRightRoom,
+    },
+    rightEndpointsAfter: {
+      left: rightLeftAfter,
+      right: rightRightAfter,
+    },
+    residual,
+    moveTarget: summarizeMoveLineParent(rightContext, delta),
+  };
+
+  return { errors, raw, output };
+}
+
+function buildCenterSymmetryOperation(context, roomWorldPosition) {
+  const errors = [];
+  const bounds = getLineEndpointsInRoom(context, roomWorldPosition);
+  if (!bounds.left || !bounds.right) errors.push(`Cannot read endpoints for ${context.line.name}`);
+  if (!context.lineTransform?.Position) {
+    errors.push(`Cannot edit line parent TransformComponent.Position: ${context.line.name}`);
+  }
+  if (errors.length > 0) return { errors };
+
+  const midpoint = {
+    x: roundCoord((bounds.left.room.x + bounds.right.room.x) / 2),
+    y: roundCoord((bounds.left.room.y + bounds.right.room.y) / 2),
+  };
+  const delta = {
+    x: roundCoord(-midpoint.x),
+    y: roundCoord(-midpoint.y),
+  };
+  const leftAfter = addPoint(bounds.left.room, delta);
+  const rightAfter = addPoint(bounds.right.room, delta);
+  const residual = {
+    midpoint: {
+      x: roundCoord((leftAfter.x + rightAfter.x) / 2),
+      y: roundCoord((leftAfter.y + rightAfter.y) / 2),
+    },
+    yDifference: roundCoord(leftAfter.y - rightAfter.y),
+  };
+
+  const raw = {
+    type: "center",
+    context,
+    delta,
+  };
+
+  const output = {
+    type: "center",
+    lineName: context.line.name,
+    movedLineName: context.line.name,
+    delta,
+    endpointsBefore: summarizeEndpoints(bounds),
+    endpointsAfter: {
+      left: leftAfter,
+      right: rightAfter,
+    },
+    midpointBefore: midpoint,
+    residual,
+    moveTarget: summarizeMoveLineParent(context, delta),
+  };
+
+  return { errors, raw, output };
+}
+
+function getLineEndpointsInRoom(context, roomWorldPosition) {
+  const sorted = sortFootholds(context.footholds);
+  const endpoints = [];
+
+  for (const foothold of sorted) {
+    for (const point of foothold.edgePoints) {
+      const world = pointWorld(point, foothold.worldPosition);
+      endpoints.push({
+        footholdName: foothold.name,
+        edgeIndex: point.edgeIndex,
+        pointIndex: point.pointIndex,
+        globalIndex: point.globalIndex,
+        world,
+        room: {
+          x: roundCoord(world.x - roomWorldPosition.x),
+          y: roundCoord(world.y - roomWorldPosition.y),
+        },
+      });
+    }
+  }
+
+  endpoints.sort((a, b) => a.room.x - b.room.x || a.globalIndex - b.globalIndex || a.footholdName.localeCompare(b.footholdName));
+
+  return {
+    sorted,
+    endpoints,
+    left: endpoints[0] ?? null,
+    right: endpoints[endpoints.length - 1] ?? null,
+  };
+}
+
+function shiftLineParent(context, delta) {
+  const position = context.lineTransform.Position;
+  position.x = roundCoord((position.x ?? 0) + delta.x);
+  position.y = roundCoord((position.y ?? 0) + delta.y);
 }
 
 function sortFootholds(footholds) {
@@ -420,6 +848,32 @@ function isDescendant(entityPath, parent) {
   return entityPath.startsWith(`${parent}/`);
 }
 
+function isLineParentName(name) {
+  return /.*_line$/.test(name) || Boolean(parseLineSymmetryName(name));
+}
+
+function parseLineSymmetryName(name) {
+  const pair = name.match(/^(.*_line)_([lr])(\d+)$/);
+  if (pair) {
+    return {
+      type: "pair",
+      base: pair[1],
+      side: pair[2],
+      index: Number(pair[3]),
+    };
+  }
+
+  const center = name.match(/^(.*_line)_c$/);
+  if (center) {
+    return {
+      type: "center",
+      base: center[1],
+    };
+  }
+
+  return null;
+}
+
 function isPoint(value) {
   return value && Number.isFinite(value.x) && Number.isFinite(value.y);
 }
@@ -444,6 +898,39 @@ function summarizeFoothold(foothold) {
   };
 }
 
+function summarizeEndpoints(bounds) {
+  return {
+    left: summarizeEndpoint(bounds.left),
+    right: summarizeEndpoint(bounds.right),
+  };
+}
+
+function summarizeEndpoint(endpoint) {
+  if (!endpoint) return null;
+  return {
+    footholdName: endpoint.footholdName,
+    edgeIndex: endpoint.edgeIndex,
+    pointIndex: endpoint.pointIndex,
+    world: endpoint.world,
+    room: endpoint.room,
+  };
+}
+
+function summarizeMoveLineParent(context, delta) {
+  const position = context.lineTransform.Position;
+  return {
+    type: "line-parent",
+    name: context.line.name,
+    path: context.line.path,
+    positionBefore: clonePoint3(position),
+    positionAfter: {
+      x: roundCoord((position.x ?? 0) + delta.x),
+      y: roundCoord((position.y ?? 0) + delta.y),
+      z: position.z ?? 0,
+    },
+  };
+}
+
 function firstSerializedId(foothold) {
   return foothold.serialized[0]?.Id ?? null;
 }
@@ -456,6 +943,20 @@ function shiftPoint(point, offset) {
   if (!isPoint(point)) return;
   point.x = roundCoord(point.x + offset.x);
   point.y = roundCoord(point.y + offset.y);
+}
+
+function mirrorX(point) {
+  return {
+    x: roundCoord(-point.x),
+    y: roundCoord(point.y),
+  };
+}
+
+function addPoint(point, offset) {
+  return {
+    x: roundCoord(point.x + offset.x),
+    y: roundCoord(point.y + offset.y),
+  };
 }
 
 function clonePoint3(point) {
@@ -472,8 +973,4 @@ function nearZero(value) {
 
 function roundCoord(value) {
   return Math.round(value * 1000000) / 1000000;
-}
-
-function timestamp() {
-  return new Date().toISOString().replace(/[:.]/g, "-");
 }

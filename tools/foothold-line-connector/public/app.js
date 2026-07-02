@@ -250,7 +250,7 @@ function renderSymmetryPlan(plan) {
       appendEndpointLog("  before", operation.endpointsBefore);
       appendLog(`  after room: left=(${fmt(operation.endpointsAfter.left.x)}, ${fmt(operation.endpointsAfter.left.y)}), right=(${fmt(operation.endpointsAfter.right.x)}, ${fmt(operation.endpointsAfter.right.y)})`);
       appendLog(`  midpoint before: (${fmt(operation.midpointBefore.x)}, ${fmt(operation.midpointBefore.y)})`);
-      appendLog(`  residual midpoint: (${fmt(operation.residual.midpoint.x)}, ${fmt(operation.residual.midpoint.y)}), yDiff=${fmt(operation.residual.yDifference)}`);
+      appendLog(`  residual xMidpoint=${fmt(operation.residual.xMidpoint ?? operation.residual.midpoint.x)}, kept yMidpoint=${fmt(operation.residual.yMidpointUnchanged ?? operation.residual.midpoint.y)}, yDiff=${fmt(operation.residual.yDifference)}`);
     }
 
     if (operation.moveTarget) {

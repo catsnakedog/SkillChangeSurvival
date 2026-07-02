@@ -613,7 +613,7 @@ function buildCenterSymmetryOperation(context, roomWorldPosition) {
   };
   const delta = {
     x: roundCoord(-midpoint.x),
-    y: roundCoord(-midpoint.y),
+    y: 0,
   };
   const leftAfter = addPoint(bounds.left.room, delta);
   const rightAfter = addPoint(bounds.right.room, delta);
@@ -622,6 +622,8 @@ function buildCenterSymmetryOperation(context, roomWorldPosition) {
       x: roundCoord((leftAfter.x + rightAfter.x) / 2),
       y: roundCoord((leftAfter.y + rightAfter.y) / 2),
     },
+    xMidpoint: roundCoord((leftAfter.x + rightAfter.x) / 2),
+    yMidpointUnchanged: midpoint.y,
     yDifference: roundCoord(leftAfter.y - rightAfter.y),
   };
 

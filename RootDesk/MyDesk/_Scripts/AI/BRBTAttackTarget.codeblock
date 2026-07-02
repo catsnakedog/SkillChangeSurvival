@@ -1,0 +1,33 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "codeblock://bbffa3b5-4772-4d27-aba3-112b2c82ce2a",
+  "ContentType": "x-mod/codeblock",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.5.0.0",
+  "StudioVersion": "",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "CoreVersion": {
+        "Major": 0,
+        "Minor": 2
+      },
+      "ScriptVersion": {
+        "Major": 1,
+        "Minor": 1
+      },
+      "Description": "",
+      "Id": "bbffa3b5-4772-4d27-aba3-112b2c82ce2a",
+      "Language": 1,
+      "Name": "BRBTAttackTarget",
+      "Type": 7,
+      "Source": 0,
+      "Target": null
+    }
+  }
+}

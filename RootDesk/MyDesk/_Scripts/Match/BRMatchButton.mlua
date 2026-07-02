@@ -9,6 +9,12 @@ script BRMatchButton extends Component
 
 	property string WaitingText = "MATCHING..."
 
+	property boolean BotMatchMode = false
+
+	property string BotReadyText = "BOT MATCH"
+
+	property string BotWaitingText = "BOT MATCHING..."
+
 	property boolean RequireLobbyMap = true
 
 	property number ClickCooldownSeconds = 0.5
@@ -29,6 +35,11 @@ script BRMatchButton extends Component
 
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
+		local entityName = "unknown"
+		if self.Entity ~= nil then
+			entityName = self:ReadString(self.Entity.Name, "unknown")
+		end
+		log("[BRMatchButton] ready entity=" .. entityName .. " bot=" .. tostring(self.BotMatchMode))
 		self:ConnectButton()
 		self:RefreshButtonState()
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshButtonState() end, 0.25)
@@ -86,7 +97,11 @@ script BRMatchButton extends Component
 			return
 		end
 		
-		self.waiting = not self.waiting
+		if self.BotMatchMode == true then
+			self.waiting = true
+		else
+			self.waiting = not self.waiting
+		end
 		self:RefreshButtonState()
 		self:ScheduleQueueRequest()
 	end
@@ -102,13 +117,13 @@ script BRMatchButton extends Component
 			self.waiting = false
 			self.committedWaiting = false
 			self:ClearPendingQueueRequest()
-			self:SetButtonText(self.ReadyText)
+			self:SetButtonText(self:GetReadyText())
 			return
 		end
 		if self.waiting == true then
-			self:SetButtonText(self.WaitingText)
+			self:SetButtonText(self:GetWaitingText())
 		else
-			self:SetButtonText(self.ReadyText)
+			self:SetButtonText(self:GetReadyText())
 		end
 	end
 
@@ -135,9 +150,6 @@ script BRMatchButton extends Component
 			self:RefreshButtonState()
 			return
 		end
-		if self.waiting == self.committedWaiting then
-			return
-		end
 		
 		local localPlayer = _UserService.LocalPlayer
 		if localPlayer == nil or localPlayer.PlayerComponent == nil then
@@ -152,6 +164,19 @@ script BRMatchButton extends Component
 			self:ShowLocalToast("Matchmaker is not ready.")
 			self.waiting = self.committedWaiting
 			self:RefreshButtonState()
+			return
+		end
+		
+		if self.BotMatchMode == true then
+			log("[BRMatchButton] request bot match user=" .. tostring(localPlayer.PlayerComponent.UserId))
+			matchmaker:RequestStartBotMatch(localPlayer.PlayerComponent.UserId)
+			self.waiting = false
+			self.committedWaiting = false
+			self:RefreshButtonState()
+			return
+		end
+		
+		if self.waiting == self.committedWaiting then
 			return
 		end
 		
@@ -178,7 +203,9 @@ script BRMatchButton extends Component
 		if entity == nil then
 			return nil
 		end
-		return entity.BRLobbyMatchmaker
+		---@type BRLobbyMatchmaker
+		local matchmaker = entity:GetComponent("script.BRLobbyMatchmaker")
+		return matchmaker
 	end
 
 	@ExecSpace("ClientOnly")
@@ -204,6 +231,20 @@ script BRMatchButton extends Component
 
 	method number GetQueueRequestDebounceSeconds()
 		return math.max(0.1, self.QueueRequestDebounceSeconds)
+	end
+
+	method string GetReadyText()
+		if self.BotMatchMode == true then
+			return self:ReadString(self.BotReadyText, "BOT MATCH")
+		end
+		return self:ReadString(self.ReadyText, "MATCH")
+	end
+
+	method string GetWaitingText()
+		if self.BotMatchMode == true then
+			return self:ReadString(self.BotWaitingText, "BOT MATCHING...")
+		end
+		return self:ReadString(self.WaitingText, "MATCHING...")
 	end
 
 end

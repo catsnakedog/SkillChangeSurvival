@@ -17,5 +17,5 @@ ground_area_spawn_actions.csv,장판 데이터,p52,4,0,기획서 항목 기준. 
 trigger_actions.csv,트리거 액션,"p53,p58,p59",3,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
 dash_actions.csv,대쉬 데이터,p60,3,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
 teleport_actions.csv,텔레포트 데이터,p60,2,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-skill_chains.csv,스킬 체인,"p4,p17,p53,p54",6,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+skill_chains.csv,스킬 체인,"p4,p17,p53,p54",6,1,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
 character_default_skills.csv,클래스별 기본 스킬,"p20,p29",8,4,캐릭터/클래스별 기본 공격·기본 스킬·고유 스킬 지정. 복수 가능 값은 pipe(|)로 입력

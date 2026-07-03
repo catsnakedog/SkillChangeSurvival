@@ -49,6 +49,9 @@ script BRBattleBotController extends Component
 	@Sync
 	property integer VisualSequence = 0
 
+	@Sync
+	property string CharacterKey = ""
+
 	property number spawnX = 0
 
 	property number spawnY = 0
@@ -68,6 +71,7 @@ script BRBattleBotController extends Component
 			self.spawnX = position.x
 			self.spawnY = position.y
 		end
+		self.CharacterKey = self:ResolveBotCharacterKey()
 		self.CurrentHp = math.max(1, math.floor(self:ReadNumber(self.CurrentHp, self.MaxHp)))
 		self.CurrentLives = math.max(1, math.floor(self:ReadNumber(self.CurrentLives, self.MaxLives)))
 		self.BotState = "ALIVE"
@@ -110,6 +114,7 @@ script BRBattleBotController extends Component
 		self.MaxLives = math.max(1, math.floor(self:ReadNumber(lives, self.MaxLives)))
 		self.CurrentLives = self.MaxLives
 		self.CurrentHp = self.MaxHp
+		self.CharacterKey = self:ResolveBotCharacterKey()
 		self.BotState = "ALIVE"
 		self:SetupAvatarAppearance()
 		self:ConfigureAvatarAnimation()
@@ -525,6 +530,7 @@ script BRBattleBotController extends Component
 		end
 	end
 
+	@ExecSpace("ServerOnly")
 	method void SetupAvatarAppearance()
 		if self.Entity == nil or self.Entity.CostumeManagerComponent == nil then
 			return
@@ -532,6 +538,13 @@ script BRBattleBotController extends Component
 
 		local costume = self.Entity.CostumeManagerComponent
 		costume.Enable = true
+		local characterKey = self:ResolveBotCharacterKey()
+		self.CharacterKey = characterKey
+		if _BRCharacterSystem ~= nil and _BRCharacterSystem:ApplyCharacterAvatarToEntityServer(self.Entity, characterKey, "bot:" .. self:ReadString(self.BotId, "")) == true then
+			log("[BRBot] class avatar applied id=" .. self:ReadString(self.BotId, "") .. " key=" .. characterKey)
+			return
+		end
+
 		if self:ReadString(costume.DefaultEquipUserId, "") ~= "" then
 			return
 		end
@@ -850,6 +863,45 @@ script BRBattleBotController extends Component
 			return "AI_" .. string.sub(self.Entity.Id, 1, 8)
 		end
 		return "AI_" .. tostring(math.floor(self:Now() * 1000))
+	end
+
+	@ExecSpace("ServerOnly")
+	method string ResolveBotCharacterKey()
+		local key = self:ReadString(self.CharacterKey, "")
+		if _BRCharacterSystem ~= nil and _BRCharacterSystem:GetCharacterData(key) ~= nil then
+			return key
+		end
+		local index = self:GetBotClassIndex()
+		if _BRCharacterSystem ~= nil then
+			return _BRCharacterSystem:GetServerCharacterKeyByIndex(index)
+		end
+		return self:GetFallbackCharacterKeyByIndex(index)
+	end
+
+	method number GetBotClassIndex()
+		local botId = self:ReadString(self.BotId, "")
+		local suffix = string.match(botId, "(%d+)$")
+		local index = tonumber(suffix)
+		if index == nil then
+			index = 1
+		end
+		return math.max(1, math.floor(index))
+	end
+
+	method string GetFallbackCharacterKeyByIndex(number rawIndex)
+		local index = math.floor(self:ReadNumber(rawIndex, 1))
+		if index < 1 then
+			index = 1
+		end
+		index = ((index - 1) % 4) + 1
+		if index == 2 then
+			return "Mage"
+		elseif index == 3 then
+			return "Rogue"
+		elseif index == 4 then
+			return "Archer"
+		end
+		return "Knight"
 	end
 
 	method Vector2 GetEntityPosition2(Entity entity)

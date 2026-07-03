@@ -79,6 +79,7 @@ script BRSkillSystem extends Logic
 		-- Advances active skill casts, hit areas, projectiles, fields, and temporary statuses.
 		self:EnsureRuntime()
 		self:TickActiveCasts(delta)
+		self:TickActiveSkillMoves(delta)
 		self:TickActiveAreas(delta)
 		self:TickActiveProjectiles(delta)
 		self:TickActiveFields(delta)
@@ -135,6 +136,9 @@ script BRSkillSystem extends Logic
 		end
 		if self._T.activeCasts == nil then
 			self._T.activeCasts = {}
+		end
+		if self._T.activeSkillMoves == nil then
+			self._T.activeSkillMoves = {}
 		end
 		if self._T.activeAreas == nil then
 			self._T.activeAreas = {}
@@ -1287,7 +1291,7 @@ script BRSkillSystem extends Logic
 	end
 
 	method void TickActiveCasts(number delta)
-		-- Ticks active casts at fixed 30 ms frames.
+		-- Ticks active casts on skill timeline frames; physical movement is updated separately with delta.
 		for index = #self._T.activeCasts, 1, -1 do
 			local cast = self._T.activeCasts[index]
 			if cast == nil or cast.Cancelled == true then
@@ -1718,7 +1722,7 @@ script BRSkillSystem extends Logic
 	end
 
 	method void ApplySkillMovement(any context, any actionDef, string sourceId)
-		-- Moves the caster by a skill action while staying inside the map bound.
+		-- Starts smooth caster movement from a skill action while staying inside the map bound.
 		if context == nil or context.SourceEntity == nil or context.IsVirtualCaster == true then
 			return
 		end
@@ -1732,13 +1736,121 @@ script BRSkillSystem extends Logic
 		local vertical = self:ReadNumber(actionDef.Vertical, 0)
 		local target = Vector2(position.x + direction * distance, position.y + vertical)
 		target = self:ClampPositionToMapBounds(entity, target)
-		self:MoveEntityToWorldPosition(entity, target)
-		local userId = self:GetUserIdFromPlayer(entity)
-		if userId ~= "" then
-			self:ApplyLocalSkillMovementPosition(target, "skillMove:" .. self:ReadString(sourceId, "move"), userId)
-		end
+		self:StartSmoothSkillMovement(context, actionDef, target, sourceId)
 		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), target.x, target.y + 0.25, direction, 0.65, "move:" .. self:ReadString(actionDef.ActionId, "move"))
-		self:Log("move action user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " target=(" .. tostring(target.x) .. "," .. tostring(target.y) .. ")")
+		self:Log("move action user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " target=(" .. tostring(target.x) .. "," .. tostring(target.y) .. ") duration=" .. tostring(self:GetSkillMoveDurationSeconds(actionDef)))
+	end
+
+	method void StartSmoothSkillMovement(any context, any actionDef, Vector2 target, string sourceId)
+		-- Registers a delta-based caster movement; the skill frame only decides when it starts.
+		if context == nil or actionDef == nil or target == nil then
+			return
+		end
+		local entity = context.SourceEntity
+		if entity == nil or isvalid(entity) == false then
+			return
+		end
+		self:EnsureRuntime()
+		self:CancelSkillMovesForEntity(entity)
+		local start = self:GetEntityPosition2(entity)
+		local duration = self:GetSkillMoveDurationSeconds(actionDef)
+		local move = {
+			UserId = self:ReadString(context.UserId, self:GetUserIdFromPlayer(entity)),
+			Entity = entity,
+			ActionId = self:ReadString(actionDef.ActionId, "move"),
+			SourceId = self:ReadString(sourceId, "move"),
+			StartX = start.x,
+			StartY = start.y,
+			TargetX = target.x,
+			TargetY = target.y,
+			DurationSeconds = duration,
+			ElapsedSeconds = 0
+		}
+		table.insert(self._T.activeSkillMoves, move)
+		if move.UserId ~= "" then
+			self:StartLocalSkillMovement(start, target, duration, "skillMove:" .. move.SourceId, move.UserId)
+		end
+	end
+
+	method void TickActiveSkillMoves(number delta)
+		-- Updates active skill movement continuously from delta rather than stepping by skill frames.
+		if self._T.activeSkillMoves == nil then
+			return
+		end
+		local dt = math.max(0, self:ReadNumber(delta, 0))
+		for index = #self._T.activeSkillMoves, 1, -1 do
+			local move = self._T.activeSkillMoves[index]
+			if move == nil or move.Entity == nil or isvalid(move.Entity) == false then
+				table.remove(self._T.activeSkillMoves, index)
+			else
+				move.ElapsedSeconds = self:ReadNumber(move.ElapsedSeconds, 0) + dt
+				local duration = math.max(0.001, self:ReadNumber(move.DurationSeconds, self:GetSkillFrameSeconds()))
+				local rate = math.min(1, math.max(0, self:ReadNumber(move.ElapsedSeconds, 0) / duration))
+				local position = self:LerpSkillMovePosition(move, rate)
+				position = self:ClampPositionToMapBounds(move.Entity, position)
+				self:ApplySmoothSkillMovePosition(move.Entity, position)
+				if rate >= 1 then
+					self:MoveEntityToWorldPosition(move.Entity, position)
+					if self:ReadString(move.UserId, "") ~= "" then
+						self:ApplyLocalSkillMovementPosition(position, "skillMoveFinish:" .. self:ReadString(move.SourceId, "move"), self:ReadString(move.UserId, ""))
+					end
+					self:Log("move end user=" .. self:ReadString(move.UserId, "") .. " action=" .. self:ReadString(move.ActionId, "") .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+					table.remove(self._T.activeSkillMoves, index)
+				end
+			end
+		end
+	end
+
+	method Vector2 LerpSkillMovePosition(any move, number rate)
+		-- Interpolates one skill movement position at a normalized 0..1 rate.
+		if move == nil then
+			return Vector2(0, 0)
+		end
+		local safeRate = math.min(1, math.max(0, self:ReadNumber(rate, 0)))
+		local startX = self:ReadNumber(move.StartX, 0)
+		local startY = self:ReadNumber(move.StartY, 0)
+		local targetX = self:ReadNumber(move.TargetX, startX)
+		local targetY = self:ReadNumber(move.TargetY, startY)
+		return Vector2(startX + (targetX - startX) * safeRate, startY + (targetY - startY) * safeRate)
+	end
+
+	method void ApplySmoothSkillMovePosition(Entity entity, Vector2 position)
+		-- Applies one continuous movement sample without treating it as a skill-frame teleport.
+		if entity == nil or position == nil then
+			return
+		end
+		if entity.MovementComponent ~= nil then
+			entity.MovementComponent:Stop()
+			entity.MovementComponent:SetWorldPosition(position)
+		end
+		if entity.RigidbodyComponent ~= nil then
+			entity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			entity.RigidbodyComponent:SetWorldPosition(position)
+			entity.RigidbodyComponent:PositionReset()
+		elseif entity.KinematicbodyComponent ~= nil then
+			entity.KinematicbodyComponent:SetWorldPosition(position)
+		elseif entity.SideviewbodyComponent ~= nil then
+			entity.SideviewbodyComponent:SetWorldPosition(position)
+		end
+		if entity.PlayerComponent ~= nil then
+			entity.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
+		end
+	end
+
+	method void CancelSkillMovesForEntity(Entity entity)
+		-- Removes any pending smooth movement for the same caster before a new one starts.
+		if entity == nil or self._T.activeSkillMoves == nil then
+			return
+		end
+		local entityKey = self:GetEntityKey(entity)
+		for index = #self._T.activeSkillMoves, 1, -1 do
+			local move = self._T.activeSkillMoves[index]
+			if move == nil or move.Entity == nil or isvalid(move.Entity) == false then
+				table.remove(self._T.activeSkillMoves, index)
+			elseif self:GetEntityKey(move.Entity) == entityKey then
+				table.remove(self._T.activeSkillMoves, index)
+			end
+		end
 	end
 
 	method void MoveEntityToWorldPosition(Entity entity, Vector2 position)
@@ -1767,11 +1879,12 @@ script BRSkillSystem extends Logic
 
 	@ExecSpace("Client")
 	method void ApplyLocalSkillMovementPosition(Vector2 position, string reason)
-		-- Mirrors a server movement correction on the owning client.
+		-- Applies the final server movement correction on the owning client.
 		local localPlayer = _UserService.LocalPlayer
 		if localPlayer == nil or position == nil then
 			return
 		end
+		self:ClearLocalSkillMovement("correction:" .. self:ReadString(reason, ""))
 		if localPlayer.MovementComponent ~= nil then
 			localPlayer.MovementComponent:Stop()
 			localPlayer.MovementComponent:SetWorldPosition(position)
@@ -1790,6 +1903,131 @@ script BRSkillSystem extends Logic
 			localPlayer.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
 		end
 		log("[BRSkill] local movement correction reason=" .. self:ReadString(reason, "") .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+	end
+
+	@ExecSpace("Client")
+	method void StartLocalSkillMovement(Vector2 startPosition, Vector2 targetPosition, number durationSeconds, string reason)
+		-- Starts client-side visual smoothing for the owner's skill movement.
+		if startPosition == nil or targetPosition == nil then
+			return
+		end
+		self:EnsureLocalSkillMovementRuntime()
+		self._T.localActiveSkillMoves = {}
+		table.insert(self._T.localActiveSkillMoves, {
+			Reason = self:ReadString(reason, "skillMove"),
+			StartX = startPosition.x,
+			StartY = startPosition.y,
+			TargetX = targetPosition.x,
+			TargetY = targetPosition.y,
+			DurationSeconds = math.max(0.001, self:ReadNumber(durationSeconds, self:GetSkillFrameSeconds())),
+			ElapsedSeconds = 0
+		})
+		self:EnsureLocalSkillMoveTimer()
+		log("[BRSkill] local move start reason=" .. self:ReadString(reason, "skillMove") .. " duration=" .. tostring(durationSeconds))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ClearLocalSkillMovement(string reason)
+		-- Clears client-only smooth movement state.
+		self:EnsureLocalSkillMovementRuntime()
+		local count = #self._T.localActiveSkillMoves
+		self._T.localActiveSkillMoves = {}
+		self:StopLocalSkillMoveTimer()
+		if count > 0 then
+			log("[BRSkill] local move clear reason=" .. self:ReadString(reason, "clear"))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EnsureLocalSkillMovementRuntime()
+		-- Initializes client-only smooth movement bookkeeping.
+		if self._T.localActiveSkillMoves == nil then
+			self._T.localActiveSkillMoves = {}
+		end
+		if self._T.localSkillMoveTimerId == nil then
+			self._T.localSkillMoveTimerId = 0
+		end
+		if self._T.localSkillMoveLastAt == nil then
+			self._T.localSkillMoveLastAt = _UtilLogic.ElapsedSeconds
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EnsureLocalSkillMoveTimer()
+		-- Runs the local smoothing loop at display cadence rather than skill timeline cadence.
+		self:EnsureLocalSkillMovementRuntime()
+		if math.floor(self:ReadNumber(self._T.localSkillMoveTimerId, 0)) > 0 then
+			return
+		end
+		self._T.localSkillMoveLastAt = _UtilLogic.ElapsedSeconds
+		self._T.localSkillMoveTimerId = _TimerService:SetTimerRepeat(function() self:TickLocalSkillMoves() end, 1 / 60, 0)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StopLocalSkillMoveTimer()
+		-- Stops the local movement timer when no smooth movement remains.
+		if self._T.localSkillMoveTimerId ~= nil and math.floor(self:ReadNumber(self._T.localSkillMoveTimerId, 0)) > 0 then
+			_TimerService:ClearTimer(math.floor(self:ReadNumber(self._T.localSkillMoveTimerId, 0)))
+		end
+		self._T.localSkillMoveTimerId = 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method void TickLocalSkillMoves()
+		-- Updates client-side smooth movement using elapsed time between timer callbacks.
+		self:EnsureLocalSkillMovementRuntime()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			self:ClearLocalSkillMovement("missing-player")
+			return
+		end
+		local now = _UtilLogic.ElapsedSeconds
+		local last = self:ReadNumber(self._T.localSkillMoveLastAt, now)
+		local delta = math.min(0.1, math.max(0, now - last))
+		self._T.localSkillMoveLastAt = now
+		for index = #self._T.localActiveSkillMoves, 1, -1 do
+			local move = self._T.localActiveSkillMoves[index]
+			if move == nil then
+				table.remove(self._T.localActiveSkillMoves, index)
+			else
+				move.ElapsedSeconds = self:ReadNumber(move.ElapsedSeconds, 0) + delta
+				local duration = math.max(0.001, self:ReadNumber(move.DurationSeconds, self:GetSkillFrameSeconds()))
+				local rate = math.min(1, math.max(0, self:ReadNumber(move.ElapsedSeconds, 0) / duration))
+				local position = self:LerpSkillMovePosition(move, rate)
+				self:ApplyLocalSmoothSkillMovePosition(localPlayer, position)
+				if rate >= 1 then
+					log("[BRSkill] local move end reason=" .. self:ReadString(move.Reason, "skillMove") .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+					table.remove(self._T.localActiveSkillMoves, index)
+				end
+			end
+		end
+		if #self._T.localActiveSkillMoves <= 0 then
+			self:StopLocalSkillMoveTimer()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalSmoothSkillMovePosition(Entity localPlayer, Vector2 position)
+		-- Applies one local visual movement sample without waiting for skill-frame ticks.
+		if localPlayer == nil or position == nil then
+			return
+		end
+		if localPlayer.MovementComponent ~= nil then
+			localPlayer.MovementComponent:Stop()
+			localPlayer.MovementComponent:SetWorldPosition(position)
+		end
+		if localPlayer.RigidbodyComponent ~= nil then
+			localPlayer.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			localPlayer.RigidbodyComponent:SetWorldPosition(position)
+			localPlayer.RigidbodyComponent:PositionReset()
+		elseif localPlayer.KinematicbodyComponent ~= nil then
+			localPlayer.KinematicbodyComponent:SetWorldPosition(position)
+		elseif localPlayer.SideviewbodyComponent ~= nil then
+			localPlayer.SideviewbodyComponent:SetWorldPosition(position)
+		end
+		if localPlayer.PlayerComponent ~= nil then
+			localPlayer.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
+		end
 	end
 
 	method void ApplySkillDamage(any context, Entity targetEntity, any actionDef, string sourceId)
@@ -2368,6 +2606,14 @@ script BRSkillSystem extends Logic
 		return self:GetSkillTotalFrames(skillDef) * self:GetSkillFrameSeconds()
 	end
 
+	method number GetSkillMoveDurationSeconds(any actionDef)
+		-- Converts a move action's frame-authored duration into seconds for continuous movement.
+		if actionDef == nil then
+			return self:GetSkillFrameSeconds()
+		end
+		return math.max(0.001, math.floor(self:ReadNumber(actionDef.MoveTimeFrames, 1)) * self:GetSkillFrameSeconds())
+	end
+
 	method number GetSkillFrameSeconds()
 		-- Returns the fixed frame duration used by skill timelines.
 		return math.max(0.005, self:ReadNumber(self.SkillFrameSeconds, 0.03))
@@ -2492,6 +2738,7 @@ script BRSkillSystem extends Logic
 		end
 
 		self:RemoveRuntimeRecordsForUser(self._T.activeAreas, safeUserId)
+		self:RemoveRuntimeRecordsForUser(self._T.activeSkillMoves, safeUserId)
 		self:RemoveRuntimeRecordsForUser(self._T.activeProjectiles, safeUserId)
 		self:RemoveRuntimeRecordsForUser(self._T.activeFields, safeUserId)
 		self:RemoveStatusesForUser(safeUserId)
@@ -3362,11 +3609,16 @@ script BRSkillSystem extends Logic
 		if self:ReadString(userId, "") ~= self:ReadString(localPlayer.PlayerComponent.UserId, "") then
 			return
 		end
+		self:ClearLocalSkillMovement("battle-reset")
 		if _BRCommonSkillSystem ~= nil then
+			if _BRCommonSkillSystem:IsLocalNimbusActive() == true then
+				_BRCommonSkillSystem:SetLocalNimbusActive(false, "battle-reset")
+			else
+				_BRCommonSkillSystem:StopNimbusEffect()
+			end
 			_BRCommonSkillSystem.localNextUniqueAt = 0
 			_BRCommonSkillSystem.localNextBlinkAt = 0
 			_BRCommonSkillSystem.localNextNimbusToggleAt = 0
-			_BRCommonSkillSystem.localNimbusActive = false
 			log("[BRSkillSystem] local common cooldown reset reason=" .. self:ReadString(reason, "reset"))
 		end
 	end
@@ -4071,6 +4323,9 @@ script BRSkillSystem extends Logic
 		if userId == "" then
 			return
 		end
+		if self:IsCommonNimbusActiveForUser(userId) == true then
+			return
+		end
 		local position = self:GetEntityPosition2(playerEntity)
 		if self:TryHandleBattleBoundsReturn(playerEntity, userId, position) == true then
 			return
@@ -4080,6 +4335,14 @@ script BRSkillSystem extends Logic
 			return
 		end
 		self:RememberPlayerFootholdPosition(playerEntity, userId)
+	end
+
+	method boolean IsCommonNimbusActiveForUser(string userId)
+		-- Nimbus is a controlled aerial ride; local ride bounds handle clamping while it is active.
+		if _BRCommonSkillSystem == nil then
+			return false
+		end
+		return _BRCommonSkillSystem:IsNimbusActiveForUser(self:ReadString(userId, "")) == true
 	end
 
 	method boolean TryHandleBattleBoundsReturn(Entity playerEntity, string userId, Vector2 position)

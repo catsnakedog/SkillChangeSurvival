@@ -88,6 +88,16 @@ export function dryRunMoveLineToOrigin(mapName, linePath) {
   return buildLineOriginPlan(context);
 }
 
+export function dryRunConnectRoom(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  return buildRoomBatchPlan(loaded, mapName, roomPath, "connect");
+}
+
+export function dryRunMoveRoomLinesToOrigin(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  return buildRoomBatchPlan(loaded, mapName, roomPath, "move-line-origin");
+}
+
 export function dryRunMoveLineBoundsToPivot(mapName, linePath) {
   const context = collectFootholds(mapName, linePath);
   return buildLineBoundsPivotPlan(context);
@@ -105,20 +115,7 @@ export function applyConnect(mapName, linePath) {
     return { ...plan, applied: false };
   }
 
-  for (const item of plan.rawFinalOffsets) {
-    if (nearZero(item.offset.x) && nearZero(item.offset.y)) continue;
-
-    const position = item.foothold.transform.Position;
-    position.x = roundCoord((position.x ?? 0) + item.offset.x);
-    position.y = roundCoord((position.y ?? 0) + item.offset.y);
-
-    // FootholdsByLayer is a generated/runtime cache, but keeping it in sync
-    // prevents stale serialized StartPoint/EndPoint data after a file refresh.
-    for (const serialized of item.foothold.serialized) {
-      shiftPoint(serialized.StartPoint, item.offset);
-      shiftPoint(serialized.EndPoint, item.offset);
-    }
-  }
+  applyConnectionOffsets(plan);
 
   fs.writeFileSync(context.file, `${JSON.stringify(context.data, null, 2)}\n`, "utf8");
 
@@ -126,6 +123,26 @@ export function applyConnect(mapName, linePath) {
     ...plan,
     applied: true,
     message: "Moved following foothold Transform positions so each first edge point matches the previous rear edge point.",
+  };
+}
+
+export function applyConnectRoom(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  const plan = buildRoomBatchPlan(loaded, mapName, roomPath, "connect");
+  if (plan.errors.length > 0) {
+    return { ...plan, applied: false };
+  }
+
+  for (const item of plan.rawLinePlans) {
+    applyConnectionOffsets(item.plan);
+  }
+
+  fs.writeFileSync(loaded.file, `${JSON.stringify(loaded.data, null, 2)}\n`, "utf8");
+
+  return {
+    ...plan,
+    applied: true,
+    message: `Applied edge auto-connect to ${plan.validLineCount} line(s) in the selected Room.`,
   };
 }
 
@@ -144,6 +161,26 @@ export function applyMoveLineToOrigin(mapName, linePath) {
     ...plan,
     applied: true,
     message: "Moved child footholds so the selected line's first start edge point matches the line parent pivot.",
+  };
+}
+
+export function applyMoveRoomLinesToOrigin(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  const plan = buildRoomBatchPlan(loaded, mapName, roomPath, "move-line-origin");
+  if (plan.errors.length > 0) {
+    return { ...plan, applied: false };
+  }
+
+  for (const item of plan.rawLinePlans) {
+    shiftFootholdChildren(item.context, item.plan.delta);
+  }
+
+  fs.writeFileSync(loaded.file, `${JSON.stringify(loaded.data, null, 2)}\n`, "utf8");
+
+  return {
+    ...plan,
+    applied: true,
+    message: `Moved footholds for ${plan.validLineCount} line(s) so each line start edge matches its parent pivot.`,
   };
 }
 
@@ -230,6 +267,82 @@ function collectFootholdsFromLoaded(loaded, mapName, linePath) {
     lineWorldPosition: getWorldPosition(line, entities),
     footholds,
   };
+}
+
+function buildRoomBatchPlan(loaded, mapName, roomPath, action) {
+  if (!roomPath) throw new Error("Room is not selected");
+
+  const { entities } = loaded;
+  const room = entities.find((entity) => entity.path === roomPath);
+  if (!room) throw new Error(`Selected Room not found: ${roomPath}`);
+
+  const lines = directChildren(entities, roomPath)
+    .filter((entity) => isLineParentName(entity.name))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+  if (lines.length === 0) {
+    return {
+      action: roomBatchActionName(action),
+      applied: false,
+      errors: ["Selected Room has no line parents"],
+      warnings: [],
+      roomName: room.name,
+      roomPath,
+      lineCount: 0,
+      validLineCount: 0,
+      skippedLineCount: 0,
+      linePlans: [],
+    };
+  }
+
+  const warnings = [];
+  const rawLinePlans = [];
+  const linePlans = [];
+
+  for (const line of lines) {
+    try {
+      const context = collectFootholdsFromLoaded(loaded, mapName, line.path);
+      const linePlan = action === "connect" ? buildConnectionPlan(context) : buildLineOriginPlan(context);
+      const lineOutput = summarizeRoomLinePlan(line, linePlan, action);
+
+      if (linePlan.errors.length > 0) {
+        warnings.push(`${line.name}: ${linePlan.errors.join("; ")}`);
+      } else {
+        rawLinePlans.push({ context, plan: linePlan });
+      }
+
+      linePlans.push(lineOutput);
+    } catch (error) {
+      warnings.push(`${line.name}: ${error.message}`);
+      linePlans.push({
+        lineName: line.name,
+        linePath: line.path,
+        status: "skipped",
+        errors: [error.message],
+        footholdCount: 0,
+        changeCount: 0,
+      });
+    }
+  }
+
+  const errors = rawLinePlans.length === 0 ? ["No valid line parents to process"] : [];
+  const output = {
+    action: roomBatchActionName(action),
+    applied: false,
+    errors,
+    warnings,
+    roomName: room.name,
+    roomPath,
+    lineCount: lines.length,
+    validLineCount: rawLinePlans.length,
+    skippedLineCount: lines.length - rawLinePlans.length,
+    linePlans,
+  };
+  Object.defineProperty(output, "rawLinePlans", {
+    value: rawLinePlans,
+    enumerable: false,
+  });
+  return output;
 }
 
 function buildSymmetryPlan(loaded, mapName, roomPath) {
@@ -327,6 +440,35 @@ function buildSymmetryPlan(loaded, mapName, roomPath) {
     enumerable: false,
   });
   return output;
+}
+
+function summarizeRoomLinePlan(line, plan, action) {
+  const output = {
+    lineName: line.name,
+    linePath: line.path,
+    status: plan.errors.length > 0 ? "skipped" : "ready",
+    errors: plan.errors,
+    footholdCount: plan.sorted?.length ?? 0,
+    changeCount: plan.changes?.length ?? 0,
+  };
+
+  if (action === "connect") {
+    output.sorted = plan.sorted;
+    output.changes = plan.changes;
+    return output;
+  }
+
+  output.startFoothold = plan.startFoothold;
+  output.startEdgeWorldBefore = plan.startEdgeWorldBefore;
+  output.startEdgeWorldAfter = plan.startEdgeWorldAfter;
+  output.targetPivotWorld = plan.targetPivotWorld;
+  output.delta = plan.delta;
+  output.affectedFootholds = plan.affectedFootholds;
+  return output;
+}
+
+function roomBatchActionName(action) {
+  return action === "connect" ? "room-connect" : "room-move-line-origin";
 }
 
 function buildConnectionPlan(context) {
@@ -427,6 +569,23 @@ function buildConnectionPlan(context) {
     enumerable: false,
   });
   return output;
+}
+
+function applyConnectionOffsets(plan) {
+  for (const item of plan.rawFinalOffsets) {
+    if (nearZero(item.offset.x) && nearZero(item.offset.y)) continue;
+
+    const position = item.foothold.transform.Position;
+    position.x = roundCoord((position.x ?? 0) + item.offset.x);
+    position.y = roundCoord((position.y ?? 0) + item.offset.y);
+
+    // FootholdsByLayer is a generated/runtime cache, but keeping it in sync
+    // prevents stale serialized StartPoint/EndPoint data after a file refresh.
+    for (const serialized of item.foothold.serialized) {
+      shiftPoint(serialized.StartPoint, item.offset);
+      shiftPoint(serialized.EndPoint, item.offset);
+    }
+  }
 }
 
 function buildLineOriginPlan(context) {

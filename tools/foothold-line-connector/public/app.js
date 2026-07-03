@@ -15,8 +15,12 @@ const els = {
   save: document.querySelector("#saveButton"),
   dryRun: document.querySelector("#dryRunButton"),
   connect: document.querySelector("#connectButton"),
+  roomDryRun: document.querySelector("#roomDryRunButton"),
+  roomConnect: document.querySelector("#roomConnectButton"),
   originDryRun: document.querySelector("#originDryRunButton"),
   originMove: document.querySelector("#originMoveButton"),
+  roomOriginDryRun: document.querySelector("#roomOriginDryRunButton"),
+  roomOriginMove: document.querySelector("#roomOriginMoveButton"),
   boundsDryRun: document.querySelector("#boundsDryRunButton"),
   boundsMove: document.querySelector("#boundsMoveButton"),
   symmetryDryRun: document.querySelector("#symmetryDryRunButton"),
@@ -27,8 +31,12 @@ els.refresh.addEventListener("click", () => refreshAll());
 els.save.addEventListener("click", () => saveCurrentMap());
 els.dryRun.addEventListener("click", () => runPlan(false));
 els.connect.addEventListener("click", () => runPlan(true));
+els.roomDryRun.addEventListener("click", () => runRoomConnect(false));
+els.roomConnect.addEventListener("click", () => runRoomConnect(true));
 els.originDryRun.addEventListener("click", () => runOriginMove(false));
 els.originMove.addEventListener("click", () => runOriginMove(true));
+els.roomOriginDryRun.addEventListener("click", () => runRoomOriginMove(false));
+els.roomOriginMove.addEventListener("click", () => runRoomOriginMove(true));
 els.boundsDryRun.addEventListener("click", () => runBoundsMove(false));
 els.boundsMove.addEventListener("click", () => runBoundsMove(true));
 els.symmetryDryRun.addEventListener("click", () => runSymmetryMove(false));
@@ -175,6 +183,46 @@ async function runOriginMove(apply) {
   }
 }
 
+async function runRoomConnect(apply) {
+  if (!state.map) return appendLog("Map is not selected");
+  if (!state.roomPath) return appendLog("Room is not selected");
+
+  const endpoint = apply ? "/api/room-connect" : "/api/room-connect/dry-run";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ map: state.map, roomPath: state.roomPath }),
+    });
+    const plan = data.plan ?? data.result;
+    appendLog(apply ? "Room edge connect result" : "Room Edge Dry Run result");
+    renderPlan(plan);
+    if (plan.message) appendLog(plan.message);
+    if (data.refresh) appendLog(`Maker refresh: ${JSON.stringify(data.refresh)}`);
+  } catch (error) {
+    appendLog(`Failed: ${error.message}`);
+  }
+}
+
+async function runRoomOriginMove(apply) {
+  if (!state.map) return appendLog("Map is not selected");
+  if (!state.roomPath) return appendLog("Room is not selected");
+
+  const endpoint = apply ? "/api/room-move-line-origin" : "/api/room-move-line-origin/dry-run";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ map: state.map, roomPath: state.roomPath }),
+    });
+    const plan = data.plan ?? data.result;
+    appendLog(apply ? "Room origin move result" : "Room Origin Dry Run result");
+    renderPlan(plan);
+    if (plan.message) appendLog(plan.message);
+    if (data.refresh) appendLog(`Maker refresh: ${JSON.stringify(data.refresh)}`);
+  } catch (error) {
+    appendLog(`Failed: ${error.message}`);
+  }
+}
+
 async function runBoundsMove(apply) {
   if (!state.map) return appendLog("Map is not selected");
   if (!state.roomPath) return appendLog("Room is not selected");
@@ -228,6 +276,10 @@ function renderPlan(plan) {
     renderOriginPlan(plan);
     return;
   }
+  if (plan.action === "room-connect" || plan.action === "room-move-line-origin") {
+    renderRoomBatchPlan(plan);
+    return;
+  }
   if (plan.action === "move-line-bounds-pivot") {
     renderBoundsPivotPlan(plan);
     return;
@@ -246,6 +298,32 @@ function renderPlan(plan) {
   for (const change of plan.changes) {
     appendLog(`- ${change.toName}: move (${fmt(change.delta.x)}, ${fmt(change.delta.y)}) so first edge (${fmt(change.toFirstWorldBefore.x)}, ${fmt(change.toFirstWorldBefore.y)}) matches ${change.fromName} rear (${fmt(change.fromRearWorld.x)}, ${fmt(change.fromRearWorld.y)})`);
     appendLog(`  position: (${fmt(change.toPositionBefore.x)}, ${fmt(change.toPositionBefore.y)}, ${fmt(change.toPositionBefore.z)}) -> (${fmt(change.toPositionAfter.x)}, ${fmt(change.toPositionAfter.y)}, ${fmt(change.toPositionAfter.z)})`);
+  }
+}
+
+function renderRoomBatchPlan(plan) {
+  appendLog(`Room: ${plan.roomName}`);
+  appendLog(`Lines: total=${plan.lineCount}, ready=${plan.validLineCount}, skipped=${plan.skippedLineCount}`);
+
+  for (const line of plan.linePlans) {
+    appendLog(`- ${line.lineName}: ${line.status}, footholds=${line.footholdCount}, changes=${line.changeCount}`);
+
+    if (line.errors?.length) {
+      for (const error of line.errors) appendLog(`  Error: ${error}`);
+      continue;
+    }
+
+    if (plan.action === "room-connect") {
+      for (const change of line.changes) {
+        appendLog(`  ${change.toName}: move (${fmt(change.delta.x)}, ${fmt(change.delta.y)})`);
+      }
+      continue;
+    }
+
+    appendLog(`  start: ${line.startFoothold}`);
+    appendLog(`  target pivot: (${fmt(line.targetPivotWorld.x)}, ${fmt(line.targetPivotWorld.y)})`);
+    appendLog(`  delta: (${fmt(line.delta.x)}, ${fmt(line.delta.y)})`);
+    appendLog(`  start edge: (${fmt(line.startEdgeWorldBefore.x)}, ${fmt(line.startEdgeWorldBefore.y)}) -> (${fmt(line.startEdgeWorldAfter.x)}, ${fmt(line.startEdgeWorldAfter.y)})`);
   }
 }
 

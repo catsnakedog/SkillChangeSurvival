@@ -28,14 +28,28 @@ Nimbus/effect0/8,8cb7252e2ee04cd997af25504156a29f,false,0
 Nimbus/effect0/9,79d860af8e25481ca3389b36e3178a99,false,0
 Nimbus/effect0/10,05876b6d2bad4fb5b4fb9358512e26b3,false,0
 Nimbus/effect0/11,341a80c5959a4b15893c976456cb6105,false,0
-divineSwing/effect,0706dac96b694cd699b87e602ba74f42,false,8
-애로우 블로우/effect,2ed6be9152eb4bf0b22f4ca6e6fff9fe,false,9
-애로우 블로우/hit/0,84a473e004a34fdea67aa74a87dc75c6,false,4
 Blink/effect,8dc15776c4f349a0bfa155e911e4a7be,false,8
 Blink/effect0,df5bd4514ffb461fb8479ff0d88ec204,false,8
 Blink/effect1,c4755faee88149738692350b34aa5766,false,8
 Blink/special,ba3f9119b8634a1f80e85017adc426f7,false,8
-전사_보조_스킬_effect,eaa71284041b4c8390c32ade11286e16,false,10
-스피릿_블레이드_effect,e4d8f3edcb824141a989ad41b4c2351c,false,12
-샤프_슬래시_effect,ffaf507b148744f49715a8253477fec0,false,7
-슬래시_스톰_effect,74f8d58d6b2b4386bd20f7556c4898a1,false,6
+에픽 어드벤처/effect,629bfa1df7b14c2f83d9f92d771553b6,false,20
+메이플 용사/effect,39c37f6be8c448f0a946be42b4976495,false,20
+용사의 의지/effect,3ce189aa9c9f4bff8a3cab6b3ed06030,false,12
+페이지 오더/effect,16f4b945542a47dab38514fb404c6c21,false,12
+리스토네이션/effect,6de1bbfd2f9c4ff29f4c4e1184232b8f,false,12
+노블 디맨드/effect,1676621bd809417b9d4f2b73c5b15c10,false,12
+인빈서블 빌리프/effect,16d15885efb94f67947a34724374f167,false,12
+리트리트 샷/effect,0b7f4439542040ab9cd0cc5097af7544,false,20
+볼트 플로우/effect,060a45e5caa74c8b94ca1ab22f268e73,false,20
+데미지 리버싱/effect,4ba8b1f8be45489d8010e6a7d2a2c5ba,false,12
+애로우 일루전/effect,eb0aa9cfb347480db301d352b9955ddb,false,60
+메디테이션/effect,09dec7b1c4e94bf38ba5d152f1005ce5,false,20
+엘리멘탈 어뎁팅/effect,e3bf7ff1aa514bee9810bb10b704beea,false,20
+다크 사이트/effect,abedd159bb6c4c0d8b93b96711d445b1,false,20
+페이탈 베놈/effect,2243591ba6f747448a3cbb00e5194e81,false,20
+사슬지옥/effect,77a395fcb49942c2ae51502d5ca08b19,false,24
+미러 이미징/effect,03d1a9e1428f432288fb87911027d14c,false,20
+기간틱 백스텝/effect,7acbdb0464dd40a6983a87d7582f7fc6,false,12
+슬럼버/effect,e7eea60b381848aeb5ed4466a5e7f160,false,20
+럭키 다이스/effect,43abf6af338346a98f1b592049af5556,false,20
+반격의 슈터/effect,1cef91ed9a304f7cb677f0c6b61519b3,false,20

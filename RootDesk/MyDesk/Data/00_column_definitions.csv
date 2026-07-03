@@ -78,6 +78,18 @@ ground_area_spawn_actions.csv,장판 데이터,4,ground_area_effect_id,장판 �
 trigger_actions.csv,트리거 액션,1,action_id,액션 id,string,,N,,트리거 액션 id,"p53,p58,p59"
 trigger_actions.csv,트리거 액션,2,offset_x,offset x좌표,int,,N,,트리거 발생 위치 기준 가상 시전자 생성 offset x,"p53,p58,p59"
 trigger_actions.csv,트리거 액션,3,offset_y,offset y좌표,int,,N,,트리거 발생 위치 기준 가상 시전자 생성 offset y,"p53,p58,p59"
+area_target_captures.csv,범위 대상포착 데이터,6,max_targets,최대 대상 수,int,0,N,,0이면 제한 없음,p60
+buff_actions.csv,버프 액션 데이터,5,chance_percent,적용 확률,decimal,100,N,,버프 적용 확률,p60
+buff_actions.csv,버프 액션 데이터,6,heal_max_hp_percent,최대 HP 기준 회복률,decimal,0,N,,즉시 회복할 최대 HP 비율,p60
+debuff_actions.csv,디버프 액션 데이터,5,chance_percent,적용 확률,decimal,100,N,,디버프 적용 확률,p60
+debuff_actions.csv,디버프 액션 데이터,6,dot_coefficient_percent,도트 계수,decimal,0,N,,틱마다 적용할 공격력 계수,p60
+debuff_actions.csv,디버프 액션 데이터,7,tick_interval_frames,도트 틱 간격,int,33,N,,도트 피해 간격 프레임,p60
+ground_area_spawn_actions.csv,장판 데이터,5,hitbox_ids,히트박스 id,pipe_string,,Y,hitbox1|hitbox2,장판이 감지할 히트박스,p60
+ground_area_spawn_actions.csv,장판 데이터,6,target,대상,enum,적군,N,아군|적군,장판 대상군,p60
+ground_area_spawn_actions.csv,장판 데이터,7,max_targets,최대 대상 수,int,0,N,,틱당 최대 대상 수,p60
+ground_area_spawn_actions.csv,장판 데이터,8,tick_interval_frames,틱 간격,int,1,N,,장판 액션 실행 간격 프레임,p60
+dash_actions.csv,대쉬 데이터,4,vertical,수직 이동량,int,0,N,,px 단위 수직 이동량,p60
+ground_area_spawn_actions.csv,장판 데이터,2,duration_frames,지속시간,int,1,N,,장판 지속시간 프레임. 없으면 기존 ground_area_cycle fallback,p60
 dash_actions.csv,대쉬 데이터,1,action_id,액션 id,string,,N,,대쉬 액션 id,p60
 dash_actions.csv,대쉬 데이터,2,range,사거리,int,,N,,사거리,p60
 dash_actions.csv,대쉬 데이터,3,move_time_frames,이동시간,int,,N,,프레임 단위,p60

@@ -1,0 +1,134 @@
+@Component
+script BRSkillPartTestNPC extends Component
+
+	property string InteractionKeyName = "F"
+
+	property number InteractionRange = 1.8
+
+	property boolean VerboseLog = true
+
+	property any inputKeyDownHandler = nil
+
+	method void OnBeginPlay()
+		self.inputKeyDownHandler = nil
+		if self:IsClient() then
+			self:StartInput()
+		end
+	end
+
+	method void OnEndPlay()
+		if self:IsClient() then
+			self:DisconnectInput()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StartInput()
+		if self.inputKeyDownHandler ~= nil then
+			self:Log("ready skipped reason=alreadyConnected")
+			return
+		end
+		if _InputService == nil then
+			self:Log("ready skipped reason=noInputService")
+			return
+		end
+		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnInteractionKeyDown)
+		if self.inputKeyDownHandler == nil then
+			self:Log("ready failed reason=connectReturnedNil")
+			return
+		end
+		self:Log("ready key=" .. self:GetInteractionKeyName() .. " range=" .. tostring(self:GetInteractionRange()))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnInteractionKeyDown(KeyDownEvent event)
+		if self:IsInteractionKey(event) ~= true then
+			return
+		end
+		if self:IsLocalPlayerInRange() ~= true then
+			return
+		end
+		if _BRSkillPartTestUI == nil then
+			self:Log("open skipped reason=noSkillPartTestUI")
+			return
+		end
+		_BRSkillPartTestUI:Open()
+		self:Log("open requested npc=" .. self:GetNpcName())
+	end
+
+	method boolean IsInteractionKey(KeyDownEvent event)
+		if event == nil then
+			return false
+		end
+		local keyName = self:GetInteractionKeyName()
+		if keyName == "C" then
+			return event.key == KeyboardKey.C
+		elseif keyName == "V" then
+			return event.key == KeyboardKey.V
+		elseif keyName == "F" then
+			return event.key == KeyboardKey.F
+		elseif keyName == "X" then
+			return event.key == KeyboardKey.X
+		end
+		return event.key == KeyboardKey.F
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsLocalPlayerInRange()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.TransformComponent == nil or self.Entity == nil or self.Entity.TransformComponent == nil then
+			return false
+		end
+		local playerPosition = localPlayer.TransformComponent.WorldPosition
+		local npcPosition = self.Entity.TransformComponent.WorldPosition
+		local dx = playerPosition.x - npcPosition.x
+		local dy = playerPosition.y - npcPosition.y
+		local range = self:GetInteractionRange()
+		return dx * dx + dy * dy <= range * range
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisconnectInput()
+		if self.inputKeyDownHandler ~= nil and _InputService ~= nil then
+			_InputService:DisconnectEvent(KeyDownEvent, self.inputKeyDownHandler)
+		end
+		self.inputKeyDownHandler = nil
+	end
+
+	method string GetNpcName()
+		if self.Entity == nil then
+			return "SkillPartTestNPC"
+		end
+		return self:ReadString(self.Entity.Name, "SkillPartTestNPC")
+	end
+
+	method number GetInteractionRange()
+		return math.max(0.2, self:ReadNumber(self.InteractionRange, 1.8))
+	end
+
+	method string GetInteractionKeyName()
+		return self:ReadString(self.InteractionKeyName, "F")
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRSkillPartNPC] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

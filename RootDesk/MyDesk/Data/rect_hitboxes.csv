@@ -1,11 +1,10 @@
-﻿hitbox_id,offset_x,offset_y,width,height
-ds1b1,0,0,248,90
-ds1b2,-248,0,43,63
-애로우 블로우/투사체 히트박스,59,-10,82,20
-전사_보조_스킬_event_1_hitbox_0,0,0,153,79
-전사_보조_스킬_event_1_hitbox_1,-153,0,33,38
-샤프_슬래시_event_1_hitbox_0,3,0,169,56
-샤프_슬래시_event_1_hitbox_1,-166,0,30,35
-샤프_슬래시_event_2_hitbox_0,0,0,184,93
-샤프_슬래시_event_2_hitbox_1,-184,0,19,85
-슬래시_스톰_event_1_hitbox_0,12,0,45,63
+hitbox_id,offset_x,offset_y,width,height
+front_short,0,0,180,100
+front_mid,0,0,260,120
+front_wide,0,0,340,130
+front_long,0,0,480,140
+front_line,0,-20,760,90
+front_back_edge,-260,0,70,90
+projectile_small,0,-10,90,30
+projectile_mid,0,-12,130,36
+projectile_big,0,-16,180,50

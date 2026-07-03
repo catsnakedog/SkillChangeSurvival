@@ -69,9 +69,9 @@ script BRCommonSkillSystem extends Logic
 
 	property number NimbusEffectLocalX = 0
 
-	property number NimbusEffectLocalY = -0.72
+	property number NimbusEffectLocalY = -0.34
 
-	property number NimbusEffectScale = 1.2
+	property number NimbusEffectScale = 0.68
 
 	property number NimbusEffectAlpha = 0.95
 
@@ -81,6 +81,8 @@ script BRCommonSkillSystem extends Logic
 
 	property any inputKeyDownHandler = nil
 
+	property any inputKeyUpHandler = nil
+
 	property number localNextUniqueAt = 0
 
 	property number localNextBlinkAt = 0
@@ -88,6 +90,8 @@ script BRCommonSkillSystem extends Logic
 	property number localNextNimbusToggleAt = 0
 
 	property boolean localNimbusActive = false
+
+	property boolean localNimbusToggleKeyHeld = false
 
 	property integer localNimbusEffectSerial = 0
 
@@ -126,6 +130,7 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnCommonSkillKeyDown)
+		self.inputKeyUpHandler = _InputService:ConnectEvent(KeyUpEvent, self.OnCommonSkillKeyUp)
 		self:RemoveBlinkKeyDefaultAction(true)
 		log("[BRCommonSkill] client input ready unique=Q blink=C nimbus=E")
 	end
@@ -136,6 +141,11 @@ script BRCommonSkillSystem extends Logic
 			_InputService:DisconnectEvent(KeyDownEvent, self.inputKeyDownHandler)
 		end
 		self.inputKeyDownHandler = nil
+		if self.inputKeyUpHandler ~= nil then
+			_InputService:DisconnectEvent(KeyUpEvent, self.inputKeyUpHandler)
+		end
+		self.inputKeyUpHandler = nil
+		self.localNimbusToggleKeyHeld = false
 	end
 
 	@ExecSpace("ClientOnly")
@@ -149,7 +159,22 @@ script BRCommonSkillSystem extends Logic
 			self:RemoveBlinkKeyDefaultAction(false)
 			self:TryBlink()
 		elseif event.key == KeyboardKey.E then
+			if self.localNimbusToggleKeyHeld == true then
+				return
+			end
+			self.localNimbusToggleKeyHeld = true
 			self:TryToggleNimbus()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnCommonSkillKeyUp(KeyUpEvent event)
+		-- Releases the Nimbus toggle latch so a held E key cannot repeatedly turn the ride on and off.
+		if event == nil then
+			return
+		end
+		if event.key == KeyboardKey.E then
+			self.localNimbusToggleKeyHeld = false
 		end
 	end
 
@@ -337,7 +362,7 @@ script BRCommonSkillSystem extends Logic
 			end
 		end
 		local speed = self:GetNimbusMoveSpeed()
-		local position = self:GetEntityPosition2(localPlayer)
+		local position = self:GetNimbusRidePosition(localPlayer)
 		local deltaSeconds = math.min(0.05, math.max(0, self:ReadNumber(delta, 0)))
 		local nextPosition = Vector2(position.x + dx * speed * deltaSeconds, position.y + dy * speed * deltaSeconds)
 		local rideBounds = self:GetNimbusMovementBounds(localPlayer, position)
@@ -448,6 +473,10 @@ script BRCommonSkillSystem extends Logic
 				playerEntity.MovementComponent:Stop()
 			end
 		end
+		if resetVelocity == true then
+			self:SetNimbusRidePosition(self:GetEntityPosition2(playerEntity))
+			playerEntity.RigidbodyComponent:PositionReset()
+		end
 	end
 
 	@ExecSpace("ClientOnly")
@@ -459,6 +488,8 @@ script BRCommonSkillSystem extends Logic
 		local moveY = self:ReadNumber(dy, 0)
 		local safeSpeed = math.max(0.1, self:ReadNumber(speed, self.NimbusMoveSpeed))
 		if math.abs(moveX) <= 0.001 and math.abs(moveY) <= 0.001 then
+			local holdPosition = self:GetNimbusRidePosition(playerEntity)
+			playerEntity.RigidbodyComponent:SetWorldPosition(holdPosition)
 			playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
 			if playerEntity.MovementComponent ~= nil then
 				playerEntity.MovementComponent:Stop()
@@ -468,17 +499,15 @@ script BRCommonSkillSystem extends Logic
 
 		local safeDelta = math.min(0.05, math.max(0, self:ReadNumber(deltaSeconds, 0)))
 		local direction = Vector2(moveX, moveY)
-		local position = self:GetEntityPosition2(playerEntity)
+		local position = self:GetNimbusRidePosition(playerEntity)
 		local nextPosition = Vector2(position.x + moveX * safeSpeed * safeDelta, position.y + moveY * safeSpeed * safeDelta)
 		playerEntity.RigidbodyComponent.KinematicMoveAcceleration = Vector2(safeSpeed, safeSpeed)
+		playerEntity.RigidbodyComponent:SetWorldPosition(nextPosition)
 		if playerEntity.MovementComponent ~= nil then
 			playerEntity.MovementComponent.InputSpeed = safeSpeed
-			playerEntity.MovementComponent:SetWorldPosition(nextPosition)
-		else
-			playerEntity.RigidbodyComponent:SetWorldPosition(nextPosition)
 		end
 		playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
-		playerEntity.RigidbodyComponent:PositionReset()
+		self:SetNimbusRidePosition(nextPosition)
 		self:LogNimbusMoveSample(playerEntity, direction, safeSpeed)
 	end
 
@@ -492,8 +521,29 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 		self._T.nextNimbusMoveLogAt = now + 1
+		local position = self:GetNimbusRidePosition(playerEntity)
+		local actualPosition = self:GetEntityPosition2(playerEntity)
+		log("[BRCommonSkill] nimbus ride move dir=(" .. tostring(direction.x) .. "," .. tostring(direction.y) .. ") speed=" .. tostring(speed) .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ") actual=(" .. tostring(actualPosition.x) .. "," .. tostring(actualPosition.y) .. ")")
+	end
+
+	@ExecSpace("ClientOnly")
+	method Vector2 GetNimbusRidePosition(Entity playerEntity)
+		-- Keeps Nimbus movement independent from transient physics correction when direction changes.
+		local cachedPosition = self._T.localNimbusPosition
+		if cachedPosition ~= nil then
+			return Vector2(self:ReadNumber(cachedPosition.x, 0), self:ReadNumber(cachedPosition.y, 0))
+		end
 		local position = self:GetEntityPosition2(playerEntity)
-		log("[BRCommonSkill] nimbus ride move dir=(" .. tostring(direction.x) .. "," .. tostring(direction.y) .. ") speed=" .. tostring(speed) .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+		self:SetNimbusRidePosition(position)
+		return position
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetNimbusRidePosition(Vector2 position)
+		if position == nil then
+			return
+		end
+		self._T.localNimbusPosition = Vector2(position.x, position.y)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -543,12 +593,14 @@ script BRCommonSkillSystem extends Logic
 		end
 		playerEntity.RigidbodyComponent:PositionReset()
 		self._T.localNimbusBackup = nil
+		self._T.localNimbusPosition = nil
 	end
 
 	@ExecSpace("ClientOnly")
 	method void CaptureNimbusRideBounds(Entity playerEntity)
 		-- Saves the room/map area that Nimbus may fly inside without triggering center-return.
 		local position = self:GetEntityPosition2(playerEntity)
+		self:SetNimbusRidePosition(position)
 		local bounds = self:BuildNimbusRideBounds(playerEntity, position)
 		self._T.localNimbusRideBounds = bounds
 		if self.VerboseLog == true and bounds ~= nil then
@@ -559,6 +611,7 @@ script BRCommonSkillSystem extends Logic
 	@ExecSpace("ClientOnly")
 	method void ClearNimbusRideBounds()
 		self._T.localNimbusRideBounds = nil
+		self._T.localNimbusPosition = nil
 	end
 
 	@ExecSpace("ClientOnly")
@@ -670,7 +723,9 @@ script BRCommonSkillSystem extends Logic
 	@ExecSpace("ClientOnly")
 	method void StartNimbusEffect(Entity playerEntity)
 		-- Starts the looping cloud ride effect attached to the player.
-		self:StopNimbusEffect()
+		if math.floor(self:ReadNumber(self.localNimbusEffectSerial, 0)) > 0 then
+			return
+		end
 		if playerEntity == nil or _EffectService == nil then
 			return
 		end
@@ -680,7 +735,7 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 
-		local scale = math.max(0.05, self:ReadNumber(self.NimbusEffectScale, 1.2))
+		local scale = math.max(0.05, self:ReadNumber(self.NimbusEffectScale, 0.68))
 		local alpha = math.max(0, math.min(1, self:ReadNumber(self.NimbusEffectAlpha, 0.95)))
 		local options = {}
 		options["SortingLayer"] = "MapLayer0"
@@ -692,7 +747,7 @@ script BRCommonSkillSystem extends Logic
 		local serial = _EffectService:PlayEffectAttached(
 			ruid,
 			playerEntity,
-			Vector3(self:ReadNumber(self.NimbusEffectLocalX, 0), self:ReadNumber(self.NimbusEffectLocalY, -0.72), 0),
+			Vector3(self:ReadNumber(self.NimbusEffectLocalX, 0), self:ReadNumber(self.NimbusEffectLocalY, -0.34), 0),
 			0,
 			Vector3(scale, scale, 1),
 			true,
@@ -732,7 +787,7 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 		local position = self:GetEntityPosition2(playerEntity)
-		local scale = math.max(0.05, self:ReadNumber(self.NimbusEffectScale, 1.2))
+		local scale = math.max(0.05, self:ReadNumber(self.NimbusEffectScale, 0.68))
 		local alpha = math.max(0, math.min(1, self:ReadNumber(self.NimbusEffectAlpha, 0.95)))
 		local options = {}
 		options["SortingLayer"] = "MapLayer0"
@@ -741,7 +796,7 @@ script BRCommonSkillSystem extends Logic
 		options["PlayRate"] = math.max(0.1, self:ReadNumber(self.NimbusEffectPlayRate, 1.0))
 		options["IgnoreMapLayerCheck"] = true
 		local localX = self:ReadNumber(self.NimbusEffectLocalX, 0)
-		local localY = self:ReadNumber(self.NimbusEffectLocalY, -0.72)
+		local localY = self:ReadNumber(self.NimbusEffectLocalY, -0.34)
 		local serial = _EffectService:PlayEffect(
 			ruid,
 			playerEntity,

@@ -108,7 +108,7 @@ script BRSkillChainUI extends Component
 		self:SetDragGhostActive(false)
 		self:Refresh()
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds(), 0.1)
-		self:Log("slot highlight mode=sequence")
+		self:Log("slot highlight mode=skill-icon")
 		self:Log("ready chainRoot=" .. self:GetChainRootPath() .. " inventoryRoot=" .. self:GetInventoryRootPath())
 	end
 
@@ -761,7 +761,7 @@ script BRSkillChainUI extends Component
 		local safeRootKind = self:ReadString(rootKind, "CHAIN")
 		local safeBasePath = self:ReadString(basePath, "")
 		local safeTier = math.max(1, math.floor(self:ReadNumber(tier, 1)))
-		local useSolidIcon = self:ShouldUseSolidSkillIcon(safeRootKind, safeBasePath, isLeadSlot == true)
+		local useSolidIcon = false
 		local iconRuid = self:GetSlotIconRUID(skillKey, safeTier, isLeadSlot == true, useSolidIcon)
 		local baseColor = self:GetSlotBaseColor(occupied == true, safeTier, equipped == true)
 		local borderColor = self:GetSlotBorderColor(safeTier, occupied == true, isLeadSlot == true)
@@ -811,31 +811,12 @@ script BRSkillChainUI extends Component
 	end
 
 	method boolean ShouldUseSolidSkillIcon(string rootKind, string basePath, boolean isLeadSlot)
-		-- Returns true only for the five internal chain sequence slots.
-		if self:ReadString(rootKind, "CHAIN") ~= "CHAIN" then
-			return false
-		end
-		if isLeadSlot == true then
-			return false
-		end
-		local path = self:ReadString(basePath, "")
-		if path == "" then
-			return false
-		end
-		if path == "Panel/Chain/Representative" then
-			return false
-		end
-		if self:StartsWith(path, "Panel/Chain/Representative/") == true then
-			return false
-		end
-		if self:StartsWith(path, "Panel/Chain/Common_") == true then
-			return false
-		end
-		return self:StartsWith(path, "Panel/Chain/Slot_")
+		-- Chain slots now use the same CSV skill icons as the representative slot.
+		return false
 	end
 
 	method string GetSlotIconRUID(string skillKey, number tier, boolean isLeadSlot, boolean useSolidIcon)
-		-- Returns a solid sequence marker only for internal chain slots; all other skill slots use CSV icons.
+		-- Returns the skill icon declared in CSV, with the fallback only for missing data.
 		if useSolidIcon == true then
 			return self:GetFallbackIconRUID()
 		end
@@ -849,7 +830,7 @@ script BRSkillChainUI extends Component
 	end
 
 	method Color GetSlotIconDisplayColor(string skillKey, number tier, boolean occupied, boolean isRepresentative, boolean useSolidIcon)
-		-- Tints only the solid sequence marker; real icon slots stay neutral.
+		-- Real skill icons stay neutral; the solid-marker path is retained as a fallback hook.
 		if useSolidIcon == true then
 			return self:GetSolidSlotIconColor(skillKey, tier, occupied == true, isRepresentative == true)
 		end
@@ -883,7 +864,7 @@ script BRSkillChainUI extends Component
 		if key == "Default" or key == "" then
 			return 0
 		end
-		if key == "divineSwing" then
+		if key == "divineSwing" or key == "디바인 스윙" then
 			return 0
 		elseif key == "Blink" then
 			return 1

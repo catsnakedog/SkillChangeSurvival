@@ -88,6 +88,9 @@ script BRMagneticZoneSystem extends Logic
 	property number PhaseTimeRemaining = 0
 
 	@Sync
+	property integer PhaseNumber = 1
+
+	@Sync
 	property number SafeMinX = 0
 
 	@Sync
@@ -160,6 +163,7 @@ script BRMagneticZoneSystem extends Logic
 		self:InitializeZoneBounds()
 		self.phaseTimer = self.runtimeShrinkInterval
 		self.PhaseTimeRemaining = self.phaseTimer
+		self.PhaseNumber = 1
 		self.playerTickTimer = self:GetPlayerTickSeconds()
 		self.ZoneRunning = true
 		self.WarningActive = false
@@ -266,7 +270,8 @@ script BRMagneticZoneSystem extends Logic
 		self.WarningActive = false
 		self.phaseTimer = self.runtimeShrinkInterval
 		self.PhaseTimeRemaining = self.phaseTimer
-		self:Log("activated face=" .. face .. " active=" .. self.ActiveFacesSummary .. " safe=" .. self:GetSafeRectText())
+		self.PhaseNumber = math.min(9, self.PhaseNumber + 1)
+		self:Log("activated face=" .. face .. " active=" .. self.ActiveFacesSummary .. " phase=" .. tostring(self.PhaseNumber) .. " safe=" .. self:GetSafeRectText())
 	end
 
 	method string SelectNextFace()
@@ -1113,6 +1118,7 @@ script BRMagneticZoneSystem extends Logic
 		self.SafeMinColumn = 1
 		self.SafeMaxColumn = 1
 		self.PhaseTimeRemaining = 0
+		self.PhaseNumber = 1
 		self.SafeMinX = self:ReadNumber(self.InitialMinX, -14)
 		self.SafeMaxX = self:ReadNumber(self.InitialMaxX, 14)
 		self.SafeMinY = self:ReadNumber(self.InitialMinY, -6)

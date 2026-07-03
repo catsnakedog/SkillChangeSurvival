@@ -1,1 +1,16 @@
-﻿action_id,status_id,duration_frames,damage_taken_rate
+action_id,status_id,duration_frames,damage_taken_rate,chance_percent,heal_max_hp_percent
+에픽 어드벤처/데미지버프,epic_adventure,2000,1,100,0
+메이플 용사/스탯버프,maple_hero,8000,1,100,0
+용사의 의지/면역,will_immunity,100,1,100,0
+리스토네이션/회복,restoration_heal,1,1,100,50
+인빈서블 빌리프/도트힐,invincible_belief,100,1,100,26
+볼트 플로우/표식버프,bolt_flow_mark,4000,1,100,0
+데미지 리버싱/보호막,damage_reversing,267,0.4,100,0
+메디테이션/마력버프,meditation,8000,1,100,0
+엘리멘탈 어뎁팅/방어버프,elemental_adapting,8000,1,100,0
+다크 사이트/은신,dark_sight,6667,1,100,0
+페이탈 베놈/독패시브,fatal_venom_passive,8000,1,100,0
+미러 이미징/추가타버프,mirror_imaging,6667,1,100,0
+슬럼버/슬로우패시브,slumber_passive,8000,1,100,0
+럭키 다이스/버프,lucky_dice,6000,1,100,0
+반격의 슈터/반격버프,counter_shooter,8000,1,100,0

@@ -1,1 +1,4 @@
-﻿hitbox_id,offset_x,offset_y,radius
+hitbox_id,offset_x,offset_y,radius
+around_mid,0,40,220
+around_large,0,50,320
+around_xlarge,0,60,460

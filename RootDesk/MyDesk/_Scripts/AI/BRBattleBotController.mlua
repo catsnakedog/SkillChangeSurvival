@@ -893,13 +893,15 @@ script BRBattleBotController extends Component
 		if index < 1 then
 			index = 1
 		end
-		index = ((index - 1) % 4) + 1
+		index = ((index - 1) % 5) + 1
 		if index == 2 then
 			return "Mage"
 		elseif index == 3 then
 			return "Rogue"
 		elseif index == 4 then
 			return "Archer"
+		elseif index == 5 then
+			return "Pirate"
 		end
 		return "Knight"
 	end

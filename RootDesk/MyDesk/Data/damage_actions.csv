@@ -1,8 +1,7 @@
 ﻿action_id,attack_power_coefficient_percent,hit_effect_ruid
-ds1hit,120,
-애로우 블로우/피해,100,84a473e004a34fdea67aa74a87dc75c6
-전사_보조_스킬_event_1_damage,100,3ebd5d6967394c2589408f69c2bc5c54
-스피릿_블레이드_event_1_damage,100,
-샤프_슬래시_event_1_damage,100,9674832552bc479da4bce8858754c5d3
-샤프_슬래시_event_2_damage,100,
-슬래시_스톰_event_1_damage,100,6ce3e8c3483643c2b4993df78057eb77
+페이지 오더/피해,125,
+노블 디맨드/피해,1,
+리트리트 샷/피해,105,
+애로우 일루전/피해,200,
+사슬지옥/피해,150,
+기간틱 백스텝/피해,225,

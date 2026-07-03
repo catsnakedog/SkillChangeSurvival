@@ -5,7 +5,7 @@ script BRCharacterSystem extends Logic
 	property string CharacterDefaultSkillsTableName = "character_default_skills"
 
 	property boolean VerboseLog = true
-	property integer CharacterCatalogVersion = 2
+	property integer CharacterCatalogVersion = 3
 
 	property Entity classSelectRoot = "ff877862-5ed0-4b36-81e3-29f3385d63e8"
 
@@ -584,6 +584,22 @@ script BRCharacterSystem extends Logic
 						Shoes = "d79e6681a08c467fa69b37ab0e9023be",
 						Cap = "9defd0fd49cd45629d1c8beefc10ebd9",
 						FaceAccessory = "61e1d65f0816495d99f6d15698fa3643"
+					}
+				},
+				{
+					Key = "Pirate",
+					DisplayName = "Pirate",
+					UniqueSkillKey = "",
+					WeaponSlot = "TwoHanded",
+					Avatar = {
+						Face = "068838981d5b4815b7ee91dc3f64890b",
+						Weapon = "a18674b1d0cf47239721f7b11dd243c6",
+						Longcoat = "05a8f762ba03471dbbded534436646c3",
+						Hair = "e0645f6a889f465d97fe04c59245f211",
+						Body = "5b510a5cb03b4ba9bfe1b1666b17b2cf",
+						Head = "0de02144a449440298009cd2702b9f49",
+						EyeAccessory = "2a47d29e70ad47de9462f8945dae1685",
+						Shoes = "d79e6681a08c467fa69b37ab0e9023be"
 					}
 				}
 			}

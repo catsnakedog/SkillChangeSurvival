@@ -1,2 +1,7 @@
-﻿action_id,status_id,duration_frames,cancel_chain
-ds1stun,stun,30,true
+﻿action_id,status_id,duration_frames,cancel_chain,chance_percent,dot_coefficient_percent,tick_interval_frames
+페이지 오더/기절,stun,133,true,80,0,33
+페이지 오더/슬로우,slow,200,false,100,0,33
+노블 디맨드/약화,noble_demand,2667,false,100,0,33
+애로우 일루전/기절,stun,133,true,70,0,33
+사슬지옥/기절,stun,133,true,10,0,33
+기간틱 백스텝/슬로우,slow,133,false,55,0,33

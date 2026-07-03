@@ -1,0 +1,630 @@
+@Logic
+script BRSkillPartTestUI extends Logic
+
+	property string RootPath = "/ui/BRSkillPartTestGroup"
+
+	property string BattleHudRootPath = "/ui/BRBattleHudGroup"
+
+	property string SkillTableName = "skills"
+
+	property string PlaceholderIconRUID = "4fea64a3307cda641809ad8be0d4890b"
+
+	property number SlotCount = 25
+
+	property boolean VerboseLog = true
+
+	property any closeHandler = nil
+
+	property any inputTouchStartHandler = nil
+
+	property any inputTouchReleaseHandler = nil
+
+	property any inputMouseMoveHandler = nil
+
+	property number draggingIndex = 0
+
+	property string draggingSkillKey = ""
+
+	property string draggingPartId = ""
+
+	property number dragStartX = 0
+
+	property number dragStartY = 0
+
+	property boolean dragMoved = false
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		self:EnsureRuntime()
+		self:CloseImmediate()
+		self:ConnectHandlers()
+		self:Log("ready slots=" .. tostring(self:GetSlotCount()))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		self:DisconnectHandlers()
+	end
+
+	@ExecSpace("Client")
+	method void Open()
+		self:EnsureRuntime()
+		self:ConnectHandlers()
+		self:LoadCatalog()
+		self:RenderCatalog()
+		self:SetPanelActive(true)
+		self:RefreshRootRaycastBlocked()
+		self:Log("open count=" .. tostring(self:GetCatalogCount()))
+	end
+
+	@ExecSpace("Client")
+	method void Close()
+		self:CancelDrag()
+		self:SetPanelActive(false)
+		self:RefreshRootRaycastBlocked()
+		self:Log("closed")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void CloseImmediate()
+		self:CancelDrag()
+		self:SetPanelActive(false)
+		self:RefreshRootRaycastBlocked()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ConnectHandlers()
+		self:EnsureRuntime()
+		if self._T.handlersConnected == true then
+			return
+		end
+		self._T.handlers = {}
+
+		local closeButton = self:GetEntity("Panel/CloseButton")
+		local connectedUiCount = 0
+		if closeButton ~= nil then
+			self.closeHandler = closeButton:ConnectEvent(ButtonClickEvent, self.OnClickClose)
+			connectedUiCount = connectedUiCount + 1
+		end
+
+		for index = 1, self:GetSlotCount() do
+			local slotIndex = index
+			local slot = self:GetEntity("Panel/Grid/Slot_" .. tostring(slotIndex))
+			if slot ~= nil then
+				local downHandler = slot:ConnectEvent(UITouchDownEvent, function(event) self:OnSlotTouchDown(slotIndex, event) end)
+				local dragHandler = slot:ConnectEvent(UITouchDragEvent, function(event) self:OnSlotTouchDrag(slotIndex, event) end)
+				local upHandler = slot:ConnectEvent(UITouchUpEvent, function(event) self:OnSlotTouchUp(slotIndex, event) end)
+				table.insert(self._T.handlers, { Entity = slot, EventType = "DOWN", Handler = downHandler })
+				table.insert(self._T.handlers, { Entity = slot, EventType = "DRAG", Handler = dragHandler })
+				table.insert(self._T.handlers, { Entity = slot, EventType = "UP", Handler = upHandler })
+				connectedUiCount = connectedUiCount + 1
+			end
+		end
+
+		if connectedUiCount <= 0 then
+			self:Log("handlers delayed reason=noUiEntities")
+			return
+		end
+
+		if _InputService ~= nil then
+			self.inputTouchStartHandler = _InputService:ConnectEvent(ScreenTouchEvent, self.OnScreenTouchStart)
+			self.inputTouchReleaseHandler = _InputService:ConnectEvent(ScreenTouchReleaseEvent, self.OnScreenTouchRelease)
+			self.inputMouseMoveHandler = _InputService:ConnectEvent(MouseMoveEvent, self.OnMouseMove)
+		end
+
+		self._T.handlersConnected = true
+		self:Log("handlers connected count=" .. tostring(#self._T.handlers))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisconnectHandlers()
+		self:EnsureRuntime()
+		local closeButton = self:GetEntity("Panel/CloseButton")
+		if self.closeHandler ~= nil and closeButton ~= nil then
+			closeButton:DisconnectEvent(ButtonClickEvent, self.closeHandler)
+		end
+		self.closeHandler = nil
+
+		if self.inputTouchStartHandler ~= nil and _InputService ~= nil then
+			_InputService:DisconnectEvent(ScreenTouchEvent, self.inputTouchStartHandler)
+		end
+		self.inputTouchStartHandler = nil
+
+		if self.inputTouchReleaseHandler ~= nil and _InputService ~= nil then
+			_InputService:DisconnectEvent(ScreenTouchReleaseEvent, self.inputTouchReleaseHandler)
+		end
+		self.inputTouchReleaseHandler = nil
+
+		if self.inputMouseMoveHandler ~= nil and _InputService ~= nil then
+			_InputService:DisconnectEvent(MouseMoveEvent, self.inputMouseMoveHandler)
+		end
+		self.inputMouseMoveHandler = nil
+
+		for index, entry in ipairs(self._T.handlers) do
+			if entry ~= nil and entry.Entity ~= nil and entry.Handler ~= nil then
+				if entry.EventType == "DOWN" then
+					entry.Entity:DisconnectEvent(UITouchDownEvent, entry.Handler)
+				elseif entry.EventType == "DRAG" then
+					entry.Entity:DisconnectEvent(UITouchDragEvent, entry.Handler)
+				elseif entry.EventType == "UP" then
+					entry.Entity:DisconnectEvent(UITouchUpEvent, entry.Handler)
+				end
+			end
+		end
+		self._T.handlers = {}
+		self._T.handlersConnected = false
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnClickClose(ButtonClickEvent event)
+		self:Close()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnSlotTouchDown(number slotIndex, UITouchDownEvent event)
+		if event == nil or self:IsPanelActive() ~= true then
+			return
+		end
+		self:StartDragFromSlot(slotIndex, event.TouchPoint, "slot")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StartDragFromSlot(number slotIndex, Vector2 screenPoint, string source)
+		-- Starts a drag from a catalog slot using a screen-space pointer position.
+		if self.draggingIndex > 0 or self:IsPanelActive() ~= true then
+			return
+		end
+		local item = self:GetCatalogItem(slotIndex)
+		if item == nil then
+			return
+		end
+
+		self.draggingIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		self.draggingSkillKey = self:ReadString(item.SkillKey, "")
+		self.draggingPartId = self:ReadString(item.PartId, "")
+		self.dragStartX = screenPoint.x
+		self.dragStartY = screenPoint.y
+		self.dragMoved = false
+		self:RenderDragGhost(item)
+		self:SetDragGhostActive(true)
+		self:MoveGhostToTouch(screenPoint)
+		self:Log("drag begin skill=" .. self.draggingSkillKey .. " source=" .. self:ReadString(source, ""))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnSlotTouchDrag(number slotIndex, UITouchDragEvent event)
+		if event == nil or self.draggingIndex <= 0 then
+			return
+		end
+		self:UpdateDragMoved(event.TouchPoint)
+		self:MoveGhostToTouch(event.TouchPoint)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnSlotTouchUp(number slotIndex, UITouchUpEvent event)
+		if event == nil or self.draggingIndex <= 0 then
+			return
+		end
+		self:EndDragAtScreen(event.TouchPoint)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnScreenTouchStart(ScreenTouchEvent event)
+		-- Fallback path for cases where a child visual consumes the slot touch event.
+		if event == nil or self:IsPanelActive() ~= true or self.draggingIndex > 0 then
+			return
+		end
+		local slotIndex = self:GetCatalogSlotAtScreenPoint(event.TouchPoint)
+		if slotIndex <= 0 then
+			return
+		end
+		self:StartDragFromSlot(slotIndex, event.TouchPoint, "screen")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnScreenTouchRelease(ScreenTouchReleaseEvent event)
+		if event == nil or self.draggingIndex <= 0 then
+			return
+		end
+		self:EndDragAtScreen(event.TouchPoint)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnMouseMove(MouseMoveEvent event)
+		if self.draggingIndex <= 0 or _InputService == nil then
+			return
+		end
+		local cursorPosition = _InputService:GetCursorPosition()
+		self:UpdateDragMoved(cursorPosition)
+		self:MoveGhostToTouch(cursorPosition)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EndDragAtScreen(Vector2 screenPoint)
+		if self.draggingIndex <= 0 then
+			return
+		end
+		self:MoveGhostToTouch(screenPoint)
+		self:UpdateDragMoved(screenPoint)
+		local targetSlot = self:GetHudChainSlotAtScreenPoint(screenPoint)
+		local partId = self.draggingPartId
+		local skillKey = self.draggingSkillKey
+		self:CancelDrag()
+		if targetSlot <= 0 then
+			self:Log("drop ignored skill=" .. skillKey .. " reason=noTargetSlot")
+			return
+		end
+		local userId = self:GetLocalUserId()
+		if userId == "" then
+			self:Log("drop ignored skill=" .. skillKey .. " reason=noLocalUser")
+			return
+		end
+		if _BRSkillSystem == nil then
+			self:Log("drop ignored skill=" .. skillKey .. " reason=noSkillSystem")
+			return
+		end
+		_BRSkillSystem:RequestGrantTestPartToChainSlot(userId, partId, targetSlot)
+		self:Log("drop requested skill=" .. skillKey .. " slot=" .. tostring(targetSlot))
+	end
+
+	@ExecSpace("ClientOnly")
+	method number GetCatalogSlotAtScreenPoint(Vector2 screenPoint)
+		-- Finds the catalog slot under a screen-space pointer position.
+		for slotIndex = 1, self:GetSlotCount() do
+			local slot = self:GetEntity("Panel/Grid/Slot_" .. tostring(slotIndex))
+			if self:IsScreenPointInsideEntity(screenPoint, slot) == true then
+				return slotIndex
+			end
+		end
+		return 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method number GetHudChainSlotAtScreenPoint(Vector2 screenPoint)
+		for slotIndex = 1, 5 do
+			local slot = self:GetHudChainSlotEntity(slotIndex)
+			if self:IsScreenPointInsideEntity(screenPoint, slot) == true then
+				return slotIndex
+			end
+		end
+		return 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method Entity GetHudChainSlotEntity(number slotIndex)
+		local safeSlot = math.max(1, math.min(5, math.floor(self:ReadNumber(slotIndex, 1))))
+		local rootPath = self:ReadString(self.BattleHudRootPath, "/ui/BRBattleHudGroup")
+		local entity = _EntityService:GetEntityByPath(rootPath .. "/Bg/ChainPart_" .. tostring(safeSlot))
+		if entity == nil then
+			entity = _EntityService:GetEntityByPath(rootPath .. "/Panel/Chain/Slot_" .. tostring(safeSlot))
+		end
+		return entity
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsScreenPointInsideEntity(Vector2 screenPoint, Entity entity)
+		if entity == nil or entity.UITransformComponent == nil then
+			return false
+		end
+		local localPosition = _UILogic:ScreenToLocalUIPosition(screenPoint, entity.UITransformComponent)
+		local rectSize = entity.UITransformComponent.RectSize
+		return math.abs(localPosition.x) <= rectSize.x * 0.5 and math.abs(localPosition.y) <= rectSize.y * 0.5
+	end
+
+	@ExecSpace("ClientOnly")
+	method void LoadCatalog()
+		self:EnsureRuntime()
+		self._T.items = {}
+		local data = self:GetDataTable(self.SkillTableName)
+		if data == nil then
+			self:Log("catalog skipped reason=noDataSet")
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		local basicCategory = self:GetBasicSkillCategory(data)
+		for row = 1, rowCount do
+			local skillId = self:GetDataCell(data, row, "id", "")
+			local category = self:GetDataCell(data, row, "skill_category", "")
+			if skillId ~= "" and self:IsCatalogSkillPart(skillId, category, basicCategory) == true then
+				local displayName = self:GetDataCell(data, row, "name", skillId)
+				local iconRuid = self:GetSkillIconRUID(skillId, data, row)
+				table.insert(self._T.items, {
+					SkillKey = skillId,
+					PartId = skillId .. "_part",
+					DisplayName = displayName,
+					IconRUID = iconRuid
+				})
+			end
+		end
+		self:Log("catalog loaded count=" .. tostring(#self._T.items))
+	end
+
+	method boolean IsCatalogSkillPart(string skillId, string category, string basicCategory)
+		local safeSkillId = self:ReadString(skillId, "")
+		if safeSkillId == "" or safeSkillId == "Blink" or safeSkillId == "Nimbus" then
+			return false
+		end
+		local safeCategory = self:ReadString(category, "")
+		local safeBasicCategory = self:ReadString(basicCategory, "")
+		if safeCategory == "" then
+			return true
+		end
+		if safeBasicCategory ~= "" and safeCategory == safeBasicCategory then
+			return false
+		end
+		return true
+	end
+
+	method string GetBasicSkillCategory(any data)
+		if data == nil then
+			return ""
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local skillId = self:GetDataCell(data, row, "id", "")
+			if skillId == "Blink" or skillId == "Nimbus" then
+				local category = self:GetDataCell(data, row, "skill_category", "")
+				if category ~= "" then
+					return category
+				end
+			end
+		end
+		if rowCount > 0 then
+			return self:GetDataCell(data, 1, "skill_category", "")
+		end
+		return ""
+	end
+
+	method string GetSkillIconRUID(string skillId, any data, number row)
+		if _BRSkillUIDatabase ~= nil then
+			local icon = _BRSkillUIDatabase:GetSlotIconRUID(skillId, 1, false)
+			if self:ReadString(icon, "") ~= "" then
+				return icon
+			end
+		end
+		local csvIcon = self:GetDataCell(data, row, "icon_ruid", "")
+		if csvIcon ~= "" then
+			return csvIcon
+		end
+		return self:ReadString(self.PlaceholderIconRUID, "")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderCatalog()
+		local count = self:GetSlotCount()
+		for slotIndex = 1, count do
+			local item = self:GetCatalogItem(slotIndex)
+			local basePath = "Panel/Grid/Slot_" .. tostring(slotIndex)
+			if item == nil then
+				self:SetEntityActive(basePath, false)
+			else
+				self:SetEntityActive(basePath, true)
+				self:SetTextByPath(basePath .. "/Name", self:ReadString(item.DisplayName, "Skill"))
+				self:SetSpriteImage(basePath .. "/Icon", self:ReadString(item.IconRUID, self.PlaceholderIconRUID))
+				self:SetSpriteColor(basePath .. "/Icon", Color(1, 1, 1, 0.96))
+				self:SetSpriteColor(basePath .. "/Bg", Color(0.05, 0.07, 0.1, 0.9))
+				self:SetFrameColor(basePath, self:GetFrameColor(slotIndex))
+			end
+		end
+	end
+
+	method Color GetFrameColor(number slotIndex)
+		local paletteIndex = math.floor(self:ReadNumber(slotIndex, 1)) % 5
+		if paletteIndex == 1 then
+			return Color(0.36, 0.64, 1.0, 0.95)
+		elseif paletteIndex == 2 then
+			return Color(1.0, 0.58, 0.22, 0.95)
+		elseif paletteIndex == 3 then
+			return Color(0.62, 0.84, 0.28, 0.95)
+		elseif paletteIndex == 4 then
+			return Color(0.84, 0.48, 1.0, 0.95)
+		end
+		return Color(0.98, 0.82, 0.24, 0.95)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderDragGhost(any item)
+		self:SetTextByPath("DragGhost/Name", "")
+		self:SetSpriteImage("DragGhost/Icon", self:ReadString(item.IconRUID, self.PlaceholderIconRUID))
+		self:SetSpriteColor("DragGhost/Icon", Color(1, 1, 1, 0.98))
+		self:SetSpriteColor("DragGhost/Bg", Color(0.07, 0.1, 0.14, 0.96))
+		self:SetFrameColor("DragGhost", Color(1.0, 0.86, 0.28, 1.0))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetDragGhostActive(boolean active)
+		local ghost = self:GetEntity("DragGhost")
+		if ghost ~= nil then
+			ghost.Enable = active == true
+			if active == true and ghost.UITransformComponent ~= nil then
+				_UILogic:SetSiblingIndex(ghost.UITransformComponent, 1000000)
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void MoveGhostToTouch(Vector2 screenPoint)
+		local ghost = self:GetEntity("DragGhost")
+		if ghost == nil or ghost.UITransformComponent == nil then
+			return
+		end
+		ghost.UITransformComponent.anchoredPosition = _UILogic:ScreenToUIPosition(screenPoint)
+	end
+
+	method void UpdateDragMoved(Vector2 screenPoint)
+		local dx = screenPoint.x - self.dragStartX
+		local dy = screenPoint.y - self.dragStartY
+		if dx * dx + dy * dy >= 36 then
+			self.dragMoved = true
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void CancelDrag()
+		self:SetDragGhostActive(false)
+		self.draggingIndex = 0
+		self.draggingSkillKey = ""
+		self.draggingPartId = ""
+		self.dragStartX = 0
+		self.dragStartY = 0
+		self.dragMoved = false
+	end
+
+	method any GetCatalogItem(number index)
+		self:EnsureRuntime()
+		local safeIndex = math.floor(self:ReadNumber(index, 0))
+		if safeIndex <= 0 then
+			return nil
+		end
+		return self._T.items[safeIndex]
+	end
+
+	method number GetCatalogCount()
+		self:EnsureRuntime()
+		return #self._T.items
+	end
+
+	method void EnsureRuntime()
+		if self._T.items == nil then
+			self._T.items = {}
+		end
+		if self._T.handlers == nil then
+			self._T.handlers = {}
+		end
+		if self._T.handlersConnected == nil then
+			self._T.handlersConnected = false
+		end
+	end
+
+	method any GetDataTable(string tableName)
+		local safeName = self:ReadString(tableName, "")
+		if safeName == "" then
+			return nil
+		end
+		return _DataService:GetTable(safeName)
+	end
+
+	method string GetDataCell(any dataSet, number row, string columnName, string fallback)
+		if dataSet == nil then
+			return self:ReadString(fallback, "")
+		end
+		local value = dataSet:GetCell(math.max(1, math.floor(self:ReadNumber(row, 1))), self:ReadString(columnName, ""))
+		if value == nil then
+			return self:ReadString(fallback, "")
+		end
+		return self:TrimString(tostring(value))
+	end
+
+	@ExecSpace("ClientOnly")
+	method Entity GetEntity(string relativePath)
+		local path = self:ReadString(relativePath, "")
+		if path == "" then
+			return nil
+		end
+		if string.sub(path, 1, 1) ~= "/" then
+			path = self:ReadString(self.RootPath, "/ui/BRSkillPartTestGroup") .. "/" .. path
+		end
+		return _EntityService:GetEntityByPath(path)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetPanelActive(boolean active)
+		self:SetEntityActive("Panel", active)
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsPanelActive()
+		local panel = self:GetEntity("Panel")
+		return panel ~= nil and panel.Enable == true
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetEntityActive(string relativePath, boolean active)
+		local entity = self:GetEntity(relativePath)
+		if entity ~= nil then
+			entity.Enable = active == true
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshRootRaycastBlocked()
+		local root = _EntityService:GetEntityByPath(self:ReadString(self.RootPath, "/ui/BRSkillPartTestGroup"))
+		local panelOpen = self:IsPanelActive()
+		if root ~= nil and root.CanvasGroupComponent ~= nil then
+			root.CanvasGroupComponent.BlocksRaycasts = panelOpen == true
+			root.CanvasGroupComponent.Interactable = panelOpen == true
+			root.CanvasGroupComponent.GroupAlpha = 1
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetTextByPath(string relativePath, string text)
+		local entity = self:GetEntity(relativePath)
+		if entity ~= nil and entity.TextComponent ~= nil then
+			entity.TextComponent.Text = self:ReadString(text, "")
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetSpriteImage(string relativePath, string ruid)
+		local entity = self:GetEntity(relativePath)
+		if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
+			entity.SpriteGUIRendererComponent.ImageRUID = DataRef(self:ReadString(ruid, self.PlaceholderIconRUID))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetSpriteColor(string relativePath, Color color)
+		local entity = self:GetEntity(relativePath)
+		if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
+			entity.SpriteGUIRendererComponent.Color = color
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetFrameColor(string basePath, Color color)
+		self:SetSpriteColor(basePath .. "/FrameTop", color)
+		self:SetSpriteColor(basePath .. "/FrameBottom", color)
+		self:SetSpriteColor(basePath .. "/FrameLeft", color)
+		self:SetSpriteColor(basePath .. "/FrameRight", color)
+	end
+
+	method string GetLocalUserId()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer ~= nil and localPlayer.PlayerComponent ~= nil then
+			return self:ReadString(localPlayer.PlayerComponent.UserId, "")
+		end
+		return ""
+	end
+
+	method number GetSlotCount()
+		return math.max(1, math.floor(self:ReadNumber(self.SlotCount, 25)))
+	end
+
+	method string TrimString(string value)
+		local text = self:ReadString(value, "")
+		return self:ReadString(string.match(text, "^%s*(.-)%s*$"), "")
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRSkillPartTestUI] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

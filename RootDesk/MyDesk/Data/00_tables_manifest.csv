@@ -1,21 +1,21 @@
-﻿file_name,table_title,source_pages,column_count,sample_row_count,notes
-jobs.csv,직업/계열,p2,2,11,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-characters.csv,캐릭터,p20,6,1,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-skills.csv,스킬,"p8,p29,p44",9,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-effects.csv,이펙트,p22,4,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-skill_action_restrictions.csv,행동제한 데이터,"p22,p30",4,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-events.csv,이벤트,"p24,p33,p44",4,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-area_target_captures.csv,범위 대상포착 데이터,"p41,p43,p44",5,1,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-rect_hitboxes.csv,히트박스 - 사각형 데이터,"p40,p44,p47",5,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-circle_hitboxes.csv,히트박스 - 원형 데이터,p40,4,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-actions.csv,액션,"p34,p43,p44,p60",3,4,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-buff_actions.csv,버프 액션 데이터,p60,4,0,기획서의 버프 액션 상세 데이터. 복수 가능 값은 pipe(|)로 입력
-debuff_actions.csv,디버프 액션 데이터,p60,4,1,기획서의 디버프 액션 상세 데이터. 복수 가능 값은 pipe(|)로 입력
-damage_actions.csv,피해 액션 데이터,p35,3,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,"p49,p50",9,1,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-ground_area_spawn_actions.csv,장판 데이터,p52,4,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-trigger_actions.csv,트리거 액션,"p53,p58,p59",3,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-dash_actions.csv,대쉬 데이터,p60,3,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-teleport_actions.csv,텔레포트 데이터,p60,2,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-skill_chains.csv,스킬 체인,"p4,p17,p53,p54",6,1,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
-character_default_skills.csv,클래스별 기본 스킬,"p20,p29",8,4,캐릭터/클래스별 기본 공격·기본 스킬·고유 스킬 지정. 복수 가능 값은 pipe(|)로 입력
+file_name,table_title,source_pages,column_count,sample_row_count,notes
+jobs.csv,직업/계열,p2,2,11,현재 기획 직업군 기준
+characters.csv,캐릭터,p20,6,1,기본 캐릭터 스탯
+skills.csv,스킬,"p8,p29,p44",15,48,CSV 기반 스킬 본체와 아이콘
+effects.csv,이펙트,p22,4,81,공식 MapleStory 리소스 RUID 매핑
+skill_action_restrictions.csv,행동제한 데이터,"p22,p30",4,25,스킬별 시전 중 이동 제한
+events.csv,이벤트,"p24,p33,p44",4,61,프레임 이벤트와 액션 실행 연결
+area_target_captures.csv,범위 대상포착 데이터,"p41,p43,p44",6,26,히트박스 기반 타겟 포착
+rect_hitboxes.csv,히트박스 - 사각형 데이터,"p40,p44,p47",5,9,공통 사각 히트박스
+circle_hitboxes.csv,히트박스 - 원형 데이터,p40,4,3,공통 원형 히트박스
+actions.csv,액션,"p34,p43,p44,p60",3,77,액션 타입과 요구 컨텍스트
+buff_actions.csv,버프 액션 데이터,p60,6,15,버프 확률과 즉시 회복 데이터 포함
+debuff_actions.csv,디버프 액션 데이터,p60,7,14,상태이상 확률과 도트 틱 데이터 포함
+damage_actions.csv,피해 액션 데이터,p35,3,35,공격력 계수 기반 피해
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,"p49,p50",9,7,관통 투사체 데이터
+ground_area_spawn_actions.csv,장판 데이터,p52,8,3,장판 지속시간과 틱 간격 포함
+trigger_actions.csv,트리거 액션,"p53,p58,p59",3,0,트리거 액션 데이터
+dash_actions.csv,대쉬 데이터,p60,4,3,수평과 수직 이동 데이터
+teleport_actions.csv,텔레포트 데이터,p60,2,0,텔레포트 액션 데이터
+skill_chains.csv,스킬 체인,"p4,p17,p53,p54",6,6,직업별 5칸 체인
+character_default_skills.csv,클래스별 기본 스킬,"p20,p29",8,5,캐릭터 클래스별 기본 스킬과 시작 체인

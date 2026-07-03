@@ -8,4 +8,4 @@
 - 컬럼 정의서: `00_column_definitions.csv`
 - 테이블 목록: `00_tables_manifest.csv`
 
-예시로 기획서에 있는 `divineSwing`, `divineSwingArea1`, `ds1b1`, `ds1b2` 값만 샘플 행에 넣었습니다.
+현재 CSV는 직업별 기본 체인과 공통 액션 런타임이 읽을 수 있는 스킬/이벤트/액션/히트박스 데이터를 포함합니다.

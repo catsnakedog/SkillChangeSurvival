@@ -1,1 +1,2 @@
-﻿action_id,ground_area_cycle,ground_area_event_ids,ground_area_effect_id
+﻿action_id,duration_frames,tick_interval_frames,hitbox_ids,target,ground_area_event_ids,ground_area_effect_id,max_targets
+애로우 일루전/장판 액션,1000,33,around_mid,적군,애로우 일루전/피해|애로우 일루전/기절,애로우 일루전/effect,8

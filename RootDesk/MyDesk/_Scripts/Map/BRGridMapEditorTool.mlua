@@ -29,6 +29,8 @@ script BRGridMapEditorTool extends Component
 
 	property number GeneratedRoomPhysicsRestoreDelaySeconds = 0.03
 
+	property boolean RemoveGeneratedRoomFloorFootholds = true
+
 	property string SupplyChildName = "SupplyBox"
 
 	property number SupplyOffsetX = 0
@@ -41,7 +43,9 @@ script BRGridMapEditorTool extends Component
 		-- Logs the current grid authoring settings when the tool entity loads.
 		self:EnsureRuntimeTables()
 		self:Log("ready grid=" .. tostring(self:GetColumns()) .. "x" .. tostring(self:GetRows()) .. " parts=" .. tostring(self:GetMapPartCount()) .. " fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. " pool=" .. tostring(self:GetPoolPartCount()) .. " room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. ") gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. ") number=" .. self:GetPartRangeText() .. " runtimeClone=" .. tostring(self:IsRuntimeRoomCloningAllowed()))
-		self:RefreshGeneratedRoomPhysics(self:GetGeneratedRoot(), "begin play")
+		local root = self:GetGeneratedRoot()
+		self:ClearGeneratedRoomFloorFootholds(root, "begin play")
+		self:RefreshGeneratedRoomPhysics(root, "begin play")
 	end
 
 	method void EnsureRuntimeTables()
@@ -258,9 +262,46 @@ script BRGridMapEditorTool extends Component
 		end
 
 		local boundsText = self:SyncMapBoundsFromGrid()
+		local clearedFloorFootholds = self:ClearGeneratedRoomFloorFootholds(root, self:ReadString(actionName, "synced"))
 		local summary = "grid=" .. tostring(columns) .. "x" .. tostring(rows) .. ", parts=" .. tostring(self:GetMapPartCount()) .. ", fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. ", pool=" .. tostring(self:GetPoolPartCount()) .. ", number=" .. self:GetPartRangeText() .. ", room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. "), gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. "), runtimeClone=" .. tostring(allowRuntimeClone) .. ", reused=" .. tostring(reusedCount) .. ", created=" .. tostring(createdCount) .. ", missing=" .. tostring(missingCount)
-		self:Log(self:ReadString(actionName, "synced") .. " " .. summary .. ", hiddenOutOfRange=" .. tostring(hiddenOutOfRange) .. ", bounds=" .. boundsText)
+		self:Log(self:ReadString(actionName, "synced") .. " " .. summary .. ", hiddenOutOfRange=" .. tostring(hiddenOutOfRange) .. ", floorFootholdsCleared=" .. tostring(clearedFloorFootholds) .. ", bounds=" .. boundsText)
 		self:RefreshGeneratedRoomPhysics(root, self:ReadString(actionName, "synced"))
+	end
+
+	method number ClearGeneratedRoomFloorFootholds(Entity root, string reason)
+		-- Generated room roots are visual room bounds only; their bottom foothold must not catch falling players.
+		if self:ShouldRemoveGeneratedRoomFloorFootholds() ~= true then
+			return 0
+		end
+		if root == nil or root.Children == nil then
+			return 0
+		end
+
+		local clearedCount = 0
+		local children = root.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil and self:IsGeneratedRoomName(child.Name) == true then
+				if self:ClearRoomFloorFoothold(child) == true then
+					clearedCount = clearedCount + 1
+				end
+			end
+		end
+
+		self:Log("room floor footholds cleared reason=" .. self:ReadString(reason, "sync") .. " rooms=" .. tostring(clearedCount))
+		return clearedCount
+	end
+
+	method boolean ClearRoomFloorFoothold(Entity room)
+		if room == nil or room.CustomFootholdComponent == nil then
+			return false
+		end
+
+		local foothold = room.CustomFootholdComponent
+		if foothold.edgeLists ~= nil then
+			foothold.edgeLists:Clear()
+		end
+		foothold.Enable = false
+		return true
 	end
 
 	method void RefreshGeneratedRoomPhysics(Entity root, string reason)
@@ -492,7 +533,7 @@ script BRGridMapEditorTool extends Component
 	end
 
 	method void ApplyRoomShape(Entity room)
-		-- Updates visual bounds and foothold width for the current room dimensions.
+		-- Updates visual bounds for the current room dimensions.
 		if room == nil then
 			return
 		end
@@ -512,13 +553,7 @@ script BRGridMapEditorTool extends Component
 			room.PolygonRendererComponent.Points:Add(Vector2(-halfWidth, halfHeight))
 		end
 
-		if room.CustomFootholdComponent ~= nil then
-			room.CustomFootholdComponent.edgeLists:Clear()
-			room.CustomFootholdComponent.edgeLists:Add({
-				Vector2(-halfWidth, -halfHeight),
-				Vector2(halfWidth, -halfHeight)
-			})
-		end
+		self:ClearRoomFloorFoothold(room)
 	end
 
 	method void ApplyRoomNumber(Entity room, number partSlot)
@@ -1202,6 +1237,11 @@ script BRGridMapEditorTool extends Component
 	method number GetGeneratedRoomPhysicsRestoreDelaySeconds()
 		-- Returns how long the generated rooms stay nudged before returning.
 		return math.max(0.01, self:ReadNumber(self.GeneratedRoomPhysicsRestoreDelaySeconds, 0.03))
+	end
+
+	method boolean ShouldRemoveGeneratedRoomFloorFootholds()
+		-- Room bottoms are logical out-of-bounds, not walkable platforms.
+		return self.RemoveGeneratedRoomFloorFootholds ~= false
 	end
 
 	method number GetGapX()

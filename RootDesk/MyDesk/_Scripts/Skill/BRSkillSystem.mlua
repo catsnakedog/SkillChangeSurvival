@@ -72,6 +72,7 @@ script BRSkillSystem extends Logic
 		-- Initializes the server-side skill-chain runtime once per world session.
 		self:EnsureRuntime()
 		self:Log("runtime ready frameSeconds=" .. tostring(self:GetSkillFrameSeconds()))
+		self:ValidateSkillDataCatalogs()
 	end
 
 	@ExecSpace("ServerOnly")
@@ -161,6 +162,113 @@ script BRSkillSystem extends Logic
 		end
 	end
 
+	method void ValidateSkillDataCatalogs()
+		-- Logs broken CSV/DataSet references early so silent skill failures are visible.
+		self:Log("data loaded skills=" .. tostring(self:GetTableCount(self._T.skillRuntimeCatalog)) .. " parts=" .. tostring(self:GetTableCount(self._T.catalog)) .. " events=" .. tostring(self:GetTableCount(self._T.skillEventCatalog)) .. " actions=" .. tostring(self:GetTableCount(self._T.skillActionCatalog)) .. " hitboxes=" .. tostring(self:GetTableCount(self._T.skillHitboxCatalog)))
+		self:ValidateSkillTimelineEvents()
+		self:ValidateSkillEventDefinitions()
+		self:ValidateSkillActionDefinitions()
+	end
+
+	method void ValidateSkillTimelineEvents()
+		-- Checks skill frame_event_ids against events.csv.
+		if self._T.skillRuntimeCatalog == nil then
+			return
+		end
+		for skillKey, skillDef in pairs(self._T.skillRuntimeCatalog) do
+			if skillDef ~= nil and skillDef.EventsByFrame ~= nil then
+				for frame, eventIds in pairs(skillDef.EventsByFrame) do
+					for index, eventId in ipairs(eventIds) do
+						local safeEventId = self:ReadString(eventId, "")
+						if safeEventId ~= "" and (self._T.skillEventCatalog == nil or self._T.skillEventCatalog[safeEventId] == nil) then
+							self:Log("data warning missing event skill=" .. self:ReadString(skillKey, "") .. " frame=" .. tostring(frame) .. " event=" .. safeEventId)
+						end
+					end
+				end
+			end
+		end
+	end
+
+	method void ValidateSkillEventDefinitions()
+		-- Checks events.csv and context-generator references.
+		if self._T.skillEventCatalog == nil then
+			return
+		end
+		for eventId, eventDef in pairs(self._T.skillEventCatalog) do
+			local safeEventId = self:ReadString(eventId, "")
+			local eventType = self:ReadString(eventDef.Type, "action")
+			if eventType == "area" or eventType == "field" then
+				self:ValidateHitboxReferences(safeEventId, eventDef.HitboxIds, "event-hitbox")
+				self:ValidateActionReferences(safeEventId, eventDef.ActionIds, "event-action")
+			elseif eventType == "projectile" then
+				self:ValidateHitboxReferences(safeEventId, eventDef.HitboxIds, "event-projectile-hitbox")
+				self:ValidateActionReferences(safeEventId, eventDef.ActionIds, "event-projectile-action")
+				self:ValidateEventReferences(safeEventId, eventDef.CollisionEventIds, "event-projectile-collision")
+				self:ValidateEventReferences(safeEventId, eventDef.ExpireEventIds, "event-projectile-expire")
+			else
+				self:ValidateActionReferences(safeEventId, eventDef.ActionIds, "event-action")
+			end
+		end
+	end
+
+	method void ValidateSkillActionDefinitions()
+		-- Checks nested action detail references such as projectile collision events.
+		if self._T.skillActionCatalog == nil then
+			return
+		end
+		for actionId, actionDef in pairs(self._T.skillActionCatalog) do
+			local safeActionId = self:ReadString(actionId, "")
+			local actionType = self:ReadString(actionDef.Type, "")
+			if actionType == "projectile" then
+				self:ValidateHitboxReferences(safeActionId, actionDef.HitboxIds, "projectile-hitbox")
+				self:ValidateEventReferences(safeActionId, actionDef.CollisionEventIds, "projectile-collision")
+				self:ValidateEventReferences(safeActionId, actionDef.ExpireEventIds, "projectile-expire")
+			elseif actionType == "field" then
+				self:ValidateHitboxReferences(safeActionId, actionDef.HitboxIds, "field-hitbox")
+				self:ValidateActionReferences(safeActionId, actionDef.ActionIds, "field-action")
+			end
+		end
+	end
+
+	method void ValidateActionReferences(string ownerId, any actionIds, string sourceType)
+		-- Checks an action id list against actions.csv.
+		if actionIds == nil then
+			return
+		end
+		for index, actionId in ipairs(actionIds) do
+			local safeActionId = self:ReadString(actionId, "")
+			if safeActionId ~= "" and (self._T.skillActionCatalog == nil or self._T.skillActionCatalog[safeActionId] == nil) then
+				self:Log("data warning missing action owner=" .. self:ReadString(ownerId, "") .. " type=" .. self:ReadString(sourceType, "") .. " action=" .. safeActionId)
+			end
+		end
+	end
+
+	method void ValidateEventReferences(string ownerId, any eventIds, string sourceType)
+		-- Checks an event id list against events.csv.
+		if eventIds == nil then
+			return
+		end
+		for index, eventId in ipairs(eventIds) do
+			local safeEventId = self:ReadString(eventId, "")
+			if safeEventId ~= "" and (self._T.skillEventCatalog == nil or self._T.skillEventCatalog[safeEventId] == nil) then
+				self:Log("data warning missing event owner=" .. self:ReadString(ownerId, "") .. " type=" .. self:ReadString(sourceType, "") .. " event=" .. safeEventId)
+			end
+		end
+	end
+
+	method void ValidateHitboxReferences(string ownerId, any hitboxIds, string sourceType)
+		-- Checks a hitbox id list against rect/circle hitbox DataSets.
+		if hitboxIds == nil then
+			return
+		end
+		for index, hitboxId in ipairs(hitboxIds) do
+			local safeHitboxId = self:ReadString(hitboxId, "")
+			if safeHitboxId ~= "" and (self._T.skillHitboxCatalog == nil or self._T.skillHitboxCatalog[safeHitboxId] == nil) then
+				self:Log("data warning missing hitbox owner=" .. self:ReadString(ownerId, "") .. " type=" .. self:ReadString(sourceType, "") .. " hitbox=" .. safeHitboxId)
+			end
+		end
+	end
+
 	method any CreateCatalog()
 		-- Builds rollable skill parts from the skills DataSet.
 		local catalog = {}
@@ -177,10 +285,7 @@ script BRSkillSystem extends Logic
 			end
 		end
 		if self:GetTableCount(catalog) <= 0 then
-			local fallbackSkill = self:GetDefaultBasicSkillId()
-			if fallbackSkill ~= "" then
-				self:AddPartDefinition(catalog, fallbackSkill .. "_part", fallbackSkill, fallbackSkill, self:BuildShortKey(fallbackSkill, fallbackSkill))
-			end
+			self:Log("part catalog empty reason=noChainSkillRows")
 		end
 		return catalog
 	end
@@ -531,6 +636,18 @@ script BRSkillSystem extends Logic
 
 	method string NormalizeEventType(string eventType)
 		local safeType = self:ReadString(eventType, "")
+		if safeType == "area" or safeType == "area_target" then
+			return "area"
+		end
+		if safeType == "projectile" or safeType == "projectile_spawn" then
+			return "projectile"
+		end
+		if safeType == "field" or safeType == "ground_area" or safeType == "ground_area_spawn" then
+			return "field"
+		end
+		if safeType == "action" or safeType == "action_execute" then
+			return "action"
+		end
 		if safeType == "범위 대상포착" or safeType == "범위 내 대상 포착" or string.find(safeType, "범위") ~= nil then
 			return "area"
 		end
@@ -545,6 +662,30 @@ script BRSkillSystem extends Logic
 
 	method string NormalizeActionType(string actionType)
 		local safeType = self:ReadString(actionType, "")
+		if safeType == "damage" then
+			return "damage"
+		end
+		if safeType == "buff" then
+			return "buff"
+		end
+		if safeType == "debuff" then
+			return "debuff"
+		end
+		if safeType == "trigger" then
+			return "trigger"
+		end
+		if safeType == "move" or safeType == "dash" or safeType == "teleport" then
+			return "move"
+		end
+		if safeType == "projectile" or safeType == "projectile_spawn" then
+			return "projectile"
+		end
+		if safeType == "field" or safeType == "ground_area" or safeType == "ground_area_spawn" then
+			return "field"
+		end
+		if safeType == "aftereffect" or safeType == "after_effect" then
+			return "aftereffect"
+		end
 		if safeType == "피해" then
 			return "damage"
 		end
@@ -638,6 +779,7 @@ script BRSkillSystem extends Logic
 		eventDef.HitboxIds = self:ParseDelimitedList(self:GetDataCell(data, rowIndex, "hitbox_ids", ""), "|")
 		eventDef.ActionIds = self:ParseDelimitedList(self:GetDataCell(data, rowIndex, "action_ids", ""), "|")
 		eventDef.TargetGroup = self:GetDataCell(data, rowIndex, "target", "")
+		eventDef.MaxTargets = math.max(0, math.floor(self:ReadNumber(self:GetDataCell(data, rowIndex, "max_targets", "0"), 0)))
 	end
 
 	method number GetDataRowIndex(any dataSet, string columnName, string value)
@@ -706,9 +848,13 @@ script BRSkillSystem extends Logic
 			local actionDef = actions[actionId]
 			if actionDef ~= nil then
 				actionDef.Type = "field"
-				actionDef.DurationFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "ground_area_cycle", "1"), 1)))
+	actionDef.DurationFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "duration_frames", "1"), 1)))
+				actionDef.TickIntervalFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "tick_interval_frames", "1"), 1)))
 				actionDef.ActionIds = self:ParseDelimitedList(self:GetDataCell(data, row, "ground_area_event_ids", ""), "|")
 				actionDef.FieldEffectId = self:GetDataCell(data, row, "ground_area_effect_id", "")
+				actionDef.HitboxIds = self:ParseDelimitedList(self:GetDataCell(data, row, "hitbox_ids", ""), "|")
+				actionDef.TargetGroup = self:GetDataCell(data, row, "target", "")
+				actionDef.MaxTargets = math.max(0, math.floor(self:ReadNumber(self:GetDataCell(data, row, "max_targets", "0"), 0)))
 			end
 		end
 	end
@@ -743,7 +889,7 @@ script BRSkillSystem extends Logic
 				actionDef.Type = "move"
 				actionDef.Distance = self:PixelsToWorld(self:GetDataCell(data, row, "range", "0"), 0)
 				actionDef.MoveTimeFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "move_time_frames", "1"), 1)))
-				actionDef.Vertical = 0
+				actionDef.Vertical = self:PixelsToWorld(self:GetDataCell(data, row, "vertical", "0"), 0)
 			end
 		end
 	end
@@ -778,6 +924,8 @@ script BRSkillSystem extends Logic
 				actionDef.StatusId = self:GetDataCell(data, row, "status_id", "buff")
 				actionDef.DurationFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "duration_frames", "1"), 1)))
 				actionDef.DamageTakenRate = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "damage_taken_rate", "1"), 1))
+				actionDef.ChancePercent = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "chance_percent", "100"), 100))
+				actionDef.HealMaxHpPercent = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "heal_max_hp_percent", "0"), 0))
 			end
 		end
 	end
@@ -796,6 +944,9 @@ script BRSkillSystem extends Logic
 				actionDef.StatusId = self:GetDataCell(data, row, "status_id", "debuff")
 				actionDef.DurationFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "duration_frames", "1"), 1)))
 				actionDef.CancelChain = self:ReadDataBoolean(data, row, "cancel_chain", false)
+				actionDef.ChancePercent = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "chance_percent", "100"), 100))
+				actionDef.DotCoefficient = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "dot_coefficient_percent", "0"), 0))
+				actionDef.TickIntervalFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "tick_interval_frames", "33"), 33)))
 			end
 		end
 	end
@@ -1347,8 +1498,10 @@ script BRSkillSystem extends Logic
 
 	method void StartSkillEvent(any cast, string eventId)
 		-- Starts one skill event from a timeline frame.
-		local eventDef = self._T.skillEventCatalog[self:ReadString(eventId, "")]
+		local safeEventId = self:ReadString(eventId, "")
+		local eventDef = self._T.skillEventCatalog[safeEventId]
 		if eventDef == nil then
+			self:Log("event skipped reason=missing skill=" .. self:ReadString(cast.SkillKey, "") .. " event=" .. safeEventId)
 			return
 		end
 		local eventType = self:ReadString(eventDef.Type, "action")
@@ -1410,8 +1563,12 @@ script BRSkillSystem extends Logic
 			EndTier = math.max(0, math.floor(self:ReadNumber(context.EndTier, 0))),
 			RemainingFrames = math.max(1, math.floor(self:ReadNumber(eventDef.DurationFrames, 1))),
 			FrameTimer = 0,
+			TickIntervalFrames = math.max(1, math.floor(self:ReadNumber(eventDef.TickIntervalFrames, 1))),
+			TickFrameCounter = 0,
 			HitboxIds = eventDef.HitboxIds,
 			ActionIds = eventDef.ActionIds,
+			MaxTargets = math.max(0, math.floor(self:ReadNumber(eventDef.MaxTargets, 0))),
+			HitCount = 0,
 			SeenTargets = {},
 			TriggerFired = false
 		}
@@ -1445,11 +1602,16 @@ script BRSkillSystem extends Logic
 	method void ProcessAreaFrame(any area)
 		-- Detects targets inside one active area and runs its actions once per target.
 		local targets = self:CollectTargetsForContext(area)
+		local maxTargets = math.max(0, math.floor(self:ReadNumber(area.MaxTargets, 0)))
 		for index, targetEntity in ipairs(targets) do
+			if maxTargets > 0 and self:ReadNumber(area.HitCount, 0) >= maxTargets then
+				return
+			end
 			if self:IsSkillTargetValid(area, targetEntity) == true and self:IsTargetInsideHitboxes(area, targetEntity) == true then
 				local targetKey = self:GetEntityKey(targetEntity)
 				if area.SeenTargets[targetKey] ~= true then
 					area.SeenTargets[targetKey] = true
+					area.HitCount = self:ReadNumber(area.HitCount, 0) + 1
 					local pos = self:GetEntityPosition2(targetEntity)
 					self:ExecuteActions(area, area.ActionIds, targetEntity, pos.x, pos.y, self:ReadString(area.EventId, "area"))
 				end
@@ -1573,8 +1735,13 @@ script BRSkillSystem extends Logic
 			FixedOriginY = origin.y,
 			RemainingFrames = math.max(1, math.floor(self:ReadNumber(eventDef.DurationFrames, 1))),
 			FrameTimer = 0,
+			TickIntervalFrames = math.max(1, math.floor(self:ReadNumber(eventDef.TickIntervalFrames, 1))),
+			TickFrameCounter = 0,
 			HitboxIds = eventDef.HitboxIds,
 			ActionIds = eventDef.ActionIds,
+			TargetGroup = self:ReadString(eventDef.TargetGroup, ""),
+			MaxTargets = math.max(0, math.floor(self:ReadNumber(eventDef.MaxTargets, 0))),
+			HitCount = 0,
 			SeenTargets = {},
 			EndSkillDef = context.EndSkillDef,
 			EndTier = math.max(0, math.floor(self:ReadNumber(context.EndTier, 0))),
@@ -1602,9 +1769,14 @@ script BRSkillSystem extends Logic
 				local frameSeconds = self:GetSkillFrameSeconds()
 				while field.FrameTimer >= frameSeconds and field.RemainingFrames > 0 do
 					field.FrameTimer = field.FrameTimer - frameSeconds
-					field.SeenTargets = {}
-					self:ProcessAreaFrame(field)
 					field.RemainingFrames = field.RemainingFrames - 1
+					field.TickFrameCounter = self:ReadNumber(field.TickFrameCounter, 0) + 1
+					if self:ReadNumber(field.TickFrameCounter, 0) >= math.max(1, math.floor(self:ReadNumber(field.TickIntervalFrames, 1))) then
+						field.TickFrameCounter = 0
+						field.SeenTargets = {}
+						field.HitCount = 0
+						self:ProcessAreaFrame(field)
+					end
 				end
 				if field.RemainingFrames <= 0 then
 					self:Log("field end user=" .. self:ReadString(field.UserId, "") .. " event=" .. self:ReadString(field.EventId, ""))
@@ -1620,9 +1792,12 @@ script BRSkillSystem extends Logic
 			return
 		end
 		for index, actionId in ipairs(actionIds) do
-			local actionDef = self._T.skillActionCatalog[actionId]
+			local safeActionId = self:ReadString(actionId, "")
+			local actionDef = self._T.skillActionCatalog[safeActionId]
 			if actionDef ~= nil then
 				self:ExecuteAction(context, actionDef, targetEntity, triggerX, triggerY, sourceId)
+			else
+				self:Log("action skipped reason=missing source=" .. self:ReadString(sourceId, "") .. " action=" .. safeActionId)
 			end
 		end
 	end
@@ -1633,7 +1808,8 @@ script BRSkillSystem extends Logic
 			return
 		end
 		for index, eventId in ipairs(eventIds) do
-			local eventDef = self._T.skillEventCatalog[eventId]
+			local safeEventId = self:ReadString(eventId, "")
+			local eventDef = self._T.skillEventCatalog[safeEventId]
 			if eventDef ~= nil then
 				local eventType = self:ReadString(eventDef.Type, "action")
 				if eventType == "area" then
@@ -1643,10 +1819,24 @@ script BRSkillSystem extends Logic
 				elseif eventType == "field" then
 					self:StartField(context, eventDef)
 				else
-					self:ExecuteActions(context, eventDef.ActionIds, targetEntity, triggerX, triggerY, self:ReadString(sourceId, "") .. ":" .. self:ReadString(eventId, "event"))
+					self:ExecuteActions(context, eventDef.ActionIds, targetEntity, triggerX, triggerY, self:ReadString(sourceId, "") .. ":" .. safeEventId)
 				end
+			else
+				self:Log("event skipped reason=missing source=" .. self:ReadString(sourceId, "") .. " event=" .. safeEventId)
 			end
 		end
+	end
+
+	method boolean RollActionChance(any actionDef)
+		-- Supports CSV probability columns such as stun/silence proc rates.
+		local chance = math.max(0, self:ReadNumber(actionDef.ChancePercent, 100))
+		if chance >= 100 then
+			return true
+		end
+		if chance <= 0 then
+			return false
+		end
+		return _UtilLogic:RandomDouble() * 100 < chance
 	end
 
 	method void StartProjectileFromAction(any context, any actionDef, number triggerX, number triggerY, string sourceId)
@@ -1675,8 +1865,11 @@ script BRSkillSystem extends Logic
 			EventId = self:ReadString(actionDef.ActionId, "field"),
 			Type = "field",
 			DurationFrames = math.max(1, math.floor(self:ReadNumber(actionDef.DurationFrames, 1))),
+			TickIntervalFrames = math.max(1, math.floor(self:ReadNumber(actionDef.TickIntervalFrames, 1))),
 			HitboxIds = actionDef.HitboxIds,
-			ActionIds = actionDef.ActionIds
+			ActionIds = actionDef.ActionIds,
+			TargetGroup = actionDef.TargetGroup,
+			MaxTargets = actionDef.MaxTargets
 		}
 		self:StartField(context, eventDef)
 		self:Log("field action user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " source=" .. self:ReadString(sourceId, ""))
@@ -1691,16 +1884,25 @@ script BRSkillSystem extends Logic
 				self:PlaySkillHitVisual(context, triggerX, triggerY, sourceId, actionDef.HitEffectRUID)
 			end
 		elseif actionType == "buff" then
-			self:ApplySkillStatus(context.SourceEntity, actionDef, self:ReadString(context.UserId, ""), sourceId)
-			local origin = self:GetContextOrigin(context)
-			self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), origin.x, origin.y + 0.35, self:GetContextDirection(context), 0.75, "buff:" .. self:ReadString(actionDef.ActionId, "buff"))
+			if self:RollActionChance(actionDef) == true and self:ApplySkillStatus(context.SourceEntity, actionDef, self:ReadString(context.UserId, ""), sourceId) == true then
+				self:ApplySkillHeal(context.SourceEntity, actionDef, sourceId)
+				local origin = self:GetContextOrigin(context)
+				self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), origin.x, origin.y + 0.35, self:GetContextDirection(context), 0.75, "buff:" .. self:ReadString(actionDef.ActionId, "buff"))
+			else
+				self:Log("buff skipped chance action=" .. self:ReadString(actionDef.ActionId, "buff") .. " source=" .. self:ReadString(sourceId, ""))
+			end
 		elseif actionType == "debuff" then
-			self:ApplySkillStatus(targetEntity, actionDef, self:ReadString(context.UserId, ""), sourceId)
-			if targetEntity ~= nil then
+			local applied = false
+			if self:RollActionChance(actionDef) == true then
+				applied = self:ApplySkillStatus(targetEntity, actionDef, self:ReadString(context.UserId, ""), sourceId)
+			end
+			if applied == true and targetEntity ~= nil then
 				self:PlaySkillHitVisual(context, triggerX, triggerY + 0.25, "debuff:" .. self:ReadString(actionDef.ActionId, "debuff"), "")
 			end
-			if actionDef.CancelChain == true then
+			if applied == true and actionDef.CancelChain == true then
 				self:CancelTargetChain(targetEntity, self:ReadString(sourceId, "debuff"))
+			elseif applied ~= true then
+				self:Log("debuff skipped chance action=" .. self:ReadString(actionDef.ActionId, "debuff") .. " source=" .. self:ReadString(sourceId, ""))
 			end
 		elseif actionType == "trigger" then
 			if context.IsVirtualCaster ~= true and context.TriggerFired ~= true then
@@ -2089,32 +2291,52 @@ script BRSkillSystem extends Logic
 		end
 	end
 
-	method void ApplySkillStatus(Entity targetEntity, any actionDef, string applierUserId, string sourceId)
+	method void ApplySkillHeal(Entity targetEntity, any actionDef, string sourceId)
+		-- Applies instant self-heal values declared in buff_actions.csv.
+		local healPercent = math.max(0, self:ReadNumber(actionDef.HealMaxHpPercent, 0))
+		if healPercent <= 0 or targetEntity == nil or targetEntity.PlayerComponent == nil then
+			return
+		end
+		local player = targetEntity.PlayerComponent
+		local maxHp = math.max(1, math.floor(self:ReadNumber(player.MaxHp, 100)))
+		local oldHp = math.max(0, math.floor(self:ReadNumber(player.Hp, 0)))
+		local healAmount = math.max(1, math.floor(maxHp * healPercent / 100))
+		player.Hp = math.min(maxHp, oldHp + healAmount)
+		self:Log("heal player target=" .. self:ReadString(player.UserId, "") .. " amount=" .. tostring(healAmount) .. " hp=" .. tostring(oldHp) .. "->" .. tostring(player.Hp) .. " source=" .. self:ReadString(sourceId, "skill"))
+	end
+
+	method boolean ApplySkillStatus(Entity targetEntity, any actionDef, string applierUserId, string sourceId)
 		-- Records a temporary buff or debuff on an entity.
 		if targetEntity == nil then
-			return
+			return false
 		end
 		local key = self:GetEntityKey(targetEntity)
 		if key == "" then
-			return
+			return false
 		end
 		if self._T.statusByEntityId[key] == nil then
 			self._T.statusByEntityId[key] = {}
 		end
 		local statusId = self:ReadString(actionDef.StatusId, self:ReadString(actionDef.ActionId, "status"))
+		local tickIntervalSeconds = math.max(self:GetSkillFrameSeconds(), math.floor(self:ReadNumber(actionDef.TickIntervalFrames, 33)) * self:GetSkillFrameSeconds())
 		self._T.statusByEntityId[key][statusId] = {
 			StatusId = statusId,
 			TargetEntity = targetEntity,
 			ApplierUserId = self:ReadString(applierUserId, ""),
 			ExpiresAt = self:Now() + self:ReadNumber(actionDef.DurationFrames, 1) * self:GetSkillFrameSeconds(),
 			DamageTakenRate = self:ReadNumber(actionDef.DamageTakenRate, 1),
-			CancelChain = actionDef.CancelChain == true
+			CancelChain = actionDef.CancelChain == true,
+			DotCoefficient = self:ReadNumber(actionDef.DotCoefficient, 0),
+			TickIntervalSeconds = tickIntervalSeconds,
+			NextTickAt = self:Now() + tickIntervalSeconds,
+			SourceId = self:ReadString(sourceId, "")
 		}
 		self:Log("status apply target=" .. targetEntity.Name .. " status=" .. statusId .. " source=" .. self:ReadString(sourceId, ""))
+		return true
 	end
 
 	method void TickStatuses()
-		-- Removes expired status records.
+		-- Removes expired status records and applies periodic status damage.
 		local now = self:Now()
 		for entityId, statusMap in pairs(self._T.statusByEntityId) do
 			local empty = true
@@ -2123,6 +2345,7 @@ script BRSkillSystem extends Logic
 					statusMap[statusId] = nil
 					self:Log("status expire entity=" .. tostring(entityId) .. " status=" .. tostring(statusId))
 				else
+					self:TickStatusDamage(status, now)
 					empty = false
 				end
 			end
@@ -2130,6 +2353,37 @@ script BRSkillSystem extends Logic
 				self._T.statusByEntityId[entityId] = nil
 			end
 		end
+	end
+
+	method void TickStatusDamage(any status, number now)
+		-- Applies DoT damage declared by debuff_actions.csv.
+		local coefficient = math.max(0, self:ReadNumber(status.DotCoefficient, 0))
+		if coefficient <= 0 then
+			return
+		end
+		local targetEntity = status.TargetEntity
+		if targetEntity == nil or isvalid(targetEntity) == false then
+			return
+		end
+		if self:ReadNumber(now, 0) < self:ReadNumber(status.NextTickAt, 0) then
+			return
+		end
+		local applierUserId = self:ReadString(status.ApplierUserId, "")
+		local attackerEntity = self:FindPlayerEntityByUserId(applierUserId)
+		if attackerEntity == nil then
+			attackerEntity = targetEntity
+		end
+		local dotContext = {
+			SourceEntity = attackerEntity,
+			UserId = applierUserId,
+			SkillKey = self:ReadString(status.StatusId, "dot")
+		}
+		local dotAction = {
+			Coefficient = coefficient,
+			HitEffectRUID = ""
+		}
+		self:ApplySkillDamage(dotContext, targetEntity, dotAction, "dot:" .. self:ReadString(status.SourceId, self:ReadString(status.StatusId, "dot")))
+		status.NextTickAt = self:ReadNumber(now, 0) + math.max(self:GetSkillFrameSeconds(), self:ReadNumber(status.TickIntervalSeconds, 1))
 	end
 
 	method void CancelTargetChain(Entity targetEntity, string reason)
@@ -2822,18 +3076,49 @@ script BRSkillSystem extends Logic
 			return 0
 		end
 
+		local rowIndex = 1
+		local starterChainId = self:GetStarterChainIdForUser(userId)
+		if starterChainId ~= "" then
+			local preferredRowIndex = self:GetDataRowIndex(data, "chain_id", starterChainId)
+			if preferredRowIndex > 0 then
+				rowIndex = preferredRowIndex
+			else
+				self:Log("starter chain fallback user=" .. self:ReadString(userId, "") .. " missingChain=" .. starterChainId)
+			end
+		end
+
 		local seeded = 0
 		local maxSlot = self:GetChainSlotCount()
 		for slotIndex = 1, maxSlot do
-			local skillId = self:GetDataCell(data, 1, "slot" .. tostring(slotIndex) .. "_skill_id", "")
+			local skillId = self:GetDataCell(data, rowIndex, "slot" .. tostring(slotIndex) .. "_skill_id", "")
 			if skillId ~= "" then
 				local partId = self:GetPartIdForSkillKey(skillId)
 				if partId ~= "" and self:AddPartDirectlyToChainSlot(userId, partId, slotIndex, sourceId) ~= nil then
 					seeded = seeded + 1
+				else
+					self:Log("battle seed skipped user=" .. self:ReadString(userId, "") .. " slot=" .. tostring(slotIndex) .. " skill=" .. skillId .. " reason=noPartOrLocked")
 				end
 			end
 		end
 		return seeded
+	end
+
+	method string GetStarterChainIdForUser(string userId)
+		-- Reads the class-specific starter chain id from character_default_skills.csv.
+		local data = self:GetDataTable("character_default_skills")
+		if data == nil or self:ReadNumber(data:GetRowCount(), 0) <= 0 then
+			return ""
+		end
+
+		local rowIndex = 1
+		if _BRCharacterSystem ~= nil then
+			local characterKey = _BRCharacterSystem:GetServerCharacterKey(userId)
+			local preferredRowIndex = self:GetDataRowIndex(data, "character_key", characterKey)
+			if preferredRowIndex > 0 then
+				rowIndex = preferredRowIndex
+			end
+		end
+		return self:GetDataCell(data, rowIndex, "starter_chain_id", "")
 	end
 
 	method any AddPartDirectlyToChainSlot(string userId, string partId, number chainSlot, string sourceId)
@@ -2981,7 +3266,7 @@ script BRSkillSystem extends Logic
 		-- Selects a random part id from the catalog.
 		self:EnsureRuntime()
 		if self._T.partIds == nil or #self._T.partIds <= 0 then
-			return self:GetDefaultBasicSkillId() .. "_part"
+			return ""
 		end
 		local index = math.random(1, #self._T.partIds)
 		return self._T.partIds[index]
@@ -2996,9 +3281,6 @@ script BRSkillSystem extends Logic
 		end
 		
 		local definition = self._T.catalog[self:ReadString(partId, "")]
-		if definition == nil then
-			definition = self._T.catalog[self:GetDefaultBasicSkillId() .. "_part"]
-		end
 		if definition == nil then
 			self:Log("grant skipped user=" .. userId .. " part=" .. self:ReadString(partId, "") .. " reason=noSkillDefinition")
 			return nil
@@ -3496,6 +3778,53 @@ script BRSkillSystem extends Logic
 		if self:EquipPartInstanceToChainSlot(userId, instanceId, chainSlot) == false then
 			self:Log("chain equip request failed user=" .. userId .. " instance=" .. tostring(instanceId) .. " slot=" .. tostring(chainSlot))
 		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestGrantTestPartToChainSlot(string requestUserId, string partOrSkillId, number chainSlot)
+		-- Developer-only helper used by the lobby test NPC to place a CSV skill part directly into a chain slot.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("test grant skipped reason=noUser part=" .. self:ReadString(partOrSkillId, "") .. " slot=" .. tostring(chainSlot))
+			return
+		end
+
+		self:EnsureRuntime()
+		local partId = self:GetPartIdForSkillKey(partOrSkillId)
+		if partId == "" then
+			partId = self:ReadString(partOrSkillId, "")
+		end
+		if self._T.catalog == nil or self._T.catalog[partId] == nil then
+			self:Log("test grant skipped user=" .. userId .. " reason=unknownPart part=" .. self:ReadString(partOrSkillId, ""))
+			return
+		end
+
+		local state = self:GetUserState(userId)
+		if state == nil then
+			self:Log("test grant skipped user=" .. userId .. " reason=noState part=" .. partId)
+			return
+		end
+		local slotIndex = self:ClampChainSlot(chainSlot)
+		if self:IsChainSlotUnlocked(state, slotIndex) ~= true then
+			self:Log("test grant skipped user=" .. userId .. " reason=locked slot=" .. tostring(slotIndex) .. " part=" .. partId)
+			return
+		end
+
+		local previousInstanceId = state.EquippedChainSlots[slotIndex]
+		if previousInstanceId ~= nil then
+			self:RemovePartFromOwned(state, previousInstanceId)
+		end
+
+		local definition = self._T.catalog[partId]
+		local part = self:CreatePartInstance(state, definition, "testnpc:" .. tostring(slotIndex))
+		table.insert(state.Parts, part)
+		if self:EquipPartInstanceToChainSlot(userId, part.InstanceId, slotIndex) ~= true then
+			self:RemovePartFromOwned(state, part.InstanceId)
+			self:NotifyUserChanged(userId)
+			self:Log("test grant failed user=" .. userId .. " slot=" .. tostring(slotIndex) .. " part=" .. partId)
+			return
+		end
+		self:Log("test grant user=" .. userId .. " slot=" .. tostring(slotIndex) .. " part=" .. partId)
 	end
 
 	@ExecSpace("Server")

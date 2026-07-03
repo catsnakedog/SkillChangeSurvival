@@ -1,7 +1,6 @@
-﻿area_target_id,hitbox_ids,duration_frames,target,action_ids
-divineSwingArea1,ds1b1|ds1b2,4,적군,ds1hit|ds1stun
-전사_보조_스킬_event_1_target,전사_보조_스킬_event_1_hitbox_0|전사_보조_스킬_event_1_hitbox_1,4,적군,전사_보조_스킬_event_1_damage
-스피릿_블레이드_event_1_target,,1,적군,스피릿_블레이드_event_1_damage
-샤프_슬래시_event_1_target,샤프_슬래시_event_1_hitbox_0|샤프_슬래시_event_1_hitbox_1,4,적군,샤프_슬래시_event_1_damage
-샤프_슬래시_event_2_target,샤프_슬래시_event_2_hitbox_0|샤프_슬래시_event_2_hitbox_1,3,적군,샤프_슬래시_event_2_damage
-슬래시_스톰_event_1_target,슬래시_스톰_event_1_hitbox_0,5,적군,슬래시_스톰_event_1_damage
+﻿area_target_id,hitbox_ids,duration_frames,target,action_ids,max_targets
+페이지 오더/범위,front_wide,4,적군,페이지 오더/피해|페이지 오더/피해|페이지 오더/기절|페이지 오더/슬로우,8
+노블 디맨드/범위,front_wide,4,적군,노블 디맨드/피해|노블 디맨드/약화,6
+리트리트 샷/범위,front_wide,20,적군,리트리트 샷/피해,6
+사슬지옥/범위,front_line,4,적군,사슬지옥/피해|사슬지옥/피해|사슬지옥/피해|사슬지옥/피해|사슬지옥/피해|사슬지옥/피해|사슬지옥/피해|사슬지옥/기절,1
+기간틱 백스텝/범위,front_short,3,적군,기간틱 백스텝/피해|기간틱 백스텝/슬로우,3

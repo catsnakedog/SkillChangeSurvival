@@ -11,15 +11,57 @@ script BRCommonSkillSystem extends Logic
 
 	property number BlinkDistance = 2.8
 
+	property string BlinkSkillKey = "Blink"
+
+	property string BlinkSoundRUID = "287c154aa1de458cb8f8eaf892c84b24"
+
+	property string BlinkEffectRUID = "8dc15776c4f349a0bfa155e911e4a7be"
+
+	property string BlinkStartEffectRUID = "df5bd4514ffb461fb8479ff0d88ec204"
+
+	property string BlinkEndEffectRUID = "c4755faee88149738692350b34aa5766"
+
+	property string BlinkBlockedEffectRUID = "ba3f9119b8634a1f80e85017adc426f7"
+
+	property number BlinkSoundVolume = 0.9
+
+	property number BlinkEffectScale = 1.0
+
+	property number BlinkEffectAlpha = 0.95
+
+	property number BlinkEffectPlayRate = 1.0
+
+	property integer BlinkEffectOrderInLayer = 30
+
+	property boolean RestrictBlinkToCurrentRoom = true
+
+	property boolean SnapBlinkToFoothold = true
+
+	property number BlinkFootholdSearchUp = 0.8
+
+	property number BlinkFootholdSearchDown = 4.0
+
+	property number BlinkFootholdYOffset = 0.04
+
 	property number NimbusToggleCooldownSeconds = 0.35
 
 	property number NimbusMoveSpeed = 5.2
+
+	property string NimbusSkillKey = "Nimbus"
 
 	property boolean BlockNimbusInBattleMap = true
 
 	property boolean NimbusUseFlyAnimation = true
 
-	property string NimbusEffectRUID = "7bca38a8c5384706804ace2688b02045"
+	property string NimbusEffectRUID = "263871f547a941c99ce0ab13c7b95aad"
+
+	property string NimbusEndEffectRUID = "6a743f785c1e4513ad9b3fd6954ef9d7"
+
+	property string NimbusUseSoundRUID = "626819a606324e038c632018086bb9de"
+
+	property string NimbusEndSoundRUID = "7a11ec9a27384286bc7de630bc0dcabb"
+
+	property number NimbusSoundVolume = 0.9
 
 	property number NimbusEffectLocalX = 0
 
@@ -79,7 +121,7 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnCommonSkillKeyDown)
-		log("[BRCommonSkill] client input ready unique=Q blink=W nimbus=E")
+		log("[BRCommonSkill] client input ready unique=Q blink=C nimbus=E")
 	end
 
 	@ExecSpace("ClientOnly")
@@ -97,7 +139,7 @@ script BRCommonSkillSystem extends Logic
 		end
 		if event.key == KeyboardKey.Q then
 			self:TryUseUniqueSkill()
-		elseif event.key == KeyboardKey.W then
+		elseif event.key == KeyboardKey.C then
 			self:TryBlink()
 		elseif event.key == KeyboardKey.E then
 			self:TryToggleNimbus()
@@ -135,6 +177,7 @@ script BRCommonSkillSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method void TryBlink()
+		-- Performs Burst Step with the current arrow-key direction and CSV-backed resources.
 		local now = _UtilLogic.ElapsedSeconds
 		if now < self:ReadNumber(self.localNextBlinkAt, 0) then
 			return
@@ -150,15 +193,21 @@ script BRCommonSkillSystem extends Logic
 
 		self.localNextBlinkAt = now + self:GetBlinkCooldownSeconds()
 		local position = self:GetEntityPosition2(localPlayer)
-		local direction = self:GetFacingDirection(localPlayer)
+		local direction = self:GetBlinkInputDirection(localPlayer)
 		local distance = self:GetBlinkDistance()
-		local target = Vector2(position.x + direction * distance, position.y)
-		target = self:ClampPositionToMapBounds(localPlayer, target)
+		local target = Vector2(position.x + direction.x * distance, position.y + direction.y * distance)
+		local resolvedTarget = self:ResolveBlinkTarget(localPlayer, position, target)
+		local moved = math.abs(resolvedTarget.x - position.x) > 0.001 or math.abs(resolvedTarget.y - position.y) > 0.001
+
+		self:PlayBlinkVisual(localPlayer, position, resolvedTarget, direction, moved)
 
 		localPlayer.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
-		localPlayer.RigidbodyComponent:SetWorldPosition(target)
+		localPlayer.RigidbodyComponent:SetWorldPosition(resolvedTarget)
 		localPlayer.RigidbodyComponent:PositionReset()
-		log("[BRCommonSkill] blink dir=" .. tostring(direction) .. " distance=" .. tostring(distance) .. " target=(" .. tostring(target.x) .. "," .. tostring(target.y) .. ")")
+		if localPlayer.MovementComponent ~= nil then
+			localPlayer.MovementComponent:Stop()
+		end
+		log("[BRCommonSkill] burstStep dir=(" .. tostring(direction.x) .. "," .. tostring(direction.y) .. ") distance=" .. tostring(distance) .. " moved=" .. tostring(moved == true) .. " target=(" .. tostring(resolvedTarget.x) .. "," .. tostring(resolvedTarget.y) .. ")")
 	end
 
 	@ExecSpace("ClientOnly")
@@ -384,6 +433,7 @@ script BRCommonSkillSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method void PlayNimbusVisual(Entity playerEntity, boolean active)
+		-- Plays Nimbus ride start, loop, and end feedback.
 		if playerEntity == nil then
 			if active ~= true then
 				self:StopNimbusEffect()
@@ -391,9 +441,12 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 		if active == true then
+			self:PlayNimbusUseSound()
 			self:StartNimbusEffect(playerEntity)
 		else
 			self:StopNimbusEffect()
+			self:PlayNimbusEndEffect(playerEntity)
+			self:PlayNimbusEndSound()
 		end
 		if self.NimbusUseFlyAnimation ~= true then
 			return
@@ -407,12 +460,13 @@ script BRCommonSkillSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method void StartNimbusEffect(Entity playerEntity)
+		-- Starts the looping cloud ride effect attached to the player.
 		self:StopNimbusEffect()
 		if playerEntity == nil or _EffectService == nil then
 			return
 		end
 
-		local ruid = self:ReadString(self.NimbusEffectRUID, "")
+		local ruid = self:GetNimbusEffectRUID("repeat", self.NimbusEffectRUID)
 		if ruid == "" then
 			return
 		end
@@ -445,6 +499,7 @@ script BRCommonSkillSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method void StopNimbusEffect()
+		-- Removes the currently attached Nimbus loop effect.
 		local serial = math.floor(self:ReadNumber(self.localNimbusEffectSerial, 0))
 		if serial <= 0 then
 			self.localNimbusEffectSerial = 0
@@ -455,6 +510,66 @@ script BRCommonSkillSystem extends Logic
 		end
 		self.localNimbusEffectSerial = 0
 		log("[BRCommonSkill] nimbus effect stop serial=" .. tostring(serial))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayNimbusEndEffect(Entity playerEntity)
+		-- Plays the one-shot cloud disappearance effect at the player position.
+		if playerEntity == nil or _EffectService == nil then
+			return
+		end
+		local ruid = self:GetNimbusEffectRUID("end", self.NimbusEndEffectRUID)
+		if ruid == "" then
+			return
+		end
+		local position = self:GetEntityPosition2(playerEntity)
+		local scale = math.max(0.05, self:ReadNumber(self.NimbusEffectScale, 1.2))
+		local alpha = math.max(0, math.min(1, self:ReadNumber(self.NimbusEffectAlpha, 0.95)))
+		local options = {}
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = math.floor(self:ReadNumber(self.NimbusEffectOrderInLayer, 20))
+		options["Alpha"] = alpha
+		options["PlayRate"] = math.max(0.1, self:ReadNumber(self.NimbusEffectPlayRate, 1.0))
+		options["IgnoreMapLayerCheck"] = true
+		local localX = self:ReadNumber(self.NimbusEffectLocalX, 0)
+		local localY = self:ReadNumber(self.NimbusEffectLocalY, -0.42)
+		local serial = _EffectService:PlayEffect(
+			ruid,
+			playerEntity,
+			Vector3(position.x + localX, position.y + localY, 0),
+			0,
+			Vector3(scale, scale, 1),
+			false,
+			options
+		)
+		if self.VerboseLog == true then
+			log("[BRCommonSkill] nimbus end effect ruid=" .. ruid .. " serial=" .. tostring(serial))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayNimbusUseSound()
+		-- Plays the Nimbus use sound locally.
+		self:PlayNimbusSound(self:GetNimbusUseSoundRUID())
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayNimbusEndSound()
+		-- Plays the Nimbus end voice locally.
+		self:PlayNimbusSound(self:GetNimbusEndSoundRUID())
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayNimbusSound(string ruid)
+		-- Plays one local Nimbus audio resource.
+		if _SoundService == nil then
+			return
+		end
+		local safeRuid = self:ReadString(ruid, "")
+		if safeRuid == "" then
+			return
+		end
+		_SoundService:PlaySound(safeRuid, math.max(0, self:ReadNumber(self.NimbusSoundVolume, 0.9)))
 	end
 
 	@ExecSpace("Server")
@@ -486,6 +601,22 @@ script BRCommonSkillSystem extends Logic
 		end
 		local position = entity.TransformComponent.WorldPosition
 		return Vector2(position.x, position.y)
+	end
+
+	@ExecSpace("ClientOnly")
+	method Entity GetEntityMap(Entity entity)
+		-- Resolves the current map entity for local player movement helpers.
+		if entity == nil then
+			return nil
+		end
+		if entity.CurrentMap ~= nil then
+			return entity.CurrentMap
+		end
+		local mapName = self:ReadString(entity.CurrentMapName, "")
+		if mapName == "" then
+			return nil
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. mapName)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -552,6 +683,7 @@ script BRCommonSkillSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method number GetFacingDirection(Entity entity)
+		-- Reads the player's current horizontal facing direction.
 		if entity ~= nil and entity.PlayerControllerComponent ~= nil then
 			local value = tonumber(entity.PlayerControllerComponent.LookDirectionX)
 			if value ~= nil and value < 0 then
@@ -564,10 +696,537 @@ script BRCommonSkillSystem extends Logic
 		return 1
 	end
 
+	@ExecSpace("ClientOnly")
+	method Vector2 GetBlinkInputDirection(Entity entity)
+		-- Converts current arrow-key input into a straight teleport direction.
+		local dx = 0
+		local dy = 0
+		if _InputService:IsKeyPressed(KeyboardKey.RightArrow) == true then
+			dx = 1
+		elseif _InputService:IsKeyPressed(KeyboardKey.LeftArrow) == true then
+			dx = -1
+		end
+		if dx ~= 0 then
+			return Vector2(dx, 0)
+		end
+		if _InputService:IsKeyPressed(KeyboardKey.UpArrow) == true then
+			dy = 1
+		elseif _InputService:IsKeyPressed(KeyboardKey.DownArrow) == true then
+			dy = -1
+		end
+		if dy ~= 0 then
+			return Vector2(0, dy)
+		end
+		return Vector2(self:GetFacingDirection(entity), 0)
+	end
+
+	@ExecSpace("ClientOnly")
+	method Vector2 ResolveBlinkTarget(Entity entity, Vector2 currentPosition, Vector2 requestedTarget)
+		-- Uses self-teleport when the requested straight-line target is outside playable bounds or has no landing foothold.
+		if currentPosition == nil then
+			currentPosition = Vector2(0, 0)
+		end
+		if requestedTarget == nil then
+			return currentPosition
+		end
+		if self:IsBlinkTargetOutsideCurrentRoom(entity, currentPosition, requestedTarget) == true then
+			return currentPosition
+		end
+		if self:IsPositionOutsideMapBounds(entity, requestedTarget, 0) == true then
+			return currentPosition
+		end
+
+		local adjustedTarget = self:ResolveBlinkFootholdTarget(entity, currentPosition, requestedTarget)
+		if adjustedTarget == nil then
+			log("[BRCommonSkill] burstStep blocked reason=noFoothold target=(" .. tostring(requestedTarget.x) .. "," .. tostring(requestedTarget.y) .. ")")
+			return currentPosition
+		end
+		if self:IsBlinkTargetOutsideCurrentRoom(entity, currentPosition, adjustedTarget) == true then
+			return currentPosition
+		end
+		if self:IsPositionOutsideMapBounds(entity, adjustedTarget, 0) == true then
+			return currentPosition
+		end
+		return adjustedTarget
+	end
+
+	@ExecSpace("ClientOnly")
+	method any ResolveBlinkFootholdTarget(Entity entity, Vector2 currentPosition, Vector2 requestedTarget)
+		-- Snaps Burst Step to the foothold under the requested target, matching Maple-style teleport landings.
+		if requestedTarget == nil then
+			return currentPosition
+		end
+		if self.SnapBlinkToFoothold ~= true then
+			return requestedTarget
+		end
+		local mapEntity = self:GetEntityMap(entity)
+		if mapEntity == nil or mapEntity.FootholdComponent == nil then
+			return requestedTarget
+		end
+
+		local footholdPosition = self:FindBlinkFootholdPosition(mapEntity, requestedTarget)
+		if footholdPosition == nil then
+			return nil
+		end
+		if math.abs(footholdPosition.y - requestedTarget.y) > 0.001 then
+			log("[BRCommonSkill] burstStep foothold snap from=(" .. tostring(requestedTarget.x) .. "," .. tostring(requestedTarget.y) .. ") to=(" .. tostring(footholdPosition.x) .. "," .. tostring(footholdPosition.y) .. ")")
+		end
+		return footholdPosition
+	end
+
+	@ExecSpace("ClientOnly")
+	method any FindBlinkFootholdPosition(Entity mapEntity, Vector2 requestedTarget)
+		-- Finds a valid foothold landing point below the requested Burst Step target.
+		if mapEntity == nil or mapEntity.FootholdComponent == nil or requestedTarget == nil then
+			return nil
+		end
+		local up = math.max(0, self:ReadNumber(self.BlinkFootholdSearchUp, 0.8))
+		local down = math.max(0.1, self:ReadNumber(self.BlinkFootholdSearchDown, 4.0))
+		local searchDistance = up + down
+		local rayStart = Vector2(requestedTarget.x, requestedTarget.y + up)
+		local hits = mapEntity.FootholdComponent:RaycastAll(rayStart, Vector2(0, -1), searchDistance)
+		if hits ~= nil then
+			for index, foothold in ipairs(hits) do
+				local position = self:GetBlinkFootholdLandingPosition(foothold, requestedTarget.x)
+				if position ~= nil then
+					return position
+				end
+			end
+		end
+
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDistance)
+		return self:GetBlinkFootholdLandingPosition(foothold, requestedTarget.x)
+	end
+
+	@ExecSpace("ClientOnly")
+	method any GetBlinkFootholdLandingPosition(any foothold, number x)
+		-- Converts one foothold hit into a safe standing position.
+		if foothold == nil or self:IsUsableBlinkFoothold(foothold, x) ~= true then
+			return nil
+		end
+		return Vector2(x, foothold:GetYByX(x) + self:GetBlinkFootholdYOffset())
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsUsableBlinkFoothold(any foothold, number x)
+		-- Rejects vertical or out-of-range footholds for Burst Step landing.
+		if foothold == nil then
+			return false
+		end
+		if foothold:IsVertical() == true then
+			return false
+		end
+		local startPoint = foothold.StartPoint
+		local endPoint = foothold.EndPoint
+		if startPoint == nil or endPoint == nil then
+			return true
+		end
+		local minX = math.min(startPoint.x, endPoint.x) - 0.02
+		local maxX = math.max(startPoint.x, endPoint.x) + 0.02
+		local safeX = self:ReadNumber(x, 0)
+		return safeX >= minX and safeX <= maxX
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsBlinkTargetOutsideCurrentRoom(Entity entity, Vector2 currentPosition, Vector2 requestedTarget)
+		-- Checks the current generated room rectangle before allowing a blink target.
+		if self.RestrictBlinkToCurrentRoom ~= true then
+			return false
+		end
+		if requestedTarget == nil then
+			return false
+		end
+		local bounds = self:GetCurrentPhysicalRoomBounds(entity, currentPosition)
+		if bounds == nil then
+			return false
+		end
+		return self:IsPositionInsideBounds(requestedTarget, bounds, 0.05) ~= true
+	end
+
+	@ExecSpace("ClientOnly")
+	method any GetCurrentPhysicalRoomBounds(Entity entity, Vector2 currentPosition)
+		-- Resolves the physical room rectangle containing the local player.
+		if entity == nil or currentPosition == nil or _BRRoomGraphGenerator == nil then
+			return nil
+		end
+		local mapName = self:ReadString(entity.CurrentMapName, "")
+		if mapName == "" then
+			return nil
+		end
+		local publishedMapName = self:ReadString(_BRRoomGraphGenerator.LastMiniMapMapName, "")
+		if publishedMapName ~= "" and publishedMapName ~= mapName then
+			return nil
+		end
+		local halfSize = self:GetPhysicalRoomHalfSize(mapName)
+		local assignments = self:ParseMiniMapAssignments(self:ReadString(_BRRoomGraphGenerator.LastMiniMapAssignments, ""))
+		for key, roomName in pairs(assignments) do
+			local bounds = self:GetPhysicalRoomBounds(mapName, roomName, halfSize)
+			if bounds ~= nil and self:IsPositionInsideBounds(currentPosition, bounds, 0.05) == true then
+				return bounds
+			end
+		end
+		return self:FindGeneratedRoomBoundsByPosition(mapName, currentPosition, halfSize)
+	end
+
+	@ExecSpace("ClientOnly")
+	method any FindGeneratedRoomBoundsByPosition(string mapName, Vector2 position, Vector2 halfSize)
+		-- Falls back to scanning generated room entities when minimap assignments are not ready.
+		local root = self:GetPhysicalRoomRoot(mapName)
+		if root == nil or root.Children == nil then
+			return nil
+		end
+		local children = root.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil and self:IsGeneratedRoomName(child.Name) == true then
+				local bounds = self:BuildPhysicalRoomBounds(child, halfSize)
+				if bounds ~= nil and self:IsPositionInsideBounds(position, bounds, 0.05) == true then
+					return bounds
+				end
+			end
+		end
+		return nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method any GetPhysicalRoomBounds(string mapName, string roomName, Vector2 halfSize)
+		-- Builds a rectangular world bound from a generated room entity.
+		local room = self:GetPhysicalRoom(mapName, roomName)
+		return self:BuildPhysicalRoomBounds(room, halfSize)
+	end
+
+	@ExecSpace("ClientOnly")
+	method any BuildPhysicalRoomBounds(Entity room, Vector2 halfSize)
+		-- Converts one physical room center and half size into bounds.
+		if room == nil or room.TransformComponent == nil or halfSize == nil then
+			return nil
+		end
+		local center = room.TransformComponent.WorldPosition
+		return {
+			Left = center.x - halfSize.x,
+			Right = center.x + halfSize.x,
+			Bottom = center.y - halfSize.y,
+			Top = center.y + halfSize.y,
+			RoomName = self:ReadString(room.Name, "")
+		}
+	end
+
+	@ExecSpace("ClientOnly")
+	method Entity GetPhysicalRoom(string mapName, string roomName)
+		-- Finds a generated physical room by name.
+		local safeRoomName = self:ReadString(roomName, "")
+		if safeRoomName == "" then
+			return nil
+		end
+		local root = self:GetPhysicalRoomRoot(mapName)
+		if root ~= nil then
+			local room = root:GetChildByName(safeRoomName, false)
+			if room ~= nil then
+				return room
+			end
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/EditorGeneratedGrid/" .. safeRoomName)
+	end
+
+	@ExecSpace("ClientOnly")
+	method Entity GetPhysicalRoomRoot(string mapName)
+		-- Finds the generated physical room root for one map.
+		return _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/EditorGeneratedGrid")
+	end
+
+	@ExecSpace("ClientOnly")
+	method Vector2 GetPhysicalRoomHalfSize(string mapName)
+		-- Reads generated room half extents from the room graph when available.
+		if _BRRoomGraphGenerator ~= nil then
+			return _BRRoomGraphGenerator:GetRoomHalfSize(mapName)
+		end
+		return Vector2(5, 5)
+	end
+
+	@ExecSpace("ClientOnly")
+	method any ParseMiniMapAssignments(string assignmentsText)
+		-- Parses row,column,roomName records into a compact room-name lookup.
+		local result = {}
+		local value = self:ReadString(assignmentsText, "")
+		for record in string.gmatch(value, "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local roomName = self:ReadString(parts[3], "")
+			if roomName ~= "" then
+				result[self:ReadString(parts[1], "") .. ":" .. self:ReadString(parts[2], "")] = roomName
+			end
+		end
+		return result
+	end
+
+	@ExecSpace("ClientOnly")
+	method any SplitCommaRecord(string record)
+		-- Splits one comma-delimited minimap record into ordered fields.
+		local parts = {}
+		for part in string.gmatch(self:ReadString(record, ""), "([^,]+)") do
+			table.insert(parts, part)
+		end
+		return parts
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsGeneratedRoomName(string roomName)
+		-- Checks the generated room naming convention.
+		return string.sub(self:ReadString(roomName, ""), 1, 5) == "Room_"
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsPositionInsideBounds(Vector2 position, any bounds, number padding)
+		-- Tests whether a point belongs to a rectangular world bound.
+		if position == nil or bounds == nil then
+			return false
+		end
+		local pad = math.max(0, self:ReadNumber(padding, 0))
+		return position.x >= self:ReadNumber(bounds.Left, 0) - pad
+			and position.x <= self:ReadNumber(bounds.Right, 0) + pad
+			and position.y >= self:ReadNumber(bounds.Bottom, 0) - pad
+			and position.y <= self:ReadNumber(bounds.Top, 0) + pad
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayBlinkVisual(Entity playerEntity, Vector2 fromPosition, Vector2 toPosition, Vector2 direction, boolean moved)
+		-- Plays the Burst Step sound and start/end effects for local feedback.
+		self:PlayBlinkSound(playerEntity)
+		local safeDirection = direction
+		if safeDirection == nil then
+			safeDirection = Vector2(1, 0)
+		end
+		local startRuid = self:GetBlinkEffectRUID("effect0", self.BlinkStartEffectRUID)
+		local endRuid = self:GetBlinkEffectRUID("effect1", self.BlinkEndEffectRUID)
+		local blockedRuid = self:GetBlinkEffectRUID("special", self.BlinkBlockedEffectRUID)
+		if fromPosition ~= nil then
+			self:PlayBlinkEffectAt(playerEntity, startRuid, fromPosition, safeDirection)
+		end
+		if moved == true and toPosition ~= nil then
+			self:PlayBlinkEffectAt(playerEntity, endRuid, toPosition, safeDirection)
+		elseif fromPosition ~= nil then
+			self:PlayBlinkEffectAt(playerEntity, blockedRuid, fromPosition, safeDirection)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayBlinkSound(Entity playerEntity)
+		-- Plays the Burst Step use sound locally.
+		if _SoundService == nil then
+			return
+		end
+		local ruid = self:GetBlinkSoundRUID()
+		if ruid == "" then
+			return
+		end
+		_SoundService:PlaySound(ruid, math.max(0, self:ReadNumber(self.BlinkSoundVolume, 0.9)))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayBlinkEffectAt(Entity playerEntity, string ruid, Vector2 position, Vector2 direction)
+		-- Plays a Burst Step animationclip at a fixed world position.
+		if _EffectService == nil or playerEntity == nil then
+			return
+		end
+		local safeRuid = self:ReadString(ruid, "")
+		if safeRuid == "" or position == nil then
+			return
+		end
+		local scale = math.max(0.05, self:ReadNumber(self.BlinkEffectScale, 1.0))
+		local alpha = math.max(0, math.min(1, self:ReadNumber(self.BlinkEffectAlpha, 0.95)))
+		local options = {}
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = math.floor(self:ReadNumber(self.BlinkEffectOrderInLayer, 30))
+		options["Alpha"] = alpha
+		options["PlayRate"] = math.max(0.1, self:ReadNumber(self.BlinkEffectPlayRate, 1.0))
+		options["IgnoreMapLayerCheck"] = true
+		if direction ~= nil and direction.x < 0 then
+			options["FlipX"] = true
+		end
+		local serial = _EffectService:PlayEffect(safeRuid, playerEntity, Vector3(position.x, position.y, 0), 0, Vector3(scale, scale, 1), false, options)
+		if self.VerboseLog == true and math.floor(self:ReadNumber(serial, 0)) <= 0 then
+			log("[BRCommonSkill] burstStep effect failed ruid=" .. safeRuid)
+		end
+	end
+
 	method void EnsureRuntime()
 		if self._T.serverNimbusByUserId == nil then
 			self._T.serverNimbusByUserId = {}
 		end
+	end
+
+	method string GetSkillDataCell(string skillKey, string columnName, string fallback)
+		-- Reads one cell from the CSV-backed skills table.
+		local data = self:GetDataTable("skills")
+		if data == nil then
+			return self:ReadString(fallback, "")
+		end
+		local row = self:GetDataRowIndex(data, "id", self:ReadString(skillKey, ""))
+		if row <= 0 then
+			return self:ReadString(fallback, "")
+		end
+		return self:GetDataCell(data, row, columnName, fallback)
+	end
+
+	method string GetBlinkSkillDataCell(string columnName, string fallback)
+		-- Reads one cell from the CSV-backed Blink skill row.
+		return self:GetSkillDataCell(self:GetBlinkSkillKey(), columnName, fallback)
+	end
+
+	method string GetBlinkSkillKey()
+		-- Returns the common blink skill id used by CSV tables.
+		return self:ReadString(self.BlinkSkillKey, "Blink")
+	end
+
+	method string GetBlinkSoundRUID()
+		-- Returns the Burst Step sound RUID from CSV or property fallback.
+		return self:GetBlinkSkillDataCell("sound_ruid", self.BlinkSoundRUID)
+	end
+
+	method string GetBlinkEffectRUID(string suffix, string fallback)
+		-- Resolves a Burst Step effect RUID through effects.csv.
+		local safeSuffix = self:ReadString(suffix, "")
+		local skillKey = self:GetBlinkSkillKey()
+		if safeSuffix ~= "" then
+			local exactRuid = self:GetEffectRUIDByEffectId(skillKey .. "/" .. safeSuffix, "")
+			if exactRuid ~= "" then
+				return exactRuid
+			end
+		end
+		local effectIds = self:ParseDelimitedList(self:GetBlinkSkillDataCell("effect_ids", ""), "|")
+		for index, effectId in ipairs(effectIds) do
+			local ruid = self:GetEffectRUIDByEffectId(effectId, "")
+			if ruid ~= "" then
+				return ruid
+			end
+		end
+		return self:ReadString(fallback, self.BlinkEffectRUID)
+	end
+
+	method string GetNimbusSkillDataCell(string columnName, string fallback)
+		-- Reads one cell from the CSV-backed Nimbus skill row.
+		return self:GetSkillDataCell(self:GetNimbusSkillKey(), columnName, fallback)
+	end
+
+	method string GetNimbusSkillKey()
+		-- Returns the common Nimbus skill id used by CSV tables.
+		return self:ReadString(self.NimbusSkillKey, "Nimbus")
+	end
+
+	method string GetNimbusUseSoundRUID()
+		-- Returns the Nimbus use sound RUID from CSV or property fallback.
+		return self:GetNimbusSkillDataCell("sound_ruid", self.NimbusUseSoundRUID)
+	end
+
+	method string GetNimbusEndSoundRUID()
+		-- Returns the Nimbus end sound RUID from CSV or property fallback.
+		return self:GetNimbusSkillDataCell("end_sound_ruid", self.NimbusEndSoundRUID)
+	end
+
+	method string GetNimbusEffectRUID(string suffix, string fallback)
+		-- Resolves a Nimbus effect RUID through effects.csv.
+		local safeSuffix = self:ReadString(suffix, "")
+		local skillKey = self:GetNimbusSkillKey()
+		if safeSuffix ~= "" then
+			local exactRuid = self:GetEffectRUIDByEffectId(skillKey .. "/" .. safeSuffix, "")
+			if exactRuid ~= "" then
+				return exactRuid
+			end
+		end
+		local effectIds = self:ParseDelimitedList(self:GetNimbusSkillDataCell("effect_ids", ""), "|")
+		for index, effectId in ipairs(effectIds) do
+			local ruid = self:GetEffectRUIDByEffectId(effectId, "")
+			if ruid ~= "" then
+				return ruid
+			end
+		end
+		return self:ReadString(fallback, self.NimbusEffectRUID)
+	end
+
+	method string GetEffectRUIDByEffectId(string effectId, string fallback)
+		-- Looks up one effect id in effects.csv.
+		local safeEffectId = self:ReadString(effectId, "")
+		if safeEffectId == "" then
+			return self:ReadString(fallback, "")
+		end
+		local data = self:GetDataTable("effects")
+		if data == nil then
+			return self:ReadString(fallback, "")
+		end
+		local row = self:GetDataRowIndex(data, "effect_id", safeEffectId)
+		if row <= 0 then
+			return self:ReadString(fallback, "")
+		end
+		return self:GetDataCell(data, row, "effect_ruid", fallback)
+	end
+
+	method any GetDataTable(string tableName)
+		-- Reads a UserDataSet by table name when available.
+		if _DataService == nil then
+			return nil
+		end
+		local safeName = self:ReadString(tableName, "")
+		if safeName == "" then
+			return nil
+		end
+		return _DataService:GetTable(safeName)
+	end
+
+	method string GetDataCell(any dataSet, number row, string columnName, string fallback)
+		-- Reads one DataSet cell as a trimmed string.
+		if dataSet == nil then
+			return self:ReadString(fallback, "")
+		end
+		local value = dataSet:GetCell(math.max(1, math.floor(self:ReadNumber(row, 1))), self:ReadString(columnName, ""))
+		if value == nil then
+			return self:ReadString(fallback, "")
+		end
+		return self:TrimString(tostring(value))
+	end
+
+	method number GetDataRowIndex(any dataSet, string columnName, string value)
+		-- Finds a DataSet row index by exact string cell match.
+		if dataSet == nil then
+			return 0
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(dataSet:GetRowCount(), 0)))
+		local safeValue = self:ReadString(value, "")
+		for row = 1, rowCount do
+			if self:GetDataCell(dataSet, row, columnName, "") == safeValue then
+				return row
+			end
+		end
+		return 0
+	end
+
+	method any ParseDelimitedList(string value, string delimiter)
+		-- Parses pipe-delimited CSV fields into a compact string list.
+		local result = {}
+		local safeValue = self:ReadString(value, "")
+		local safeDelimiter = self:ReadString(delimiter, "|")
+		if safeValue == "" then
+			return result
+		end
+		local startIndex = 1
+		while startIndex <= string.len(safeValue) do
+			local remaining = string.sub(safeValue, startIndex)
+			local relativeDelimiterIndex, relativeDelimiterEndIndex = string.find(remaining, safeDelimiter, 1, true)
+			local delimiterIndex = nil
+			if relativeDelimiterIndex ~= nil then
+				delimiterIndex = startIndex + relativeDelimiterIndex - 1
+			end
+			local token = ""
+			if delimiterIndex == nil then
+				token = string.sub(safeValue, startIndex)
+				startIndex = string.len(safeValue) + 1
+			else
+				token = string.sub(safeValue, startIndex, delimiterIndex - 1)
+				startIndex = delimiterIndex + string.len(safeDelimiter)
+			end
+			token = self:TrimString(token)
+			if token ~= "" then
+				table.insert(result, token)
+			end
+		end
+		return result
 	end
 
 	method number GetUniqueCooldownSeconds()
@@ -575,19 +1234,28 @@ script BRCommonSkillSystem extends Logic
 	end
 
 	method number GetBlinkCooldownSeconds()
-		return math.max(0.05, self:ReadNumber(self.BlinkCooldownSeconds, 1.2))
+		-- Reads the blink cooldown from skills.csv when present.
+		return math.max(0.05, self:ReadNumber(self:GetBlinkSkillDataCell("cooldown", tostring(self.BlinkCooldownSeconds)), self.BlinkCooldownSeconds))
 	end
 
 	method number GetBlinkDistance()
-		return math.max(0.1, self:ReadNumber(self.BlinkDistance, 2.8))
+		-- Reads the blink distance from skills.csv when present.
+		return math.max(0.1, self:ReadNumber(self:GetBlinkSkillDataCell("common_distance", tostring(self.BlinkDistance)), self.BlinkDistance))
+	end
+
+	method number GetBlinkFootholdYOffset()
+		-- Returns the small lift applied when snapping Burst Step to a foothold.
+		return math.max(0, self:ReadNumber(self.BlinkFootholdYOffset, 0.04))
 	end
 
 	method number GetNimbusToggleCooldownSeconds()
-		return math.max(0.05, self:ReadNumber(self.NimbusToggleCooldownSeconds, 0.35))
+		-- Reads the Nimbus toggle cooldown from skills.csv when present.
+		return math.max(0.05, self:ReadNumber(self:GetNimbusSkillDataCell("cooldown", tostring(self.NimbusToggleCooldownSeconds)), self.NimbusToggleCooldownSeconds))
 	end
 
 	method number GetNimbusMoveSpeed()
-		return math.max(0.1, self:ReadNumber(self.NimbusMoveSpeed, 5.2))
+		-- Reads the Nimbus ride movement speed from skills.csv when present.
+		return math.max(0.1, self:ReadNumber(self:GetNimbusSkillDataCell("common_speed", tostring(self.NimbusMoveSpeed)), self.NimbusMoveSpeed))
 	end
 
 	method string ReadString(any value, string fallback)
@@ -603,6 +1271,12 @@ script BRCommonSkillSystem extends Logic
 			return fallback
 		end
 		return numberValue
+	end
+
+	method string TrimString(string value)
+		-- Trims surrounding whitespace from CSV tokens.
+		local safeValue = self:ReadString(value, "")
+		return string.match(safeValue, "^%s*(.-)%s*$")
 	end
 
 	method void Log(string message)

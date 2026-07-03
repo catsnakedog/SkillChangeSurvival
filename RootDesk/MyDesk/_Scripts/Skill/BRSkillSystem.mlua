@@ -4072,10 +4072,10 @@ script BRSkillSystem extends Logic
 			return
 		end
 		local position = self:GetEntityPosition2(playerEntity)
+		if self:TryHandleBattleBoundsReturn(playerEntity, userId, position) == true then
+			return
+		end
 		if self:IsPositionOutsideMapBounds(playerEntity, position, self:GetPlayerBoundsPadding()) == true then
-			if self:TryHandleBattleBoundsReturn(playerEntity, userId, position) == true then
-				return
-			end
 			self:ReturnPlayerToLastSafeFoothold(playerEntity, userId, position)
 			return
 		end

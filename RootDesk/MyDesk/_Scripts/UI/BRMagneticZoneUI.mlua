@@ -3,15 +3,11 @@ script BRMagneticZoneUI extends Component
 
 	property Entity panel = "c69a1e1b-2358-4d12-8522-500391a8ecda"
 
-	property TextComponent phaseText = "b4133040-623a-4206-b25e-9908c4f09687"
+	property SpriteGUIRendererComponent phaseNumber = "e8a00312-4615-454e-9267-bf7655748f85"
 
-	property TextComponent faceText = "ca7c22fe-2e29-417e-9e1a-00e44bba149a"
+	property SpriteGUIRendererComponent secTens = "3e501112-3d70-4df2-8ba1-9453af3c16a9"
 
-	property TextComponent timerText = "52bfb960-b581-4b6b-af1b-ff991e5e5ffc"
-
-	property TextComponent activeText = "6723197a-f465-4840-9316-a46f99ee2f87"
-
-	property TextComponent personalText = "e0882e09-9de6-411f-ad5e-0362b49ad5e4"
+	property SpriteGUIRendererComponent secOnes = "e7a33703-cb12-42ac-944b-666f8509d1c5"
 
 	property number RefreshSeconds = 0.1
 
@@ -21,20 +17,26 @@ script BRMagneticZoneUI extends Component
 
 	property boolean lastVisible = false
 
-	property string lastPhaseText = ""
+	property integer lastPhase = 0
+
+	property integer lastSec = -1
 
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
-		-- Starts the local magnetic-zone HUD refresh loop.
+		-- Starts the local phase-timer HUD refresh loop.
+		self._T.timeDigits = self:BuildTimeDigitRuidTable()
+		self._T.phaseNumbers = self:BuildPhaseNumberRuidTable()
 		self:SetRootRaycastBlocked(false)
 		self:SetPanelActive(false)
+		self.lastPhase = 0
+		self.lastSec = -1
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds())
 		self:Log("ready")
 	end
 
 	@ExecSpace("ClientOnly")
 	method void OnEndPlay()
-		-- Clears the local magnetic-zone HUD refresh loop.
+		-- Clears the local phase-timer HUD refresh loop.
 		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
 			_TimerService:ClearTimer(self.refreshTimerId)
 		end
@@ -43,51 +45,94 @@ script BRMagneticZoneUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void Refresh()
-		-- Updates every visible magnetic-zone HUD field from synchronized state.
+		-- Updates the phase whole-number and two-digit seconds from synchronized state.
 		local visible = self:ShouldShow()
 		self:SetPanelActive(visible)
 		if visible ~= true then
 			return
 		end
 
-		local phase = self:GetPhaseDisplayText()
-		if self.phaseText ~= nil then
-			self.phaseText.Text = phase
-			if _BRMagneticZoneSystem.WarningActive == true then
-				self.phaseText.FontColor = Color(1, 0.72, 0.18, 1)
-			elseif self:HasActiveForbiddenZone() == true then
-				self.phaseText.FontColor = Color(1, 0.18, 0.12, 1)
-			else
-				self.phaseText.FontColor = Color(0.75, 0.95, 1, 1)
-			end
-		end
+		self:ApplyPhase()
+		self:ApplySeconds()
+	end
 
-		if self.faceText ~= nil then
-			self.faceText.Text = self:GetFaceDisplayText()
-		end
-		if self.timerText ~= nil then
-			self.timerText.Text = "NEXT " .. tostring(math.ceil(math.max(0, self:ReadNumber(_BRMagneticZoneSystem.PhaseTimeRemaining, 0)))) .. "s"
-		end
-		if self.activeText ~= nil then
-			self.activeText.Text = "ACTIVE " .. self:ReadString(_BRMagneticZoneSystem.ActiveFacesSummary, "-")
-		end
-		if self.personalText ~= nil then
-			self.personalText.Text = self:GetPersonalDisplayText()
-			if _BRMagneticZoneSystem.ClientInsideForbidden == true then
-				self.personalText.FontColor = Color(1, 0.2, 0.14, 1)
-			else
-				self.personalText.FontColor = Color(0.82, 1, 0.78, 1)
-			end
-		end
+	method table BuildTimeDigitRuidTable()
+		-- 0~9 seconds digit sprite RUIDs (maple secret-vault timer numbers).
+		return {
+			[0] = "404804a4f462458e9ebb30475e8c4f18",
+			[1] = "503223f2741d45edba6f752d373881ca",
+			[2] = "190a70eb00e941248fc815536f186058",
+			[3] = "5a2a31f2fe4348d2908a2599430f5f7b",
+			[4] = "721481c17ae84c7389cd9dc1ac826d9d",
+			[5] = "bcce0a1a96974bb2acc49720c5077387",
+			[6] = "ad7abc9214a547c8b3b75cdf102b61c3",
+			[7] = "68a07ce4e3df46719c5c8f06518f77d8",
+			[8] = "1091ca4ddf384d6799899c31fa3632c7",
+			[9] = "3dc79b51e05f4359874ac8bbef083632",
+		}
+	end
 
-		if phase ~= self.lastPhaseText then
-			self.lastPhaseText = phase
-			self:Log("phase=" .. phase)
+	method table BuildPhaseNumberRuidTable()
+		-- Phase whole-number sprites from animationclip-1091968 (frames = numbers 1~12).
+		-- Phase N -> frame index N-1. Only phases 1~9 are used in this game.
+		return {
+			[1] = "1e00a3a798d142e89dd89367339eb966",
+			[2] = "41665d3e5a17402f945f3ddb10a6e349",
+			[3] = "702c35ede00e49738c03f24c7eff888f",
+			[4] = "37ead2abdc1343be9cbc98958c65593f",
+			[5] = "7aae391f60c949bb83c153548252ff5b",
+			[6] = "adfbfca1cf304fb79135deaa5e41fa2b",
+			[7] = "dae13cdce6f0428d887e7548ca86081b",
+			[8] = "d5998a5cee0e4e0b88cb84a2007c99ce",
+			[9] = "40ca61bd99dd433585a051fd14f0dae6",
+		}
+	end
+
+	method void ApplyPhase()
+		-- Renders the current phase whole-number sprite (1~9), only on change.
+		if self.phaseNumber == nil then
+			return
+		end
+		local p = math.floor(self:ReadNumber(_BRMagneticZoneSystem.PhaseNumber, 1))
+		if p < 1 then
+			p = 1
+		end
+		if p > 9 then
+			p = 9
+		end
+		if p == self.lastPhase then
+			return
+		end
+		self.lastPhase = p
+		local ruid = self._T.phaseNumbers[p]
+		if ruid ~= nil and ruid ~= "" then
+			self.phaseNumber.ImageRUID = ruid
+			self:Log("phase=" .. tostring(p))
+		end
+	end
+
+	method void ApplySeconds()
+		-- Renders remaining phase seconds as two digits (tens/ones), only on change.
+		local sec = math.ceil(math.max(0, self:ReadNumber(_BRMagneticZoneSystem.PhaseTimeRemaining, 0)))
+		if sec > 99 then
+			sec = 99
+		end
+		if sec == self.lastSec then
+			return
+		end
+		self.lastSec = sec
+		local tens = math.floor(sec / 10)
+		local ones = sec % 10
+		if self.secTens ~= nil and self._T.timeDigits[tens] ~= nil then
+			self.secTens.ImageRUID = self._T.timeDigits[tens]
+		end
+		if self.secOnes ~= nil and self._T.timeDigits[ones] ~= nil then
+			self.secOnes.ImageRUID = self._T.timeDigits[ones]
 		end
 	end
 
 	method boolean ShouldShow()
-		-- Checks whether the magnetic-zone HUD should be visible for the local player.
+		-- Checks whether the phase-timer HUD should be visible for the local player.
 		if _BRMagneticZoneSystem == nil then
 			return false
 		end
@@ -107,42 +152,8 @@ script BRMagneticZoneUI extends Component
 		return self:ReadString(localPlayer.CurrentMapName, "") == zoneMapName
 	end
 
-	method string GetPhaseDisplayText()
-		-- Returns the current magnetic-zone phase label.
-		if _BRMagneticZoneSystem.WarningActive == true then
-			return "ZONE WARNING"
-		elseif _BRMagneticZoneSystem.ShrinkFinished == true then
-			return "ZONE LOCKED"
-		elseif self:HasActiveForbiddenZone() == true then
-			return "FORBIDDEN ZONE"
-		end
-		return "SAFE ZONE"
-	end
-
-	method boolean HasActiveForbiddenZone()
-		-- Returns true after at least one face has become forbidden.
-		return self:ReadString(_BRMagneticZoneSystem.ActiveFacesSummary, "") ~= ""
-	end
-
-	method string GetFaceDisplayText()
-		-- Returns the current face label for warning or active state.
-		if _BRMagneticZoneSystem.WarningActive == true then
-			return "FACE " .. self:ReadString(_BRMagneticZoneSystem.WarningFace, "-")
-		end
-		return "LAST " .. self:ReadString(_BRMagneticZoneSystem.LastFace, "-")
-	end
-
-	method string GetPersonalDisplayText()
-		-- Returns the local player's remaining forbidden-zone time text.
-		local remaining = math.ceil(math.max(0, self:ReadNumber(_BRMagneticZoneSystem.ClientForbiddenRemaining, 0)))
-		if _BRMagneticZoneSystem.ClientInsideForbidden == true then
-			return "FORBIDDEN TIME " .. tostring(remaining) .. "s"
-		end
-		return "RESERVE TIME " .. tostring(remaining) .. "s"
-	end
-
 	method void SetPanelActive(boolean visible)
-		-- Toggles the magnetic-zone HUD panel tree.
+		-- Toggles the phase-timer HUD panel tree.
 		if self.panel == nil then
 			return
 		end
@@ -185,7 +196,7 @@ script BRMagneticZoneUI extends Component
 	end
 
 	method void Log(string message)
-		-- Writes a magnetic-zone UI log when verbose logging is enabled.
+		-- Writes a phase-timer UI log when verbose logging is enabled.
 		if self.VerboseLog == true then
 			log("[BRMagneticZoneUI] " .. self:ReadString(message, ""))
 		end

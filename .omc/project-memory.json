@@ -190,6 +190,12 @@
       "type": "directory"
     },
     {
+      "path": ".mcp.json",
+      "accessCount": 2,
+      "lastAccessed": 1783093300539,
+      "type": "file"
+    },
+    {
       "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRPortalConnectionSystem.mlua",
       "accessCount": 1,
       "lastAccessed": 1783080916153,

@@ -1,0 +1,37 @@
+effect_id,effect_ruid,is_loop,total_length_frames
+Nimbus/repeat,263871f547a941c99ce0ab13c7b95aad,true,0
+Nimbus/end,6a743f785c1e4513ad9b3fd6954ef9d7,false,0
+Nimbus/effect/0,04ebd5e304fb4ba5b0606e239eef6b49,false,0
+Nimbus/effect/1,1d7f14b098b24b1a91aeaaadf43affbe,false,0
+Nimbus/effect/2,84af34f1a4444026b6a19ac43059f587,false,0
+Nimbus/effect/3,0ca44d13f1a541aaaabbbb2dde326f96,false,0
+Nimbus/effect/4,9f2c1a5607584cc389bb949686315853,false,0
+Nimbus/effect/5,8cab861ca0a740cfa5d7c884aa20f963,false,0
+Nimbus/effect/6,1d3690593b0e4757b0b575add39e4301,false,0
+Nimbus/effect/7,da484eade2e94acf9bbadb4065f22339,false,0
+Nimbus/effect/8,5f12b63e0d01417b8f7ca792d9f69e24,false,0
+Nimbus/effect/9,e5a553cc483447ab91e3e5f6b63ad23e,false,0
+Nimbus/effect/10,21ce3c49236d41ffa973365f935d7696,false,0
+Nimbus/effect/11,c058c2f0b543458e9b58293beb2d44c5,false,0
+Nimbus/effect/12,452ffe30d4cd4556a4297e263507405e,false,0
+Nimbus/effect/13,e2d83a440efb468abb1955054ae6960b,false,0
+Nimbus/effect/14,8fd549302bdc4c84ab7e405e0387f9a8,false,0
+Nimbus/effect/15,d0bd8630cee24440a8f8aca43696eac6,false,0
+Nimbus/effect0/1,64c14c4271a34728962ddb09e897860c,false,0
+Nimbus/effect0/2,cd7ea9c14be3491595fba7a2715b7c01,false,0
+Nimbus/effect0/3,fd1f43f1cf5240db91355e49707d113f,false,0
+Nimbus/effect0/4,f0da4f59b5df46f5a4334cdc0e84f14f,false,0
+Nimbus/effect0/5,17ee876c77cf4100b1f172db245f04c5,false,0
+Nimbus/effect0/6,9f1887578f95482ab191be1a665a775b,false,0
+Nimbus/effect0/7,51e6d8f690a04ced8385c4c02a17150e,false,0
+Nimbus/effect0/8,8cb7252e2ee04cd997af25504156a29f,false,0
+Nimbus/effect0/9,79d860af8e25481ca3389b36e3178a99,false,0
+Nimbus/effect0/10,05876b6d2bad4fb5b4fb9358512e26b3,false,0
+Nimbus/effect0/11,341a80c5959a4b15893c976456cb6105,false,0
+divineSwing/effect,0706dac96b694cd699b87e602ba74f42,false,8
+애로우 블로우/effect,2ed6be9152eb4bf0b22f4ca6e6fff9fe,false,9
+애로우 블로우/hit/0,84a473e004a34fdea67aa74a87dc75c6,false,4
+Blink/effect,8dc15776c4f349a0bfa155e911e4a7be,false,8
+Blink/effect0,df5bd4514ffb461fb8479ff0d88ec204,false,8
+Blink/effect1,c4755faee88149738692350b34aa5766,false,8
+Blink/special,ba3f9119b8634a1f80e85017adc426f7,false,8

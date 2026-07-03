@@ -1,0 +1,290 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1783079262502,
+  "projectRoot": "C:\\Users\\wjdgj\\Documents\\GitHub\\SkillChangeSurvival",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 3,
+      "lastAccessed": 1783079262448,
+      "keyFiles": [
+        "BRGridMapSystem_PROMPT.md",
+        "BRGridMapSystem_README.md",
+        "BRLobbyMatchmakerGuide.md"
+      ]
+    },
+    "Environment": {
+      "path": "Environment",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1783079262448,
+      "keyFiles": [
+        "config"
+      ]
+    },
+    "Global": {
+      "path": "Global",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1783079262449,
+      "keyFiles": [
+        "CollisionGroupSet.collisiongroupset",
+        "common.gamelogic",
+        "CustomAvatarAction.avataraction",
+        "CustomBodyAction.bodyaction",
+        "CustomFontGroupSet.config"
+      ]
+    },
+    "map": {
+      "path": "map",
+      "purpose": null,
+      "fileCount": 7,
+      "lastAccessed": 1783079262449,
+      "keyFiles": [
+        "BattleMap.map",
+        "BotTestMap.map",
+        "RoomTestMap.map",
+        "RoomTestMap_copy01.map",
+        "RoomTestMap_copy02.map"
+      ]
+    },
+    "RootDesk": {
+      "path": "RootDesk",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1783079262449,
+      "keyFiles": [
+        "MyDesk.directory"
+      ]
+    },
+    "tools": {
+      "path": "tools",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1783079262450,
+      "keyFiles": []
+    },
+    "ui": {
+      "path": "ui",
+      "purpose": null,
+      "fileCount": 13,
+      "lastAccessed": 1783079262450,
+      "keyFiles": [
+        "BossTimerGroup.ui",
+        "BRBattleHudGroup.ui",
+        "BRClassSelectGroup.ui",
+        "BRMatchFlowGroup.ui",
+        "BRMiniMapGroup.ui"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRMiniMapUI.mlua",
+      "accessCount": 10,
+      "lastAccessed": 1783090520642,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRGridMapEditorTool.mlua",
+      "accessCount": 5,
+      "lastAccessed": 1783090084019,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRRoomGraphGenerator.mlua",
+      "accessCount": 5,
+      "lastAccessed": 1783090188292,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRRoomMiniMapUI.mlua",
+      "accessCount": 5,
+      "lastAccessed": 1783090769087,
+      "type": "file"
+    },
+    {
+      "path": "map\\RoomTestMap_copy03.map",
+      "accessCount": 3,
+      "lastAccessed": 1783089241538,
+      "type": "directory"
+    },
+    {
+      "path": "map",
+      "accessCount": 3,
+      "lastAccessed": 1783089349760,
+      "type": "directory"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Match\\BRLobbyMatchmaker.mlua",
+      "accessCount": 3,
+      "lastAccessed": 1783090175293,
+      "type": "directory"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRBossTimerUI.mlua",
+      "accessCount": 2,
+      "lastAccessed": 1783088893876,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-general\\references\\platform.md",
+      "accessCount": 2,
+      "lastAccessed": 1783088996146,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-general\\references\\workspace.md",
+      "accessCount": 2,
+      "lastAccessed": 1783088997320,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-general\\references\\authoring.md",
+      "accessCount": 2,
+      "lastAccessed": 1783089009086,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-scripting\\references\\verify-checklist.md",
+      "accessCount": 2,
+      "lastAccessed": 1783090471396,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts",
+      "accessCount": 2,
+      "lastAccessed": 1783090505712,
+      "type": "directory"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRPortalConnectionSystem.mlua",
+      "accessCount": 1,
+      "lastAccessed": 1783080916153,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Battle\\BRBattleTimerSystem.mlua",
+      "accessCount": 1,
+      "lastAccessed": 1783080918388,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-search\\references\\resource\\search.md",
+      "accessCount": 1,
+      "lastAccessed": 1783083074123,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-painter\\references\\style-maple-cartoon.md",
+      "accessCount": 1,
+      "lastAccessed": 1783087925703,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-painter\\references\\size-guide.md",
+      "accessCount": 1,
+      "lastAccessed": 1783087926927,
+      "type": "file"
+    },
+    {
+      "path": ".remember\\today-2026-07-03.md",
+      "accessCount": 1,
+      "lastAccessed": 1783088887384,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-general\\references\\entity.md",
+      "accessCount": 1,
+      "lastAccessed": 1783089008998,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk",
+      "accessCount": 1,
+      "lastAccessed": 1783089138554,
+      "type": "directory"
+    },
+    {
+      "path": "map\\StartMap.map",
+      "accessCount": 1,
+      "lastAccessed": 1783089361783,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Battle\\BRSupplySystem.mlua",
+      "accessCount": 1,
+      "lastAccessed": 1783089724322,
+      "type": "directory"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRItemPickupSystem.mlua",
+      "accessCount": 1,
+      "lastAccessed": 1783089725410,
+      "type": "directory"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Battle\\BRBattleLauncher.mlua",
+      "accessCount": 1,
+      "lastAccessed": 1783089813581,
+      "type": "directory"
+    },
+    {
+      "path": ".claude\\skills\\msw-general\\references\\platform-maple.md",
+      "accessCount": 1,
+      "lastAccessed": 1783090040216,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Battle\\BRBattleLogic.mlua",
+      "accessCount": 1,
+      "lastAccessed": 1783090060594,
+      "type": "directory"
+    },
+    {
+      "path": ".claude\\skills\\msw-ui-system\\references\\component-api.md",
+      "accessCount": 1,
+      "lastAccessed": 1783090472947,
+      "type": "file"
+    },
+    {
+      "path": "Environment\\NativeScripts\\Service\\UserService.d.mlua",
+      "accessCount": 1,
+      "lastAccessed": 1783090562820,
+      "type": "directory"
+    }
+  ],
+  "userDirectives": []
+}

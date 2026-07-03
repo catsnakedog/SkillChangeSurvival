@@ -69,79 +69,130 @@ script BRSkillUIDatabase extends Logic
 	end
 
 	method any GetIconData(string skillKey)
-		-- Looks up icon data by base skill key.
+		-- Looks up icon data by CSV skill id.
 		local catalog = self:GetIconCatalog()
-		return catalog[self:GetBaseSkillKey(skillKey)]
+		local key = self:ReadString(skillKey, "Default")
+		if catalog[key] ~= nil then
+			return catalog[key]
+		end
+		return catalog[self:GetBaseSkillKey(key)]
 	end
 
 	method any GetIconCatalog()
-		-- Creates the temporary icon data table used by the skill-chain UI.
+		-- Creates icon data from skills/effects DataSets.
 		if self._T.iconCatalog == nil then
-			local slash = "0706dac96b694cd699b87e602ba74f42"
-			local shot = "4a7a78ed206847748a65a46e5f5ae206"
-			local burst = "9194c22af1dc423a9b23eb4de171a137"
-			local guard = "8a31de9dc1634e3bbd3d083f7deadf47"
-			local field = "9df237754ee44c90bb4602f55d29ff9b"
-			self._T.iconCatalog = {
-				Default = { IconRUID = self.PlaceholderIconRUID },
-				Slash = {
-					IconRUID = slash,
-					ByTier = { [1] = slash, [2] = slash, [3] = burst, [4] = burst },
-					LeadByTier = { [2] = slash, [3] = burst, [4] = burst }
-				},
-				Shot = {
-					IconRUID = shot,
-					ByTier = { [1] = shot, [2] = shot, [3] = shot, [4] = burst },
-					LeadByTier = { [2] = shot, [3] = shot, [4] = burst }
-				},
-				Burst = {
-					IconRUID = burst,
-					ByTier = { [1] = burst, [2] = burst, [3] = burst, [4] = field },
-					LeadByTier = { [2] = burst, [3] = burst, [4] = field }
-				},
-				Dash = {
-					IconRUID = slash,
-					ByTier = { [1] = slash, [2] = shot, [3] = burst, [4] = burst },
-					LeadByTier = { [2] = shot, [3] = burst, [4] = burst }
-				},
-				Guard = {
-					IconRUID = guard,
-					ByTier = { [1] = guard, [2] = guard, [3] = field, [4] = field },
-					LeadByTier = { [2] = guard, [3] = field, [4] = field }
-				},
-				Field = {
-					IconRUID = field,
-					ByTier = { [1] = field, [2] = field, [3] = burst, [4] = burst },
-					LeadByTier = { [2] = field, [3] = burst, [4] = burst }
-				},
-				Unique = {
-					IconRUID = guard,
-					ByTier = { [1] = guard, [2] = guard, [3] = field, [4] = field }
-				},
-				UniqueHero = {
-					IconRUID = guard,
-					ByTier = { [1] = guard, [2] = guard, [3] = field, [4] = field }
-				},
-				UniqueStorm = {
-					IconRUID = shot,
-					ByTier = { [1] = shot, [2] = shot, [3] = burst, [4] = burst }
-				},
-				UniqueArcane = {
-					IconRUID = burst,
-					ByTier = { [1] = burst, [2] = burst, [3] = field, [4] = field }
-				},
-				Blink = {
-					IconRUID = slash,
-					ByTier = { [1] = slash, [2] = shot, [3] = burst, [4] = burst }
-				},
-				Nimbus = {
-					IconRUID = field,
-					ByTier = { [1] = field, [2] = field, [3] = shot, [4] = burst }
-				}
-			}
+			self._T.iconCatalog = { Default = { IconRUID = self.PlaceholderIconRUID } }
+			local skills = self:GetDataTable("skills")
+			if skills ~= nil then
+				local rowCount = math.max(0, math.floor(self:ReadNumber(skills:GetRowCount(), 0)))
+				for row = 1, rowCount do
+					local skillId = self:GetDataCell(skills, row, "id", "")
+					if skillId ~= "" then
+						local iconRuid = self:GetDataCell(skills, row, "icon_ruid", "")
+						if iconRuid == "" then
+							iconRuid = self:GetFirstEffectRUID(self:GetDataCell(skills, row, "effect_ids", ""))
+						end
+						if iconRuid == "" then
+							iconRuid = self:ReadString(self.PlaceholderIconRUID, "")
+						end
+						self._T.iconCatalog[skillId] = {
+							IconRUID = iconRuid,
+							ByTier = { [1] = iconRuid, [2] = iconRuid, [3] = iconRuid, [4] = iconRuid },
+							LeadByTier = { [2] = iconRuid, [3] = iconRuid, [4] = iconRuid }
+						}
+					end
+				end
+			end
 			self:Log("icon db ready")
 		end
 		return self._T.iconCatalog
+	end
+
+	method any GetDataTable(string tableName)
+		local safeName = self:ReadString(tableName, "")
+		if safeName == "" then
+			return nil
+		end
+		return _DataService:GetTable(safeName)
+	end
+
+	method string GetDataCell(any dataSet, number row, string columnName, string fallback)
+		if dataSet == nil then
+			return self:ReadString(fallback, "")
+		end
+		local value = dataSet:GetCell(math.max(1, math.floor(self:ReadNumber(row, 1))), self:ReadString(columnName, ""))
+		if value == nil then
+			return self:ReadString(fallback, "")
+		end
+		return self:TrimString(tostring(value))
+	end
+
+	method string GetFirstEffectRUID(string effectIds)
+		local ids = self:ParseDelimitedList(effectIds, "|")
+		local effects = self:GetDataTable("effects")
+		if effects == nil then
+			return ""
+		end
+		for index, effectId in ipairs(ids) do
+			local row = self:GetDataRowIndex(effects, "effect_id", effectId)
+			if row > 0 then
+				local ruid = self:GetDataCell(effects, row, "effect_ruid", "")
+				if ruid ~= "" then
+					return ruid
+				end
+			end
+		end
+		return ""
+	end
+
+	method number GetDataRowIndex(any dataSet, string columnName, string value)
+		if dataSet == nil then
+			return 0
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(dataSet:GetRowCount(), 0)))
+		local safeValue = self:ReadString(value, "")
+		for row = 1, rowCount do
+			if self:GetDataCell(dataSet, row, columnName, "") == safeValue then
+				return row
+			end
+		end
+		return 0
+	end
+
+	method any ParseDelimitedList(string value, string delimiter)
+		local result = {}
+		local safeValue = self:ReadString(value, "")
+		local safeDelimiter = self:ReadString(delimiter, "|")
+		if safeValue == "" then
+			return result
+		end
+		local startIndex = 1
+		while startIndex <= string.len(safeValue) do
+			local remaining = string.sub(safeValue, startIndex)
+			local relativeDelimiterIndex, relativeDelimiterEndIndex = string.find(remaining, safeDelimiter)
+			local delimiterIndex = nil
+			if relativeDelimiterIndex ~= nil then
+				delimiterIndex = startIndex + relativeDelimiterIndex - 1
+			end
+			local token = ""
+			if delimiterIndex == nil then
+				token = string.sub(safeValue, startIndex)
+				startIndex = string.len(safeValue) + 1
+			else
+				token = string.sub(safeValue, startIndex, delimiterIndex - 1)
+				startIndex = delimiterIndex + string.len(safeDelimiter)
+			end
+			token = self:TrimString(token)
+			if token ~= "" then
+				table.insert(result, token)
+			end
+		end
+		return result
+	end
+
+	method string TrimString(string value)
+		local safeValue = self:ReadString(value, "")
+		return string.match(safeValue, "^%s*(.-)%s*$")
 	end
 
 	method string GetBaseSkillKey(string skillKey)

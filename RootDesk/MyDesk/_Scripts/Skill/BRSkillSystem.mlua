@@ -3,6 +3,8 @@ script BRSkillSystem extends Logic
 
 	property boolean AutoEquipDroppedParts = true
 
+	property boolean SeedDefaultChainOnBattleReset = true
+
 	property boolean VerboseLog = true
 
 	property number PanelMaxPartRows = 2
@@ -59,18 +61,6 @@ script BRSkillSystem extends Logic
 
 	property boolean EnableSkillVisualEffects = true
 
-	property string SlashEffectRUID = "0706dac96b694cd699b87e602ba74f42"
-
-	property string ProjectileEffectRUID = "4a7a78ed206847748a65a46e5f5ae206"
-
-	property string BurstEffectRUID = "9194c22af1dc423a9b23eb4de171a137"
-
-	property string GuardEffectRUID = "8a31de9dc1634e3bbd3d083f7deadf47"
-
-	property string FieldEffectRUID = "9df237754ee44c90bb4602f55d29ff9b"
-
-	property string HitEffectRUID = "9194c22af1dc423a9b23eb4de171a137"
-
 	property number SkillEffectScale = 1.0
 
 	property number SkillEffectAlpha = 1.0
@@ -97,9 +87,27 @@ script BRSkillSystem extends Logic
 	end
 
 	method void EnsureRuntime()
-		-- Initializes runtime-only skill data tables.
+		-- Initializes runtime-only skill data tables from Data/*.csv-backed DataSets.
 		if self._T.userStates == nil then
 			self._T.userStates = {}
+		end
+		if self._T.snapshotVersions == nil then
+			self._T.snapshotVersions = {}
+		end
+		if self._T.skillEffectCatalog == nil then
+			self._T.skillEffectCatalog = self:CreateSkillEffectCatalog()
+		end
+		if self._T.skillHitboxCatalog == nil then
+			self._T.skillHitboxCatalog = self:CreateSkillHitboxCatalog()
+		end
+		if self._T.skillActionCatalog == nil then
+			self._T.skillActionCatalog = self:CreateSkillActionCatalog()
+		end
+		if self._T.skillEventCatalog == nil then
+			self._T.skillEventCatalog = self:CreateSkillEventCatalog()
+		end
+		if self._T.skillRuntimeCatalog == nil then
+			self._T.skillRuntimeCatalog = self:CreateSkillRuntimeCatalog()
 		end
 		if self._T.catalog == nil then
 			self._T.catalog = self:CreateCatalog()
@@ -107,20 +115,11 @@ script BRSkillSystem extends Logic
 		if self._T.partIds == nil then
 			self._T.partIds = self:CreatePartIdList()
 		end
-		if self._T.snapshotVersions == nil then
-			self._T.snapshotVersions = {}
+		if self._T.skillRestrictionCatalog == nil then
+			self._T.skillRestrictionCatalog = self:CreateSkillRestrictionCatalog()
 		end
-		if self._T.skillRuntimeCatalog == nil then
-			self._T.skillRuntimeCatalog = self:CreateSkillRuntimeCatalog()
-		end
-		if self._T.skillEventCatalog == nil then
-			self._T.skillEventCatalog = self:CreateSkillEventCatalog()
-		end
-		if self._T.skillHitboxCatalog == nil then
-			self._T.skillHitboxCatalog = self:CreateSkillHitboxCatalog()
-		end
-		if self._T.skillActionCatalog == nil then
-			self._T.skillActionCatalog = self:CreateSkillActionCatalog()
+		if self._T.characterDefaults == nil then
+			self._T.characterDefaults = self:CreateCharacterDefaults()
 		end
 		if self._T.chainRuntimeByUser == nil then
 			self._T.chainRuntimeByUser = {}
@@ -159,14 +158,26 @@ script BRSkillSystem extends Logic
 	end
 
 	method any CreateCatalog()
-		-- Builds the first-order skill catalog. Part ids stay stable for runtime compatibility.
+		-- Builds rollable skill parts from the skills DataSet.
 		local catalog = {}
-		self:AddPartDefinition(catalog, "slash_part", "Slash", "Slash", "SL")
-		self:AddPartDefinition(catalog, "shot_part", "Shot", "Shot", "SH")
-		self:AddPartDefinition(catalog, "burst_part", "Burst", "Burst", "BU")
-		self:AddPartDefinition(catalog, "dash_part", "Dash", "Dash", "DA")
-		self:AddPartDefinition(catalog, "guard_part", "Guard", "Guard", "GU")
-		self:AddPartDefinition(catalog, "field_part", "Field", "Field", "FI")
+		local skills = self:GetDataTable("skills")
+		if skills ~= nil then
+			local rowCount = math.max(0, math.floor(self:ReadNumber(skills:GetRowCount(), 0)))
+			for row = 1, rowCount do
+				local skillId = self:GetDataCell(skills, row, "id", "")
+				local category = self:GetDataCell(skills, row, "skill_category", "")
+				if skillId ~= "" and self:IsSkillPartCategory(category) == true then
+					local displayName = self:GetDataCell(skills, row, "name", skillId)
+					self:AddPartDefinition(catalog, skillId .. "_part", skillId, displayName, self:BuildShortKey(skillId, displayName))
+				end
+			end
+		end
+		if self:GetTableCount(catalog) <= 0 then
+			local fallbackSkill = self:GetDefaultBasicSkillId()
+			if fallbackSkill ~= "" then
+				self:AddPartDefinition(catalog, fallbackSkill .. "_part", fallbackSkill, fallbackSkill, self:BuildShortKey(fallbackSkill, fallbackSkill))
+			end
+		end
 		return catalog
 	end
 
@@ -183,46 +194,47 @@ script BRSkillSystem extends Logic
 
 	method any CreatePartIdList()
 		-- Returns rollable skill part ids.
-		return {
-			"slash_part",
-			"shot_part",
-			"burst_part",
-			"dash_part",
-			"guard_part",
-			"field_part"
-		}
+		local ids = {}
+		if self._T.catalog ~= nil then
+			for partId, definition in pairs(self._T.catalog) do
+				table.insert(ids, partId)
+			end
+		end
+		table.sort(ids)
+		return ids
 	end
 
 	method any CreateSkillRuntimeCatalog()
-		-- Creates distinct skill timeline definitions for each skill order.
+		-- Creates executable skill timeline definitions from the skills DataSet.
 		local skills = {}
-		self:AddSkillRuntimeDefinition(skills, "Slash", 1, "Slash", 12, 12, { [4] = { "divineSwingArea1" }, [8] = { "slashFollowEffect" } })
-		self:AddSkillRuntimeDefinition(skills, "Slash", 2, "Slash II", 14, 16, { [3] = { "divineSwingArea1" }, [6] = { "slashTier2BackArea" }, [10] = { "slashFollowEffect" } })
-		self:AddSkillRuntimeDefinition(skills, "Slash", 3, "Slash III", 16, 18, { [2] = { "slashTier3WideArea" }, [6] = { "divineSwingArea1" }, [11] = { "slashFollowEffect" } })
-		self:AddSkillRuntimeDefinition(skills, "Slash", 4, "Slash IV", 18, 22, { [2] = { "slashTier4CrossArea" }, [7] = { "slashTier3WideArea" }, [13] = { "slashFollowEffect" } })
-		self:AddSkillRuntimeDefinition(skills, "Shot", 1, "Shot", 12, 14, { [5] = { "basicProjectile" } })
-		self:AddSkillRuntimeDefinition(skills, "Shot", 2, "Piercing Shot", 13, 16, { [4] = { "shotPierceProjectile" } })
-		self:AddSkillRuntimeDefinition(skills, "Shot", 3, "Double Shot", 15, 18, { [3] = { "basicProjectile" }, [7] = { "shotPierceProjectile" } })
-		self:AddSkillRuntimeDefinition(skills, "Shot", 4, "Storm Shot", 18, 22, { [2] = { "shotStormProjectile" }, [6] = { "shotPierceProjectile" }, [10] = { "basicProjectile" } })
-		self:AddSkillRuntimeDefinition(skills, "Burst", 1, "Burst", 10, 18, { [3] = { "burstTriggerArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Burst", 2, "Burst II", 12, 20, { [3] = { "burstTriggerArea2" } })
-		self:AddSkillRuntimeDefinition(skills, "Burst", 3, "Burst III", 14, 22, { [2] = { "burstTriggerArea3" } })
-		self:AddSkillRuntimeDefinition(skills, "Burst", 4, "Burst IV", 16, 26, { [2] = { "burstTriggerArea4" }, [7] = { "burstEchoArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Dash", 1, "Dash", 9, 15, { [0] = { "dashMoveAction" }, [2] = { "dashDamageArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Dash", 2, "Dash II", 11, 17, { [0] = { "dashMoveAction" }, [2] = { "dashExtendedArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Dash", 3, "Dash III", 13, 19, { [0] = { "dashLongMoveAction" }, [1] = { "dashExtendedArea" }, [6] = { "dashReturnArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Dash", 4, "Dash IV", 15, 23, { [0] = { "dashLongMoveAction" }, [1] = { "dashBreakArea" }, [5] = { "dashExtendedArea" }, [9] = { "dashReturnArea" } })
-		self:AddSkillRuntimeDefinition(skills, "Guard", 1, "Guard", 8, 20, { [0] = { "guardBuffAction" } })
-		self:AddSkillRuntimeDefinition(skills, "Guard", 2, "Barrier", 10, 22, { [0] = { "guardBarrierAction" } })
-		self:AddSkillRuntimeDefinition(skills, "Guard", 3, "Fortress", 12, 24, { [0] = { "guardFortressAction" }, [6] = { "slashFollowEffect" } })
-		self:AddSkillRuntimeDefinition(skills, "Guard", 4, "Aegis", 14, 28, { [0] = { "guardAegisAction" }, [5] = { "guardBarrierAction" } })
-		self:AddSkillRuntimeDefinition(skills, "Field", 1, "Field", 12, 24, { [6] = { "fieldCreateAction" } })
-		self:AddSkillRuntimeDefinition(skills, "Field", 2, "Field II", 14, 26, { [5] = { "fieldCreateWideAction" } })
-		self:AddSkillRuntimeDefinition(skills, "Field", 3, "Field III", 16, 28, { [4] = { "fieldCreatePulseAction" } })
-		self:AddSkillRuntimeDefinition(skills, "Field", 4, "Field IV", 18, 32, { [3] = { "fieldCreateStormAction" }, [9] = { "fieldCreateWideAction" } })
-		self:AddSkillRuntimeDefinition(skills, "UniqueHero", 1, "Hero Unique", 18, 46, { [1] = { "uniqueHeroAdvance" }, [4] = { "uniqueHeroArea" }, [9] = { "slashFollowEffect" } })
-		self:AddSkillRuntimeDefinition(skills, "UniqueStorm", 1, "Storm Unique", 20, 48, { [2] = { "uniqueStormProjectile" }, [5] = { "uniqueStormProjectile" }, [8] = { "uniqueStormProjectile" } })
-		self:AddSkillRuntimeDefinition(skills, "UniqueArcane", 1, "Arcane Unique", 22, 52, { [2] = { "uniqueArcaneField" }, [8] = { "uniqueArcaneBurst" } })
+		local data = self:GetDataTable("skills")
+		if data == nil then
+			return skills
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local skillId = self:GetDataCell(data, row, "id", "")
+			if skillId ~= "" then
+				local eventsByFrame = self:ParseFrameEventMap(self:GetDataCell(data, row, "frame_event_ids", ""))
+				local totalFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "total_length_frames", "1"), 1)))
+				totalFrames = math.max(totalFrames, self:InferTotalFramesFromEvents(eventsByFrame))
+				local cooldownSeconds = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "cooldown", "0"), 0))
+				local cooldownFrames = math.max(1, math.floor(cooldownSeconds / self:GetSkillFrameSeconds() + 0.999))
+				skills[skillId] = {
+					SkillKey = skillId,
+					BaseSkillKey = skillId,
+					Tier = 1,
+					DisplayName = self:GetDataCell(data, row, "name", skillId),
+					SkillCategory = self:GetDataCell(data, row, "skill_category", ""),
+					IconRUID = self:GetDataCell(data, row, "icon_ruid", ""),
+					EffectIds = self:ParseDelimitedList(self:GetDataCell(data, row, "effect_ids", ""), "|"),
+					TotalFrames = totalFrames,
+					CooldownFrames = cooldownFrames,
+					CooldownSeconds = cooldownSeconds,
+					EventsByFrame = eventsByFrame
+				}
+			end
+		end
 		return skills
 	end
 
@@ -242,295 +254,546 @@ script BRSkillSystem extends Logic
 	end
 
 	method any CreateSkillEventCatalog()
-		-- Creates timeline events; each event delegates work to action data.
+		-- Creates timeline events from event and context-generator DataSets.
 		local events = {}
-		events["divineSwingArea1"] = {
-			EventId = "divineSwingArea1",
-			Type = "area",
-			DurationFrames = 4,
-			HitboxIds = { "ds1b1", "ds1b2" },
-			ActionIds = { "ds1hit", "ds1stun" }
-		}
-		events["slashFollowEffect"] = {
-			EventId = "slashFollowEffect",
-			Type = "action",
-			ActionIds = { "slashAfterEffect" }
-		}
-		events["slashTier2BackArea"] = {
-			EventId = "slashTier2BackArea",
-			Type = "area",
-			DurationFrames = 3,
-			HitboxIds = { "ds1b2", "ds1b1" },
-			ActionIds = { "slashTier2Hit" }
-		}
-		events["slashTier3WideArea"] = {
-			EventId = "slashTier3WideArea",
-			Type = "area",
-			DurationFrames = 4,
-			HitboxIds = { "slashWide" },
-			ActionIds = { "slashTier3Hit", "slashAfterEffect" }
-		}
-		events["slashTier4CrossArea"] = {
-			EventId = "slashTier4CrossArea",
-			Type = "area",
-			DurationFrames = 5,
-			HitboxIds = { "slashWide", "slashBackWide" },
-			ActionIds = { "slashTier4Hit", "ds1stun" }
-		}
-		events["basicProjectile"] = {
-			EventId = "basicProjectile",
-			Type = "projectile",
-			ProjectileId = "basicProjectile",
-			DurationFrames = 24,
-			Speed = 7.5,
-			Range = 6.5,
-			Pierce = 0,
-			HitboxIds = { "projectileSmall" },
-			ActionIds = { "shotHit" }
-		}
-		events["shotPierceProjectile"] = {
-			EventId = "shotPierceProjectile",
-			Type = "projectile",
-			ProjectileId = "shotPierceProjectile",
-			DurationFrames = 24,
-			Speed = 8.4,
-			Range = 7.2,
-			Pierce = 1,
-			HitboxIds = { "projectileMedium" },
-			ActionIds = { "shotTier2Hit" }
-		}
-		events["shotStormProjectile"] = {
-			EventId = "shotStormProjectile",
-			Type = "projectile",
-			ProjectileId = "shotStormProjectile",
-			DurationFrames = 30,
-			Speed = 9.0,
-			Range = 8.6,
-			Pierce = 3,
-			HitboxIds = { "projectileLarge" },
-			ActionIds = { "shotTier4Hit" }
-		}
-		events["burstTriggerArea"] = {
-			EventId = "burstTriggerArea",
-			Type = "area",
-			DurationFrames = 3,
-			HitboxIds = { "burstCore" },
-			ActionIds = { "burstHit", "burstTrigger" }
-		}
-		events["burstTriggerArea2"] = {
-			EventId = "burstTriggerArea2",
-			Type = "area",
-			DurationFrames = 4,
-			HitboxIds = { "burstWide" },
-			ActionIds = { "burstTier2Hit", "burstTrigger" }
-		}
-		events["burstTriggerArea3"] = {
-			EventId = "burstTriggerArea3",
-			Type = "area",
-			DurationFrames = 5,
-			HitboxIds = { "burstWide", "burstCore" },
-			ActionIds = { "burstTier3Hit", "burstTrigger" }
-		}
-		events["burstTriggerArea4"] = {
-			EventId = "burstTriggerArea4",
-			Type = "area",
-			DurationFrames = 6,
-			HitboxIds = { "burstHuge" },
-			ActionIds = { "burstTier4Hit", "burstTrigger" }
-		}
-		events["burstEchoArea"] = {
-			EventId = "burstEchoArea",
-			Type = "area",
-			DurationFrames = 3,
-			HitboxIds = { "burstWide" },
-			ActionIds = { "burstTier2Hit" }
-		}
-		events["dashDamageArea"] = {
-			EventId = "dashDamageArea",
-			Type = "area",
-			DurationFrames = 2,
-			HitboxIds = { "dashBox" },
-			ActionIds = { "dashHit" }
-		}
-		events["dashMoveAction"] = {
-			EventId = "dashMoveAction",
-			Type = "action",
-			ActionIds = { "dashMove" }
-		}
-		events["dashLongMoveAction"] = {
-			EventId = "dashLongMoveAction",
-			Type = "action",
-			ActionIds = { "dashLongMove" }
-		}
-		events["dashExtendedArea"] = {
-			EventId = "dashExtendedArea",
-			Type = "area",
-			DurationFrames = 3,
-			HitboxIds = { "dashLong" },
-			ActionIds = { "dashTier2Hit" }
-		}
-		events["dashReturnArea"] = {
-			EventId = "dashReturnArea",
-			Type = "area",
-			DurationFrames = 2,
-			HitboxIds = { "dashBack" },
-			ActionIds = { "dashTier3Hit" }
-		}
-		events["dashBreakArea"] = {
-			EventId = "dashBreakArea",
-			Type = "area",
-			DurationFrames = 4,
-			HitboxIds = { "dashWide" },
-			ActionIds = { "dashTier4Hit", "ds1stun" }
-		}
-		events["guardBuffAction"] = {
-			EventId = "guardBuffAction",
-			Type = "action",
-			ActionIds = { "guardBuff" }
-		}
-		events["guardBarrierAction"] = {
-			EventId = "guardBarrierAction",
-			Type = "action",
-			ActionIds = { "guardBarrierBuff" }
-		}
-		events["guardFortressAction"] = {
-			EventId = "guardFortressAction",
-			Type = "action",
-			ActionIds = { "guardFortressBuff" }
-		}
-		events["guardAegisAction"] = {
-			EventId = "guardAegisAction",
-			Type = "action",
-			ActionIds = { "guardAegisBuff" }
-		}
-		events["fieldCreateAction"] = {
-			EventId = "fieldCreateAction",
-			Type = "field",
-			DurationFrames = 60,
-			HitboxIds = { "fieldZone" },
-			ActionIds = { "fieldTickHit" }
-		}
-		events["fieldCreateWideAction"] = {
-			EventId = "fieldCreateWideAction",
-			Type = "field",
-			DurationFrames = 72,
-			HitboxIds = { "fieldWide" },
-			ActionIds = { "fieldTier2TickHit" }
-		}
-		events["fieldCreatePulseAction"] = {
-			EventId = "fieldCreatePulseAction",
-			Type = "field",
-			DurationFrames = 84,
-			HitboxIds = { "fieldWide", "fieldZone" },
-			ActionIds = { "fieldTier3TickHit" }
-		}
-		events["fieldCreateStormAction"] = {
-			EventId = "fieldCreateStormAction",
-			Type = "field",
-			DurationFrames = 96,
-			HitboxIds = { "fieldHuge" },
-			ActionIds = { "fieldTier4TickHit" }
-		}
-		events["uniqueHeroAdvance"] = {
-			EventId = "uniqueHeroAdvance",
-			Type = "action",
-			ActionIds = { "heroUniqueMove" }
-		}
-		events["uniqueHeroArea"] = {
-			EventId = "uniqueHeroArea",
-			Type = "area",
-			DurationFrames = 5,
-			HitboxIds = { "dashWide", "slashWide" },
-			ActionIds = { "heroUniqueHit", "ds1stun" }
-		}
-		events["uniqueStormProjectile"] = {
-			EventId = "uniqueStormProjectile",
-			Type = "projectile",
-			ProjectileId = "uniqueStormProjectile",
-			DurationFrames = 30,
-			Speed = 10.5,
-			Range = 8.5,
-			Pierce = 2,
-			HitboxIds = { "projectileMedium" },
-			ActionIds = { "stormUniqueHit" }
-		}
-		events["uniqueArcaneField"] = {
-			EventId = "uniqueArcaneField",
-			Type = "field",
-			DurationFrames = 72,
-			HitboxIds = { "fieldWide" },
-			ActionIds = { "arcaneUniqueTick" }
-		}
-		events["uniqueArcaneBurst"] = {
-			EventId = "uniqueArcaneBurst",
-			Type = "area",
-			DurationFrames = 5,
-			HitboxIds = { "burstHuge" },
-			ActionIds = { "arcaneUniqueHit" }
-		}
+		local data = self:GetDataTable("events")
+		if data == nil then
+			return events
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local eventId = self:GetDataCell(data, row, "event_id", "")
+			if eventId ~= "" then
+				local eventType = self:NormalizeEventType(self:GetDataCell(data, row, "event_type", ""))
+				local actionIds = self:ParseDelimitedList(self:GetDataCell(data, row, "action_ids", ""), "|")
+				local eventDef = {
+					EventId = eventId,
+					Type = eventType,
+					ActionIds = actionIds
+				}
+				if eventType == "area" then
+					self:ApplyAreaTargetData(eventDef, self:GetDataCell(data, row, "area_target_id", ""))
+				end
+				events[eventId] = eventDef
+			end
+		end
 		return events
 	end
 
 	method any CreateSkillHitboxCatalog()
-		-- Creates invisible target-capture rectangles in pixel data; runtime converts to world units.
+		-- Creates invisible target-capture hitboxes in pixel data; runtime converts to world units.
 		local hitboxes = {}
-		hitboxes["ds1b1"] = { HitboxId = "ds1b1", Rx = 0, By = 0, W = 248, H = 90 }
-		hitboxes["ds1b2"] = { HitboxId = "ds1b2", Rx = -248, By = 0, W = 43, H = 63 }
-		hitboxes["projectileSmall"] = { HitboxId = "projectileSmall", Rx = 0, By = 0, W = 80, H = 70 }
-		hitboxes["projectileMedium"] = { HitboxId = "projectileMedium", Rx = 0, By = -8, W = 110, H = 86 }
-		hitboxes["projectileLarge"] = { HitboxId = "projectileLarge", Rx = 0, By = -15, W = 140, H = 110 }
-		hitboxes["slashWide"] = { HitboxId = "slashWide", Rx = -10, By = -10, W = 320, H = 120 }
-		hitboxes["slashBackWide"] = { HitboxId = "slashBackWide", Rx = -300, By = -8, W = 180, H = 110 }
-		hitboxes["burstCore"] = { HitboxId = "burstCore", Rx = -40, By = -20, W = 180, H = 150 }
-		hitboxes["burstWide"] = { HitboxId = "burstWide", Rx = -80, By = -35, W = 280, H = 190 }
-		hitboxes["burstHuge"] = { HitboxId = "burstHuge", Rx = -150, By = -45, W = 420, H = 240 }
-		hitboxes["dashBox"] = { HitboxId = "dashBox", Rx = 0, By = 0, W = 180, H = 90 }
-		hitboxes["dashLong"] = { HitboxId = "dashLong", Rx = 0, By = -5, W = 280, H = 95 }
-		hitboxes["dashBack"] = { HitboxId = "dashBack", Rx = -220, By = -5, W = 180, H = 95 }
-		hitboxes["dashWide"] = { HitboxId = "dashWide", Rx = -80, By = -20, W = 380, H = 150 }
-		hitboxes["fieldZone"] = { HitboxId = "fieldZone", Rx = -140, By = -30, W = 280, H = 160 }
-		hitboxes["fieldWide"] = { HitboxId = "fieldWide", Rx = -210, By = -45, W = 420, H = 190 }
-		hitboxes["fieldHuge"] = { HitboxId = "fieldHuge", Rx = -300, By = -60, W = 600, H = 240 }
+		local rects = self:GetDataTable("rect_hitboxes")
+		if rects ~= nil then
+			local rowCount = math.max(0, math.floor(self:ReadNumber(rects:GetRowCount(), 0)))
+			for row = 1, rowCount do
+				local hitboxId = self:GetDataCell(rects, row, "hitbox_id", "")
+				if hitboxId ~= "" then
+					hitboxes[hitboxId] = {
+						HitboxId = hitboxId,
+						Shape = "rect",
+						Rx = self:ReadNumber(self:GetDataCell(rects, row, "offset_x", "0"), 0),
+						By = self:ReadNumber(self:GetDataCell(rects, row, "offset_y", "0"), 0),
+						W = self:ReadNumber(self:GetDataCell(rects, row, "width", "1"), 1),
+						H = self:ReadNumber(self:GetDataCell(rects, row, "height", "1"), 1)
+					}
+				end
+			end
+		end
+		local circles = self:GetDataTable("circle_hitboxes")
+		if circles ~= nil then
+			local rowCount = math.max(0, math.floor(self:ReadNumber(circles:GetRowCount(), 0)))
+			for row = 1, rowCount do
+				local hitboxId = self:GetDataCell(circles, row, "hitbox_id", "")
+				if hitboxId ~= "" then
+					hitboxes[hitboxId] = {
+						HitboxId = hitboxId,
+						Shape = "circle",
+						Rx = self:ReadNumber(self:GetDataCell(circles, row, "offset_x", "0"), 0),
+						By = self:ReadNumber(self:GetDataCell(circles, row, "offset_y", "0"), 0),
+						Radius = self:ReadNumber(self:GetDataCell(circles, row, "radius", "1"), 1)
+					}
+				end
+			end
+		end
 		return hitboxes
 	end
 
 	method any CreateSkillActionCatalog()
 		-- Creates executable actions consumed by skill events.
 		local actions = {}
-		actions["ds1hit"] = { ActionId = "ds1hit", Type = "damage", Coefficient = 120 }
-		actions["ds1stun"] = { ActionId = "ds1stun", Type = "debuff", StatusId = "stun", DurationFrames = 30, CancelChain = true }
-		actions["slashAfterEffect"] = { ActionId = "slashAfterEffect", Type = "aftereffect" }
-		actions["slashTier2Hit"] = { ActionId = "slashTier2Hit", Type = "damage", Coefficient = 105 }
-		actions["slashTier3Hit"] = { ActionId = "slashTier3Hit", Type = "damage", Coefficient = 90 }
-		actions["slashTier4Hit"] = { ActionId = "slashTier4Hit", Type = "damage", Coefficient = 85 }
-		actions["shotHit"] = { ActionId = "shotHit", Type = "damage", Coefficient = 95 }
-		actions["shotTier2Hit"] = { ActionId = "shotTier2Hit", Type = "damage", Coefficient = 90 }
-		actions["shotTier4Hit"] = { ActionId = "shotTier4Hit", Type = "damage", Coefficient = 80 }
-		actions["burstHit"] = { ActionId = "burstHit", Type = "damage", Coefficient = 70 }
-		actions["burstTier2Hit"] = { ActionId = "burstTier2Hit", Type = "damage", Coefficient = 75 }
-		actions["burstTier3Hit"] = { ActionId = "burstTier3Hit", Type = "damage", Coefficient = 65 }
-		actions["burstTier4Hit"] = { ActionId = "burstTier4Hit", Type = "damage", Coefficient = 60 }
-		actions["burstTrigger"] = { ActionId = "burstTrigger", Type = "trigger" }
-		actions["dashHit"] = { ActionId = "dashHit", Type = "damage", Coefficient = 80 }
-		actions["dashMove"] = { ActionId = "dashMove", Type = "move", Distance = 1.2, Vertical = 0 }
-		actions["dashLongMove"] = { ActionId = "dashLongMove", Type = "move", Distance = 1.75, Vertical = 0 }
-		actions["dashTier2Hit"] = { ActionId = "dashTier2Hit", Type = "damage", Coefficient = 85 }
-		actions["dashTier3Hit"] = { ActionId = "dashTier3Hit", Type = "damage", Coefficient = 75 }
-		actions["dashTier4Hit"] = { ActionId = "dashTier4Hit", Type = "damage", Coefficient = 70 }
-		actions["guardBuff"] = { ActionId = "guardBuff", Type = "buff", StatusId = "guard", DurationFrames = 120, DamageTakenRate = 0.7 }
-		actions["guardBarrierBuff"] = { ActionId = "guardBarrierBuff", Type = "buff", StatusId = "barrier", DurationFrames = 150, DamageTakenRate = 0.58 }
-		actions["guardFortressBuff"] = { ActionId = "guardFortressBuff", Type = "buff", StatusId = "fortress", DurationFrames = 180, DamageTakenRate = 0.45 }
-		actions["guardAegisBuff"] = { ActionId = "guardAegisBuff", Type = "buff", StatusId = "aegis", DurationFrames = 210, DamageTakenRate = 0.35 }
-		actions["fieldTickHit"] = { ActionId = "fieldTickHit", Type = "damage", Coefficient = 35 }
-		actions["fieldTier2TickHit"] = { ActionId = "fieldTier2TickHit", Type = "damage", Coefficient = 30 }
-		actions["fieldTier3TickHit"] = { ActionId = "fieldTier3TickHit", Type = "damage", Coefficient = 28 }
-		actions["fieldTier4TickHit"] = { ActionId = "fieldTier4TickHit", Type = "damage", Coefficient = 24 }
-		actions["heroUniqueMove"] = { ActionId = "heroUniqueMove", Type = "move", Distance = 1.8, Vertical = 0 }
-		actions["heroUniqueHit"] = { ActionId = "heroUniqueHit", Type = "damage", Coefficient = 150 }
-		actions["stormUniqueHit"] = { ActionId = "stormUniqueHit", Type = "damage", Coefficient = 85 }
-		actions["arcaneUniqueTick"] = { ActionId = "arcaneUniqueTick", Type = "damage", Coefficient = 32 }
-		actions["arcaneUniqueHit"] = { ActionId = "arcaneUniqueHit", Type = "damage", Coefficient = 130 }
+		local base = self:GetDataTable("actions")
+		if base ~= nil then
+			local rowCount = math.max(0, math.floor(self:ReadNumber(base:GetRowCount(), 0)))
+			for row = 1, rowCount do
+				local actionId = self:GetDataCell(base, row, "action_id", "")
+				if actionId ~= "" then
+					actions[actionId] = {
+						ActionId = actionId,
+						Type = self:NormalizeActionType(self:GetDataCell(base, row, "action_type", "")),
+						RequiredContext = self:ParseDelimitedList(self:GetDataCell(base, row, "required_context", ""), "|")
+					}
+				end
+			end
+		end
+		self:ApplyDamageActionData(actions)
+		self:ApplyProjectileActionData(actions)
+		self:ApplyGroundAreaActionData(actions)
+		self:ApplyTriggerActionData(actions)
+		self:ApplyDashActionData(actions)
+		self:ApplyTeleportActionData(actions)
+		self:ApplyBuffActionData(actions)
+		self:ApplyDebuffActionData(actions)
 		return actions
+	end
+
+	method any CreateSkillEffectCatalog()
+		-- Loads effect metadata by effect id.
+		local effects = {}
+		local data = self:GetDataTable("effects")
+		if data == nil then
+			return effects
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local effectId = self:GetDataCell(data, row, "effect_id", "")
+			if effectId ~= "" then
+				effects[effectId] = {
+					EffectId = effectId,
+					RUID = self:GetDataCell(data, row, "effect_ruid", ""),
+					Loop = self:ReadDataBoolean(data, row, "is_loop", false),
+					TotalFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "total_length_frames", "1"), 1)))
+				}
+			end
+		end
+		return effects
+	end
+
+	method any CreateSkillRestrictionCatalog()
+		-- Loads per-skill movement restriction windows.
+		local restrictions = {}
+		local data = self:GetDataTable("skill_action_restrictions")
+		if data == nil then
+			return restrictions
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local skillId = self:GetDataCell(data, row, "skill_id", "")
+			if skillId ~= "" then
+				restrictions[skillId] = {
+					SkillId = skillId,
+					StartFrame = math.floor(self:ReadNumber(self:GetDataCell(data, row, "start_frame", "0"), 0)),
+					EndFrame = math.floor(self:ReadNumber(self:GetDataCell(data, row, "end_frame", "0"), 0)),
+					MoveSpeedRate = math.max(0, math.min(1, self:ReadNumber(self:GetDataCell(data, row, "caster_move_speed_reduction_rate", "1"), 1)))
+				}
+			end
+		end
+		return restrictions
+	end
+
+	method any CreateCharacterDefaults()
+		-- Loads character defaults used by skill formulas.
+		local defaults = {
+			Hp = 10000,
+			AttackPower = math.max(1, self:ReadNumber(self.DefaultSkillAttackPower, 300)),
+			BasicSkillId = ""
+		}
+		local data = self:GetDataTable("characters")
+		if data ~= nil and self:ReadNumber(data:GetRowCount(), 0) > 0 then
+			defaults.Hp = math.max(1, self:ReadNumber(self:GetDataCell(data, 1, "hp", tostring(defaults.Hp)), defaults.Hp))
+			defaults.AttackPower = math.max(1, self:ReadNumber(self:GetDataCell(data, 1, "attack_power", tostring(defaults.AttackPower)), defaults.AttackPower))
+			defaults.BasicSkillId = self:GetDataCell(data, 1, "basic_skill_id", "")
+		end
+		if defaults.BasicSkillId == "" then
+			defaults.BasicSkillId = self:FindFirstSkillIdByCategory("기본 스킬")
+		end
+		if defaults.BasicSkillId == "" then
+			defaults.BasicSkillId = self:FindFirstAnySkillId()
+		end
+		return defaults
+	end
+
+	method any GetDataTable(string tableName)
+		-- Reads a UserDataSet by table name. Missing datasets are allowed during authoring.
+		local safeName = self:ReadString(tableName, "")
+		if safeName == "" then
+			return nil
+		end
+		return _DataService:GetTable(safeName)
+	end
+
+	method string GetDataCell(any dataSet, number row, string columnName, string fallback)
+		-- Reads one DataSet cell as a trimmed string.
+		if dataSet == nil then
+			return self:ReadString(fallback, "")
+		end
+		local value = dataSet:GetCell(math.max(1, math.floor(self:ReadNumber(row, 1))), self:ReadString(columnName, ""))
+		if value == nil then
+			return self:ReadString(fallback, "")
+		end
+		return self:TrimString(tostring(value))
+	end
+
+	method boolean ReadDataBoolean(any dataSet, number row, string columnName, boolean fallback)
+		-- Reads common CSV boolean spellings.
+		local value = string.lower(self:GetDataCell(dataSet, row, columnName, ""))
+		if value == "true" or value == "1" or value == "yes" or value == "y" then
+			return true
+		end
+		if value == "false" or value == "0" or value == "no" or value == "n" then
+			return false
+		end
+		return fallback == true
+	end
+
+	method any ParseDelimitedList(string value, string delimiter)
+		-- Parses pipe/semicolon-delimited ids while keeping Korean ids intact.
+		local result = {}
+		local safeValue = self:ReadString(value, "")
+		local safeDelimiter = self:ReadString(delimiter, "|")
+		if safeValue == "" then
+			return result
+		end
+		local startIndex = 1
+		while startIndex <= string.len(safeValue) do
+			local remaining = string.sub(safeValue, startIndex)
+			local relativeDelimiterIndex, relativeDelimiterEndIndex = string.find(remaining, safeDelimiter)
+			local delimiterIndex = nil
+			if relativeDelimiterIndex ~= nil then
+				delimiterIndex = startIndex + relativeDelimiterIndex - 1
+			end
+			local token = ""
+			if delimiterIndex == nil then
+				token = string.sub(safeValue, startIndex)
+				startIndex = string.len(safeValue) + 1
+			else
+				token = string.sub(safeValue, startIndex, delimiterIndex - 1)
+				startIndex = delimiterIndex + string.len(safeDelimiter)
+			end
+			token = self:TrimString(token)
+			if token ~= "" then
+				table.insert(result, token)
+			end
+		end
+		return result
+	end
+
+	method any ParseFrameEventMap(string value)
+		-- Parses "4:eventA|eventB;8:eventC" into a frame-indexed event map.
+		local result = {}
+		local segments = self:ParseDelimitedList(value, ";")
+		for index, segment in ipairs(segments) do
+			local colonIndex, colonEndIndex = string.find(segment, ":")
+			if colonIndex ~= nil then
+				local frameText = self:TrimString(string.sub(segment, 1, colonIndex - 1))
+				local eventText = self:TrimString(string.sub(segment, colonIndex + 1))
+				local frame = math.max(0, math.floor(self:ReadNumber(frameText, 0)))
+				local eventIds = self:ParseDelimitedList(eventText, "|")
+				if #eventIds > 0 then
+					result[frame] = eventIds
+				end
+			end
+		end
+		return result
+	end
+
+	method number InferTotalFramesFromEvents(any eventsByFrame)
+		-- Ensures total_length_frames covers the last frame event.
+		local maxFrame = 1
+		if eventsByFrame ~= nil then
+			for frame, eventIds in pairs(eventsByFrame) do
+				local safeFrame = math.floor(self:ReadNumber(frame, 0))
+				if eventIds ~= nil and safeFrame + 1 > maxFrame then
+					maxFrame = safeFrame + 1
+				end
+			end
+		end
+		return maxFrame
+	end
+
+	method number PixelsToWorld(string value, number fallbackPixels)
+		-- Converts planned pixel data into MSW world units (100 px = 1 world unit).
+		return self:ReadNumber(value, fallbackPixels) / 100
+	end
+
+	method boolean IsSkillPartCategory(string category)
+		-- Only skill-chain parts are rollable parts; basic skills are direct casts.
+		local safeCategory = self:ReadString(category, "")
+		if safeCategory == "" then
+			return true
+		end
+		return safeCategory ~= "기본 스킬"
+	end
+
+	method string NormalizeEventType(string eventType)
+		local safeType = self:ReadString(eventType, "")
+		if safeType == "범위 대상포착" or safeType == "범위 내 대상 포착" or string.find(safeType, "범위") ~= nil then
+			return "area"
+		end
+		if safeType == "투사체" or safeType == "투사체 생성" then
+			return "projectile"
+		end
+		if safeType == "장판" or safeType == "장판 생성" then
+			return "field"
+		end
+		return "action"
+	end
+
+	method string NormalizeActionType(string actionType)
+		local safeType = self:ReadString(actionType, "")
+		if safeType == "피해" then
+			return "damage"
+		end
+		if safeType == "버프" then
+			return "buff"
+		end
+		if safeType == "디버프" then
+			return "debuff"
+		end
+		if safeType == "트리거" then
+			return "trigger"
+		end
+		if safeType == "이동" then
+			return "move"
+		end
+		if safeType == "투사체 생성" then
+			return "projectile"
+		end
+		if safeType == "장판 생성" then
+			return "field"
+		end
+		if safeType == "후속효과" then
+			return "aftereffect"
+		end
+		return "aftereffect"
+	end
+
+	method string BuildShortKey(string skillId, string displayName)
+		-- Keeps UI labels stable without hardcoded English skill names.
+		local source = self:ReadString(displayName, "")
+		if source == "" then
+			source = self:ReadString(skillId, "")
+		end
+		if string.len(source) <= 2 then
+			return source
+		end
+		return string.sub(source, 1, 2)
+	end
+
+	method number GetTableCount(any tableValue)
+		local count = 0
+		if tableValue ~= nil then
+			for key, value in pairs(tableValue) do
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	method string FindFirstSkillIdByCategory(string category)
+		local data = self:GetDataTable("skills")
+		if data == nil then
+			return ""
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			if self:GetDataCell(data, row, "skill_category", "") == category then
+				return self:GetDataCell(data, row, "id", "")
+			end
+		end
+		return ""
+	end
+
+	method string FindFirstAnySkillId()
+		local data = self:GetDataTable("skills")
+		if data == nil or self:ReadNumber(data:GetRowCount(), 0) <= 0 then
+			return ""
+		end
+		return self:GetDataCell(data, 1, "id", "")
+	end
+
+	method void ApplyAreaTargetData(any eventDef, string areaTargetId)
+		local safeAreaId = self:ReadString(areaTargetId, "")
+		if eventDef == nil or safeAreaId == "" then
+			return
+		end
+		local data = self:GetDataTable("area_target_captures")
+		if data == nil then
+			return
+		end
+		local row = data:FindRow("area_target_id", safeAreaId)
+		if row == nil then
+			return
+		end
+		local rowIndex = self:GetDataRowIndex(data, "area_target_id", safeAreaId)
+		if rowIndex <= 0 then
+			return
+		end
+		eventDef.AreaTargetId = safeAreaId
+		eventDef.DurationFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, rowIndex, "duration_frames", "1"), 1)))
+		eventDef.HitboxIds = self:ParseDelimitedList(self:GetDataCell(data, rowIndex, "hitbox_ids", ""), "|")
+		eventDef.ActionIds = self:ParseDelimitedList(self:GetDataCell(data, rowIndex, "action_ids", ""), "|")
+		eventDef.TargetGroup = self:GetDataCell(data, rowIndex, "target", "")
+	end
+
+	method number GetDataRowIndex(any dataSet, string columnName, string value)
+		if dataSet == nil then
+			return 0
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(dataSet:GetRowCount(), 0)))
+		local safeValue = self:ReadString(value, "")
+		for row = 1, rowCount do
+			if self:GetDataCell(dataSet, row, columnName, "") == safeValue then
+				return row
+			end
+		end
+		return 0
+	end
+
+	method void ApplyDamageActionData(any actions)
+		local data = self:GetDataTable("damage_actions")
+		if data == nil then
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local actionId = self:GetDataCell(data, row, "action_id", "")
+			local actionDef = actions[actionId]
+			if actionDef ~= nil then
+				actionDef.Type = "damage"
+				actionDef.Coefficient = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "attack_power_coefficient_percent", "100"), 100))
+				actionDef.HitEffectRUID = self:GetDataCell(data, row, "hit_effect_ruid", "")
+			end
+		end
+	end
+
+	method void ApplyProjectileActionData(any actions)
+		local data = self:GetDataTable("projectile_spawn_actions")
+		if data == nil then
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local actionId = self:GetDataCell(data, row, "id", "")
+			local actionDef = actions[actionId]
+			if actionDef ~= nil then
+				actionDef.Type = "projectile"
+				actionDef.ProjectileSpriteRUID = self:GetDataCell(data, row, "projectile_sprite_ruid", "")
+				actionDef.ProjectileEffectRUID = actionDef.ProjectileSpriteRUID
+				actionDef.Range = self:PixelsToWorld(self:GetDataCell(data, row, "projectile_range", "500"), 500)
+				actionDef.Speed = self:PixelsToWorld(self:GetDataCell(data, row, "projectile_speed", "600"), 600)
+				actionDef.FrontDirection = self:ReadDataBoolean(data, row, "projectile_front_direction", true)
+				actionDef.HitboxIds = self:ParseDelimitedList(self:GetDataCell(data, row, "projectile_hitbox_id", ""), "|")
+				actionDef.Pierce = math.max(0, math.floor(self:ReadNumber(self:GetDataCell(data, row, "projectile_pierce", "0"), 0)))
+				actionDef.CollisionEventIds = self:ParseDelimitedList(self:GetDataCell(data, row, "collision_event_ids", ""), "|")
+				actionDef.ExpireEventIds = self:ParseDelimitedList(self:GetDataCell(data, row, "expire_event_ids", ""), "|")
+			end
+		end
+	end
+
+	method void ApplyGroundAreaActionData(any actions)
+		local data = self:GetDataTable("ground_area_spawn_actions")
+		if data == nil then
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local actionId = self:GetDataCell(data, row, "action_id", "")
+			local actionDef = actions[actionId]
+			if actionDef ~= nil then
+				actionDef.Type = "field"
+				actionDef.DurationFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "ground_area_cycle", "1"), 1)))
+				actionDef.ActionIds = self:ParseDelimitedList(self:GetDataCell(data, row, "ground_area_event_ids", ""), "|")
+				actionDef.FieldEffectId = self:GetDataCell(data, row, "ground_area_effect_id", "")
+			end
+		end
+	end
+
+	method void ApplyTriggerActionData(any actions)
+		local data = self:GetDataTable("trigger_actions")
+		if data == nil then
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local actionId = self:GetDataCell(data, row, "action_id", "")
+			local actionDef = actions[actionId]
+			if actionDef ~= nil then
+				actionDef.Type = "trigger"
+				actionDef.OffsetX = self:PixelsToWorld(self:GetDataCell(data, row, "offset_x", "0"), 0)
+				actionDef.OffsetY = self:PixelsToWorld(self:GetDataCell(data, row, "offset_y", "0"), 0)
+			end
+		end
+	end
+
+	method void ApplyDashActionData(any actions)
+		local data = self:GetDataTable("dash_actions")
+		if data == nil then
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local actionId = self:GetDataCell(data, row, "action_id", "")
+			local actionDef = actions[actionId]
+			if actionDef ~= nil then
+				actionDef.Type = "move"
+				actionDef.Distance = self:PixelsToWorld(self:GetDataCell(data, row, "range", "0"), 0)
+				actionDef.MoveTimeFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "move_time_frames", "1"), 1)))
+				actionDef.Vertical = 0
+			end
+		end
+	end
+
+	method void ApplyTeleportActionData(any actions)
+		local data = self:GetDataTable("teleport_actions")
+		if data == nil then
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local actionId = self:GetDataCell(data, row, "action_id", "")
+			local actionDef = actions[actionId]
+			if actionDef ~= nil then
+				actionDef.Type = "move"
+				actionDef.DestinationCoordinate = self:GetDataCell(data, row, "destination_coordinate", "")
+			end
+		end
+	end
+
+	method void ApplyBuffActionData(any actions)
+		local data = self:GetDataTable("buff_actions")
+		if data == nil then
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local actionId = self:GetDataCell(data, row, "action_id", "")
+			local actionDef = actions[actionId]
+			if actionDef ~= nil then
+				actionDef.Type = "buff"
+				actionDef.StatusId = self:GetDataCell(data, row, "status_id", "buff")
+				actionDef.DurationFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "duration_frames", "1"), 1)))
+				actionDef.DamageTakenRate = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "damage_taken_rate", "1"), 1))
+			end
+		end
+	end
+
+	method void ApplyDebuffActionData(any actions)
+		local data = self:GetDataTable("debuff_actions")
+		if data == nil then
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local actionId = self:GetDataCell(data, row, "action_id", "")
+			local actionDef = actions[actionId]
+			if actionDef ~= nil then
+				actionDef.Type = "debuff"
+				actionDef.StatusId = self:GetDataCell(data, row, "status_id", "debuff")
+				actionDef.DurationFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "duration_frames", "1"), 1)))
+				actionDef.CancelChain = self:ReadDataBoolean(data, row, "cancel_chain", false)
+			end
+		end
 	end
 
 	@ExecSpace("Server")
@@ -613,24 +876,78 @@ script BRSkillSystem extends Logic
 		return true
 	end
 
+	@ExecSpace("ServerOnly")
 	method string ResolveUniqueSkillKey(string userId, string requestedSkillKey)
 		-- Resolves the unique skill from the server-side character state first.
+		local fallbackSkillKey = self:GetDefaultBasicSkillIdForUser(userId)
 		if _BRCharacterSystem ~= nil then
 			local serverSkillKey = _BRCharacterSystem:GetServerUniqueSkillKey(userId)
 			if serverSkillKey ~= nil and serverSkillKey ~= "" then
-				return self:NormalizeUniqueSkillKey(serverSkillKey)
+				return self:NormalizeSkillKeyWithFallback(serverSkillKey, fallbackSkillKey)
 			end
 		end
-		return self:NormalizeUniqueSkillKey(requestedSkillKey)
+		return self:NormalizeSkillKeyWithFallback(requestedSkillKey, fallbackSkillKey)
 	end
 
 	method string NormalizeUniqueSkillKey(string skillKey)
-		-- Keeps unique-skill requests inside the known character catalog.
-		local safeSkillKey = self:ReadString(skillKey, "UniqueHero")
-		if safeSkillKey == "UniqueHero" or safeSkillKey == "UniqueStorm" or safeSkillKey == "UniqueArcane" then
+		-- Keeps direct skill requests inside the CSV runtime catalog.
+		return self:NormalizeSkillKeyWithFallback(skillKey, self:GetDefaultBasicSkillId())
+	end
+
+	method string NormalizeSkillKeyWithFallback(string skillKey, string fallbackSkillKey)
+		-- Keeps direct skill requests inside the CSV runtime catalog with a caller-selected fallback.
+		self:EnsureRuntime()
+		local safeSkillKey = self:ReadString(skillKey, "")
+		if safeSkillKey ~= "" and self:HasSkillDefinition(safeSkillKey) == true then
 			return safeSkillKey
 		end
-		return "UniqueHero"
+		local safeFallbackSkillKey = self:ReadString(fallbackSkillKey, "")
+		if safeFallbackSkillKey ~= "" and self:HasSkillDefinition(safeFallbackSkillKey) == true then
+			return safeFallbackSkillKey
+		end
+		return self:GetDefaultBasicSkillId()
+	end
+
+	method boolean HasSkillDefinition(string skillKey)
+		-- Returns whether a CSV-backed skill definition exists.
+		self:EnsureRuntime()
+		local safeSkillKey = self:ReadString(skillKey, "")
+		return safeSkillKey ~= "" and self._T.skillRuntimeCatalog ~= nil and self._T.skillRuntimeCatalog[safeSkillKey] ~= nil
+	end
+
+	method string GetDefaultBasicSkillId()
+		-- Returns the CSV-declared basic skill, or the first available skill.
+		if self._T.skillRuntimeCatalog == nil then
+			self._T.skillRuntimeCatalog = self:CreateSkillRuntimeCatalog()
+		end
+		if self._T.characterDefaults == nil then
+			self._T.characterDefaults = self:CreateCharacterDefaults()
+		end
+		if self._T.characterDefaults ~= nil then
+			local basicSkillId = self:ReadString(self._T.characterDefaults.BasicSkillId, "")
+			if basicSkillId ~= "" and self._T.skillRuntimeCatalog ~= nil and self._T.skillRuntimeCatalog[basicSkillId] ~= nil then
+				return basicSkillId
+			end
+		end
+		if self._T.skillRuntimeCatalog ~= nil then
+			for skillKey, skillDef in pairs(self._T.skillRuntimeCatalog) do
+				return skillKey
+			end
+		end
+		return ""
+	end
+
+	@ExecSpace("ServerOnly")
+	method string GetDefaultBasicSkillIdForUser(string userId)
+		-- Returns the class-specific basic skill for a user when declared in CSV.
+		self:EnsureRuntime()
+		if _BRCharacterSystem ~= nil then
+			local characterSkillKey = _BRCharacterSystem:GetServerBasicSkillKey(userId)
+			if characterSkillKey ~= "" and self:HasSkillDefinition(characterSkillKey) == true then
+				return characterSkillKey
+			end
+		end
+		return self:GetDefaultBasicSkillId()
 	end
 
 	method boolean TryCastNextChainSkill(Entity casterEntity)
@@ -814,7 +1131,7 @@ script BRSkillSystem extends Logic
 		self:EnsureRuntime()
 		local skillKey = ""
 		if part ~= nil then
-			skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, "Slash"))
+			skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, ""))
 		end
 		local order = self:ClampSkillTier(tier)
 		local tieredSkillKey = self:GetTieredSkillKey(skillKey, order)
@@ -823,14 +1140,14 @@ script BRSkillSystem extends Logic
 			skillDef = self._T.skillRuntimeCatalog[skillKey]
 		end
 		if skillDef == nil then
-			skillDef = self._T.skillRuntimeCatalog["Slash"]
+			skillDef = self._T.skillRuntimeCatalog[self:GetDefaultBasicSkillId()]
 		end
 		return skillDef
 	end
 
 	method string GetTieredSkillKey(string baseSkillKey, number tier)
 		-- Converts a base skill and tier into the executable skill definition key.
-		local safeSkillKey = self:ReadString(baseSkillKey, "Slash")
+		local safeSkillKey = self:ReadString(baseSkillKey, self:GetDefaultBasicSkillId())
 		local order = self:ClampSkillTier(tier)
 		if order <= 1 then
 			return safeSkillKey
@@ -919,6 +1236,7 @@ script BRSkillSystem extends Logic
 			SourceEntity = casterEntity,
 			SkillDef = step.SkillDef,
 			SkillKey = self:ReadString(step.SkillKey, self:ReadString(step.SkillDef.SkillKey, "")),
+			EffectIds = step.SkillDef.EffectIds,
 			Tier = math.max(1, math.floor(self:ReadNumber(step.Tier, 1))),
 			Role = self:ReadString(step.Role, "normal"),
 			EndPart = step.EndPart,
@@ -957,6 +1275,7 @@ script BRSkillSystem extends Logic
 		local step = {
 			SkillDef = context.EndSkillDef,
 			SkillKey = self:ReadString(context.EndSkillDef.SkillKey, ""),
+			EffectIds = context.EndSkillDef.EffectIds,
 			Tier = math.max(1, math.floor(self:ReadNumber(context.EndTier, 1))),
 			Role = "end",
 			EndPart = nil,
@@ -1077,6 +1396,7 @@ script BRSkillSystem extends Logic
 			CasterEntity = context.CasterEntity,
 			SourceEntity = context.SourceEntity,
 			SkillKey = self:ReadString(context.SkillKey, ""),
+			EffectIds = context.EffectIds,
 			Tier = self:ClampSkillTier(context.Tier),
 			IsVirtualCaster = context.IsVirtualCaster == true,
 			Direction = self:GetContextDirection(context),
@@ -1136,15 +1456,21 @@ script BRSkillSystem extends Logic
 	method void StartProjectile(any context, any eventDef)
 		-- Creates a logical projectile that moves in the skill direction and executes actions on contact.
 		local origin = self:GetContextOrigin(context)
+		local direction = self:GetContextDirection(context)
+		if eventDef.FrontDirection == false then
+			direction = -direction
+		end
 		local projectile = {
 			EventId = self:ReadString(eventDef.EventId, ""),
 			UserId = self:ReadString(context.UserId, ""),
 			CasterEntity = context.CasterEntity,
 			SourceEntity = context.SourceEntity,
 			SkillKey = self:ReadString(context.SkillKey, ""),
+			EffectIds = context.EffectIds,
+			VisualRUID = self:ReadString(eventDef.ProjectileEffectRUID, self:ReadString(eventDef.ProjectileSpriteRUID, "")),
 			Tier = self:ClampSkillTier(context.Tier),
 			IsVirtualCaster = context.IsVirtualCaster == true,
-			Direction = self:GetContextDirection(context),
+			Direction = direction,
 			X = origin.x,
 			Y = origin.y,
 			Travelled = 0,
@@ -1153,6 +1479,8 @@ script BRSkillSystem extends Logic
 			Pierce = math.max(0, math.floor(self:ReadNumber(eventDef.Pierce, 0))),
 			HitboxIds = eventDef.HitboxIds,
 			ActionIds = eventDef.ActionIds,
+			CollisionEventIds = eventDef.CollisionEventIds,
+			ExpireEventIds = eventDef.ExpireEventIds,
 			SeenTargets = {},
 			EndSkillDef = context.EndSkillDef,
 			EndTier = math.max(0, math.floor(self:ReadNumber(context.EndTier, 0))),
@@ -1189,6 +1517,10 @@ script BRSkillSystem extends Logic
 					self:ProcessProjectileContact(projectile)
 				end
 				if projectile.Remove == true or projectile.Travelled >= projectile.Range then
+					if projectile.Expired ~= true then
+						projectile.Expired = true
+						self:ExecuteEventsForContext(projectile, projectile.ExpireEventIds, nil, projectile.X, projectile.Y, self:ReadString(projectile.EventId, "projectile") .. ":expire")
+					end
 					self:Log("projectile end user=" .. self:ReadString(projectile.UserId, "") .. " event=" .. self:ReadString(projectile.EventId, ""))
 					table.remove(self._T.activeProjectiles, index)
 				end
@@ -1205,7 +1537,11 @@ script BRSkillSystem extends Logic
 				if projectile.SeenTargets[targetKey] ~= true then
 					projectile.SeenTargets[targetKey] = true
 					local pos = self:GetEntityPosition2(targetEntity)
-					self:ExecuteActions(projectile, projectile.ActionIds, targetEntity, pos.x, pos.y, self:ReadString(projectile.EventId, "projectile"))
+					if projectile.CollisionEventIds ~= nil and #projectile.CollisionEventIds > 0 then
+						self:ExecuteEventsForContext(projectile, projectile.CollisionEventIds, targetEntity, pos.x, pos.y, self:ReadString(projectile.EventId, "projectile") .. ":collision")
+					else
+						self:ExecuteActions(projectile, projectile.ActionIds, targetEntity, pos.x, pos.y, self:ReadString(projectile.EventId, "projectile"))
+					end
 					if projectile.Pierce <= 0 then
 						projectile.Remove = true
 						return
@@ -1225,6 +1561,7 @@ script BRSkillSystem extends Logic
 			CasterEntity = context.CasterEntity,
 			SourceEntity = context.SourceEntity,
 			SkillKey = self:ReadString(context.SkillKey, ""),
+			EffectIds = context.EffectIds,
 			Tier = self:ClampSkillTier(context.Tier),
 			IsVirtualCaster = context.IsVirtualCaster == true,
 			Direction = self:GetContextDirection(context),
@@ -1286,22 +1623,77 @@ script BRSkillSystem extends Logic
 		end
 	end
 
+	method void ExecuteEventsForContext(any context, any eventIds, Entity targetEntity, number triggerX, number triggerY, string sourceId)
+		-- Executes event ids from nested systems such as projectile collision/expiration.
+		if eventIds == nil then
+			return
+		end
+		for index, eventId in ipairs(eventIds) do
+			local eventDef = self._T.skillEventCatalog[eventId]
+			if eventDef ~= nil then
+				local eventType = self:ReadString(eventDef.Type, "action")
+				if eventType == "area" then
+					self:StartAreaCapture(context, eventDef)
+				elseif eventType == "projectile" then
+					self:StartProjectile(context, eventDef)
+				elseif eventType == "field" then
+					self:StartField(context, eventDef)
+				else
+					self:ExecuteActions(context, eventDef.ActionIds, targetEntity, triggerX, triggerY, self:ReadString(sourceId, "") .. ":" .. self:ReadString(eventId, "event"))
+				end
+			end
+		end
+	end
+
+	method void StartProjectileFromAction(any context, any actionDef, number triggerX, number triggerY, string sourceId)
+		-- Converts a projectile-spawn action into a logical projectile event.
+		local eventDef = {
+			EventId = self:ReadString(actionDef.ActionId, "projectile"),
+			Type = "projectile",
+			ProjectileSpriteRUID = actionDef.ProjectileSpriteRUID,
+			ProjectileEffectRUID = actionDef.ProjectileEffectRUID,
+			Speed = actionDef.Speed,
+			Range = actionDef.Range,
+			Pierce = actionDef.Pierce,
+			FrontDirection = actionDef.FrontDirection ~= false,
+			HitboxIds = actionDef.HitboxIds,
+			ActionIds = actionDef.ActionIds,
+			CollisionEventIds = actionDef.CollisionEventIds,
+			ExpireEventIds = actionDef.ExpireEventIds
+		}
+		self:StartProjectile(context, eventDef)
+		self:Log("projectile action user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " source=" .. self:ReadString(sourceId, ""))
+	end
+
+	method void StartFieldFromAction(any context, any actionDef, number triggerX, number triggerY, string sourceId)
+		-- Converts a ground-area action into an active field.
+		local eventDef = {
+			EventId = self:ReadString(actionDef.ActionId, "field"),
+			Type = "field",
+			DurationFrames = math.max(1, math.floor(self:ReadNumber(actionDef.DurationFrames, 1))),
+			HitboxIds = actionDef.HitboxIds,
+			ActionIds = actionDef.ActionIds
+		}
+		self:StartField(context, eventDef)
+		self:Log("field action user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " source=" .. self:ReadString(sourceId, ""))
+	end
+
 	method void ExecuteAction(any context, any actionDef, Entity targetEntity, number triggerX, number triggerY, string sourceId)
 		-- Dispatches one action by type.
 		local actionType = self:ReadString(actionDef.Type, "damage")
 		if actionType == "damage" then
 			self:ApplySkillDamage(context, targetEntity, actionDef, sourceId)
 			if targetEntity ~= nil then
-				self:PlaySkillHitVisual(context, triggerX, triggerY, sourceId)
+				self:PlaySkillHitVisual(context, triggerX, triggerY, sourceId, actionDef.HitEffectRUID)
 			end
 		elseif actionType == "buff" then
 			self:ApplySkillStatus(context.SourceEntity, actionDef, self:ReadString(context.UserId, ""), sourceId)
 			local origin = self:GetContextOrigin(context)
-			self:PlaySkillVisualAt(context, self.GuardEffectRUID, origin.x, origin.y + 0.35, self:GetContextDirection(context), 0.75, "buff:" .. self:ReadString(actionDef.ActionId, "buff"))
+			self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), origin.x, origin.y + 0.35, self:GetContextDirection(context), 0.75, "buff:" .. self:ReadString(actionDef.ActionId, "buff"))
 		elseif actionType == "debuff" then
 			self:ApplySkillStatus(targetEntity, actionDef, self:ReadString(context.UserId, ""), sourceId)
 			if targetEntity ~= nil then
-				self:PlaySkillHitVisual(context, triggerX, triggerY + 0.25, "debuff:" .. self:ReadString(actionDef.ActionId, "debuff"))
+				self:PlaySkillHitVisual(context, triggerX, triggerY + 0.25, "debuff:" .. self:ReadString(actionDef.ActionId, "debuff"), "")
 			end
 			if actionDef.CancelChain == true then
 				self:CancelTargetChain(targetEntity, self:ReadString(sourceId, "debuff"))
@@ -1309,14 +1701,18 @@ script BRSkillSystem extends Logic
 		elseif actionType == "trigger" then
 			if context.IsVirtualCaster ~= true and context.TriggerFired ~= true then
 				context.TriggerFired = true
-				self:PlaySkillVisualAt(context, self.BurstEffectRUID, triggerX, triggerY + 0.25, self:GetContextDirection(context), 0.9, "trigger:" .. self:ReadString(actionDef.ActionId, "trigger"))
+				self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), triggerX, triggerY + 0.25, self:GetContextDirection(context), 0.9, "trigger:" .. self:ReadString(actionDef.ActionId, "trigger"))
 				self:StartVirtualEndSkill(context, triggerX, triggerY)
 			end
 		elseif actionType == "move" then
 			self:ApplySkillMovement(context, actionDef, sourceId)
+		elseif actionType == "projectile" then
+			self:StartProjectileFromAction(context, actionDef, triggerX, triggerY, sourceId)
+		elseif actionType == "field" then
+			self:StartFieldFromAction(context, actionDef, triggerX, triggerY, sourceId)
 		else
 			local origin = self:GetContextOrigin(context)
-			self:PlaySkillVisualAt(context, self.SlashEffectRUID, origin.x, origin.y, self:GetContextDirection(context), 0.65, "aftereffect:" .. self:ReadString(actionDef.ActionId, "aftereffect"))
+			self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), origin.x, origin.y, self:GetContextDirection(context), 0.65, "aftereffect:" .. self:ReadString(actionDef.ActionId, "aftereffect"))
 			self:Log("aftereffect user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " source=" .. self:ReadString(sourceId, ""))
 		end
 	end
@@ -1341,7 +1737,7 @@ script BRSkillSystem extends Logic
 		if userId ~= "" then
 			self:ApplyLocalSkillMovementPosition(target, "skillMove:" .. self:ReadString(sourceId, "move"), userId)
 		end
-		self:PlaySkillVisualAt(context, self.BurstEffectRUID, target.x, target.y + 0.25, direction, 0.65, "move:" .. self:ReadString(actionDef.ActionId, "move"))
+		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), target.x, target.y + 0.25, direction, 0.65, "move:" .. self:ReadString(actionDef.ActionId, "move"))
 		self:Log("move action user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " target=(" .. tostring(target.x) .. "," .. tostring(target.y) .. ")")
 	end
 
@@ -1519,49 +1915,19 @@ script BRSkillSystem extends Logic
 	end
 
 	method void PlaySkillVisualForEvent(any context, string eventId, number x, number y, boolean isField)
-		-- Requests the mapped animation effect for a skill event.
+		-- Requests the CSV-mapped animation effect for a skill event.
 		local safeEventId = self:ReadString(eventId, "")
 		local direction = self:GetContextDirection(context)
 		local offsetX = 0
 		local offsetY = 0.35
-		if safeEventId == "divineSwingArea1" or string.find(safeEventId, "slashTier") ~= nil then
-			offsetX = 1.25
-			offsetY = 0.45
-		elseif safeEventId == "slashFollowEffect" then
-			offsetX = 0.9
-			offsetY = 0.5
-		elseif safeEventId == "basicProjectile" or string.find(safeEventId, "Projectile") ~= nil then
-			offsetX = 0.35
-			offsetY = 0.45
-		elseif string.find(safeEventId, "burst") ~= nil then
-			offsetX = 0.45
-			offsetY = 0.45
-		elseif string.find(safeEventId, "dash") ~= nil then
-			offsetX = 0.8
-			offsetY = 0.35
-		elseif string.find(safeEventId, "guard") ~= nil then
-			offsetX = 0
-			offsetY = 0.6
-		elseif string.find(safeEventId, "fieldCreate") ~= nil then
-			offsetX = 0
-			offsetY = 0.25
-		elseif string.find(safeEventId, "uniqueHero") ~= nil then
-			offsetX = 0.95
-			offsetY = 0.45
-		elseif string.find(safeEventId, "uniqueStorm") ~= nil then
-			offsetX = 0.5
-			offsetY = 0.45
-		elseif string.find(safeEventId, "uniqueArcane") ~= nil then
-			offsetX = 0.25
-			offsetY = 0.45
-		end
 		if isField == true then
 			offsetX = 0
+			offsetY = 0.25
 		end
-		self:PlaySkillVisualAt(context, self:GetSkillEffectRUID(safeEventId), x + direction * offsetX, y + offsetY, direction, self:GetSkillEffectScaleRate(safeEventId), "event:" .. safeEventId)
+		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, safeEventId), x + direction * offsetX, y + offsetY, direction, self:GetSkillEffectScaleRate(safeEventId), "event:" .. safeEventId)
 	end
 
-	method void PlaySkillHitVisual(any context, number x, number y, string sourceId)
+	method void PlaySkillHitVisual(any context, number x, number y, string sourceId, string overrideRUID)
 		-- Requests a compact impact effect at the target position.
 		local scaleRate = 0.7
 		local safeSourceId = self:ReadString(sourceId, "")
@@ -1570,82 +1936,41 @@ script BRSkillSystem extends Logic
 		elseif string.find(safeSourceId, "projectile") ~= nil then
 			scaleRate = 0.6
 		end
-		self:PlaySkillVisualAt(context, self.HitEffectRUID, x, y + 0.35, self:GetContextDirection(context), scaleRate, "hit:" .. safeSourceId)
+		local ruid = self:ReadString(overrideRUID, "")
+		self:PlaySkillVisualAt(context, ruid, x, y + 0.35, self:GetContextDirection(context), scaleRate, "hit:" .. safeSourceId)
 	end
 
 	method string GetSkillEffectRUID(string eventId)
-		-- Maps event ids to default animation clip RUIDs.
+		-- Maps an explicit effect id to its RUID.
 		local safeEventId = self:ReadString(eventId, "")
-		if safeEventId == "basicProjectile" or string.find(safeEventId, "Projectile") ~= nil then
-			return self:ReadString(self.ProjectileEffectRUID, "")
+		if self._T.skillEffectCatalog ~= nil and self._T.skillEffectCatalog[safeEventId] ~= nil then
+			return self:ReadString(self._T.skillEffectCatalog[safeEventId].RUID, "")
 		end
-		if string.find(safeEventId, "burst") ~= nil then
-			return self:ReadString(self.BurstEffectRUID, "")
+		return ""
+	end
+
+	method string GetContextVisualRUID(any context, string eventId)
+		-- Resolves event visuals from action/projectile overrides first, then skill effect_ids.
+		if context ~= nil then
+			local visualRUID = self:ReadString(context.VisualRUID, "")
+			if visualRUID ~= "" then
+				return visualRUID
+			end
+			if context.EffectIds ~= nil then
+				for index, effectId in ipairs(context.EffectIds) do
+					local ruid = self:GetSkillEffectRUID(effectId)
+					if ruid ~= "" then
+						return ruid
+					end
+				end
+			end
 		end
-		if string.find(safeEventId, "guard") ~= nil then
-			return self:ReadString(self.GuardEffectRUID, "")
-		end
-		if string.find(safeEventId, "fieldCreate") ~= nil then
-			return self:ReadString(self.FieldEffectRUID, "")
-		end
-		if string.find(safeEventId, "uniqueStorm") ~= nil then
-			return self:ReadString(self.ProjectileEffectRUID, "")
-		end
-		if string.find(safeEventId, "uniqueArcane") ~= nil then
-			return self:ReadString(self.BurstEffectRUID, "")
-		end
-		if string.find(safeEventId, "uniqueHero") ~= nil then
-			return self:ReadString(self.SlashEffectRUID, "")
-		end
-		if string.find(safeEventId, "dash") ~= nil then
-			return self:ReadString(self.BurstEffectRUID, "")
-		end
-		return self:ReadString(self.SlashEffectRUID, "")
+		return self:GetSkillEffectRUID(eventId)
 	end
 
 	method number GetSkillEffectScaleRate(string eventId)
-		-- Returns per-event scale so large clips do not flood the screen.
-		local safeEventId = self:ReadString(eventId, "")
-		if safeEventId == "basicProjectile" then
-			return 0.35
-		end
-		if string.find(safeEventId, "shotPierce") ~= nil then
-			return 0.45
-		end
-		if string.find(safeEventId, "shotStorm") ~= nil then
-			return 0.55
-		end
-		if string.find(safeEventId, "burstTriggerArea4") ~= nil then
-			return 1.15
-		end
-		if string.find(safeEventId, "burst") ~= nil then
-			return 0.8
-		end
-		if string.find(safeEventId, "guard") ~= nil then
-			return 0.75
-		end
-		if string.find(safeEventId, "fieldCreateStorm") ~= nil then
-			return 1.65
-		end
-		if string.find(safeEventId, "fieldCreate") ~= nil then
-			return 1.35
-		end
-		if string.find(safeEventId, "uniqueHero") ~= nil then
-			return 1.05
-		end
-		if string.find(safeEventId, "uniqueStorm") ~= nil then
-			return 0.55
-		end
-		if string.find(safeEventId, "uniqueArcane") ~= nil then
-			return 1.25
-		end
-		if string.find(safeEventId, "dash") ~= nil then
-			return 0.75
-		end
-		if safeEventId == "slashFollowEffect" then
-			return 0.65
-		end
-		return 0.85
+		-- Scale is now data-agnostic; authored effect assets should carry their intended size.
+		return 1.0
 	end
 
 	method void PlaySkillVisualAt(any context, string animationRuid, number x, number y, number direction, number scaleRate, string sourceId)
@@ -1881,6 +2206,17 @@ script BRSkillSystem extends Logic
 		local origin = self:GetContextOrigin(context)
 		local target = self:GetEntityPosition2(targetEntity)
 		local direction = self:GetContextDirection(context)
+		local shape = self:ReadString(hitbox.Shape, "rect")
+		if shape == "circle" then
+			local rx = self:ReadNumber(hitbox.Rx, 0) / 100
+			local by = self:ReadNumber(hitbox.By, 0) / 100
+			local radius = math.max(0.01, self:ReadNumber(hitbox.Radius, 1) / 100) + self:GetSkillTargetPadding()
+			local centerX = origin.x + direction * rx
+			local centerY = origin.y + by
+			local dx = target.x - centerX
+			local dy = target.y - centerY
+			return (dx * dx + dy * dy) <= (radius * radius)
+		end
 		local rx = self:ReadNumber(hitbox.Rx, 0) / 100
 		local by = self:ReadNumber(hitbox.By, 0) / 100
 		local width = math.max(0.01, self:ReadNumber(hitbox.W, 1) / 100)
@@ -1951,6 +2287,10 @@ script BRSkillSystem extends Logic
 
 	method number GetSkillAttackPower(Entity entity)
 		-- Returns final attack power after temporary statuses.
+		self:EnsureRuntime()
+		if self._T.characterDefaults ~= nil then
+			return math.max(1, self:ReadNumber(self._T.characterDefaults.AttackPower, self.DefaultSkillAttackPower))
+		end
 		return math.max(1, self:ReadNumber(self.DefaultSkillAttackPower, 300))
 	end
 
@@ -1979,10 +2319,14 @@ script BRSkillSystem extends Logic
 			return
 		end
 		local entity = cast.CasterEntity
+		local moveSpeedRate = self:GetSkillActionLimitMoveRate(cast)
+		if moveSpeedRate >= 0.999 then
+			return
+		end
 		local lock = { Entity = entity, InputSpeed = nil }
 		if entity.MovementComponent ~= nil then
 			lock.InputSpeed = entity.MovementComponent.InputSpeed
-			entity.MovementComponent.InputSpeed = math.max(0.05, self:ReadNumber(lock.InputSpeed, 1) * self:GetSkillMovementSpeedRate())
+			entity.MovementComponent.InputSpeed = math.max(0.05, self:ReadNumber(lock.InputSpeed, 1) * moveSpeedRate)
 		end
 		self._T.casterLocks[userId] = lock
 	end
@@ -2049,6 +2393,19 @@ script BRSkillSystem extends Logic
 		return math.max(0, math.min(1, self:ReadNumber(self.SkillMovementSpeedRate, 0.45)))
 	end
 
+	method number GetSkillActionLimitMoveRate(any cast)
+		-- Reads movement restriction from skill_action_restrictions.csv.
+		self:EnsureRuntime()
+		local skillKey = ""
+		if cast ~= nil then
+			skillKey = self:ReadString(cast.SkillKey, "")
+		end
+		if skillKey ~= "" and self._T.skillRestrictionCatalog ~= nil and self._T.skillRestrictionCatalog[skillKey] ~= nil then
+			return math.max(0, math.min(1, self:ReadNumber(self._T.skillRestrictionCatalog[skillKey].MoveSpeedRate, 1)))
+		end
+		return 1
+	end
+
 	method number GetPlayerBoundsCheckSeconds()
 		-- Returns the polling interval for player map-bound recovery.
 		return math.max(0.02, self:ReadNumber(self.PlayerBoundsCheckSeconds, 0.08))
@@ -2080,14 +2437,205 @@ script BRSkillSystem extends Logic
 	end
 
 	method void ResetUser(string userId)
-		-- Clears one user's skill parts and chain state.
+		-- Clears one user's skill parts and runtime chain state.
 		self:EnsureRuntime()
 		if userId == nil or userId == "" then
 			return
 		end
-		self._T.userStates[userId] = self:CreateUserState()
+		self:ResetUserStateOnly(userId)
 		self:NotifyUserChanged(userId)
 		self:Log("reset user=" .. userId)
+	end
+
+	method void ResetUserForBattle(string userId)
+		-- Starts a battle from a clean CSV-backed chain state.
+		self:EnsureRuntime()
+		if userId == nil or userId == "" then
+			return
+		end
+
+		self:ResetUserStateOnly(userId)
+		local seededCount = 0
+		if self.SeedDefaultChainOnBattleReset == true then
+			seededCount = self:SeedBattleChainFromData(userId, "battle-reset")
+		end
+		self:NotifyUserChanged(userId)
+		self:ResetLocalBattleSkillRuntime(userId, "battle-reset")
+		self:Log("battle reset user=" .. userId .. " seeded=" .. tostring(seededCount))
+	end
+
+	method void ResetUserStateOnly(string userId)
+		self._T.userStates[userId] = self:CreateUserState()
+		self:ClearUserRuntimeState(userId)
+	end
+
+	method void ClearUserRuntimeState(string userId)
+		-- Removes casts/cooldowns left by lobby or previous match usage.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+
+		if self._T.activeCasts ~= nil then
+			for index = #self._T.activeCasts, 1, -1 do
+				local cast = self._T.activeCasts[index]
+				if cast == nil then
+					table.remove(self._T.activeCasts, index)
+				elseif self:ReadString(cast.UserId, "") == safeUserId then
+					cast.Cancelled = true
+					if cast.IsVirtualCaster ~= true then
+						self:RestoreCasterActionLimit(cast)
+					end
+					table.remove(self._T.activeCasts, index)
+				end
+			end
+		end
+
+		self:RemoveRuntimeRecordsForUser(self._T.activeAreas, safeUserId)
+		self:RemoveRuntimeRecordsForUser(self._T.activeProjectiles, safeUserId)
+		self:RemoveRuntimeRecordsForUser(self._T.activeFields, safeUserId)
+		self:RemoveStatusesForUser(safeUserId)
+
+		if self._T.casterLocks ~= nil then
+			local lock = self._T.casterLocks[safeUserId]
+			if lock ~= nil and lock.Entity ~= nil and isvalid(lock.Entity) and lock.Entity.MovementComponent ~= nil and lock.InputSpeed ~= nil then
+				lock.Entity.MovementComponent.InputSpeed = lock.InputSpeed
+			end
+			self._T.casterLocks[safeUserId] = nil
+		end
+		if self._T.chainRuntimeByUser ~= nil then
+			self._T.chainRuntimeByUser[safeUserId] = nil
+		end
+		if self._T.uniqueRuntimeByUser ~= nil then
+			self._T.uniqueRuntimeByUser[safeUserId] = nil
+		end
+		if self._T.lastSafeFootholdByUser ~= nil then
+			self._T.lastSafeFootholdByUser[safeUserId] = nil
+		end
+	end
+
+	method void RemoveRuntimeRecordsForUser(any records, string userId)
+		if records == nil then
+			return
+		end
+		for index = #records, 1, -1 do
+			local record = records[index]
+			if record == nil or self:ReadString(record.UserId, "") == userId then
+				table.remove(records, index)
+			end
+		end
+	end
+
+	method void RemoveStatusesForUser(string userId)
+		if self._T.statusByEntityId == nil then
+			return
+		end
+		for entityId, statusMap in pairs(self._T.statusByEntityId) do
+			local empty = true
+			for statusId, status in pairs(statusMap) do
+				if status == nil or self:ReadString(status.ApplierUserId, "") == userId or self:IsStatusTargetUser(status, userId) == true then
+					statusMap[statusId] = nil
+				else
+					empty = false
+				end
+			end
+			if empty == true then
+				self._T.statusByEntityId[entityId] = nil
+			end
+		end
+	end
+
+	method boolean IsStatusTargetUser(any status, string userId)
+		if status == nil or status.TargetEntity == nil or status.TargetEntity.PlayerComponent == nil then
+			return false
+		end
+		return self:ReadString(status.TargetEntity.PlayerComponent.UserId, "") == self:ReadString(userId, "")
+	end
+
+	method number SeedBattleChainFromData(string userId, string sourceId)
+		local seeded = self:SeedBattleChainFromSkillChainData(userId, sourceId)
+		if seeded > 0 then
+			return seeded
+		end
+
+		local partId = self:GetDefaultSeedPartId()
+		if partId == "" then
+			return 0
+		end
+		local part = self:AddPartDirectlyToChainSlot(userId, partId, 1, sourceId)
+		if part == nil then
+			return 0
+		end
+		return 1
+	end
+
+	method number SeedBattleChainFromSkillChainData(string userId, string sourceId)
+		local data = self:GetDataTable("skill_chains")
+		if data == nil or self:ReadNumber(data:GetRowCount(), 0) <= 0 then
+			return 0
+		end
+
+		local seeded = 0
+		local maxSlot = self:GetChainSlotCount()
+		for slotIndex = 1, maxSlot do
+			local skillId = self:GetDataCell(data, 1, "slot" .. tostring(slotIndex) .. "_skill_id", "")
+			if skillId ~= "" then
+				local partId = self:GetPartIdForSkillKey(skillId)
+				if partId ~= "" and self:AddPartDirectlyToChainSlot(userId, partId, slotIndex, sourceId) ~= nil then
+					seeded = seeded + 1
+				end
+			end
+		end
+		return seeded
+	end
+
+	method any AddPartDirectlyToChainSlot(string userId, string partId, number chainSlot, string sourceId)
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return nil
+		end
+		local definition = self._T.catalog[self:ReadString(partId, "")]
+		if definition == nil then
+			return nil
+		end
+		local slotIndex = self:ClampChainSlot(chainSlot)
+		if self:IsChainSlotUnlocked(state, slotIndex) ~= true then
+			return nil
+		end
+
+		local part = self:CreatePartInstance(state, definition, sourceId)
+		table.insert(state.Parts, part)
+		state.EquippedChainSlots[slotIndex] = part.InstanceId
+		state.Equipped["Chain" .. tostring(slotIndex)] = part.InstanceId
+		self:Log("battle seed user=" .. userId .. " slot=" .. tostring(slotIndex) .. " part=" .. part.PartId)
+		return part
+	end
+
+	method string GetDefaultSeedPartId()
+		self:EnsureRuntime()
+		if self._T.partIds ~= nil and #self._T.partIds > 0 then
+			return self:ReadString(self._T.partIds[1], "")
+		end
+		return self:GetPartIdForSkillKey(self:GetDefaultBasicSkillId())
+	end
+
+	method string GetPartIdForSkillKey(string skillKey)
+		local safeSkillKey = self:ReadString(skillKey, "")
+		if safeSkillKey == "" or self._T.catalog == nil then
+			return ""
+		end
+		if self._T.catalog[safeSkillKey] ~= nil then
+			return safeSkillKey
+		end
+		if self._T.catalog[safeSkillKey .. "_part"] ~= nil then
+			return safeSkillKey .. "_part"
+		end
+		for partId, definition in pairs(self._T.catalog) do
+			if definition ~= nil and (self:ReadString(definition.SkillKey, "") == safeSkillKey or self:ReadString(definition.SlotKey, "") == safeSkillKey) then
+				return self:ReadString(partId, "")
+			end
+		end
+		return ""
 	end
 
 	method boolean GrantUserExperience(string userId, number amount, string sourceId)
@@ -2185,6 +2733,9 @@ script BRSkillSystem extends Logic
 	method string RollPartId()
 		-- Selects a random part id from the catalog.
 		self:EnsureRuntime()
+		if self._T.partIds == nil or #self._T.partIds <= 0 then
+			return self:GetDefaultBasicSkillId() .. "_part"
+		end
 		local index = math.random(1, #self._T.partIds)
 		return self._T.partIds[index]
 	end
@@ -2199,7 +2750,11 @@ script BRSkillSystem extends Logic
 		
 		local definition = self._T.catalog[self:ReadString(partId, "")]
 		if definition == nil then
-			definition = self._T.catalog["slash_part"]
+			definition = self._T.catalog[self:GetDefaultBasicSkillId() .. "_part"]
+		end
+		if definition == nil then
+			self:Log("grant skipped user=" .. userId .. " part=" .. self:ReadString(partId, "") .. " reason=noSkillDefinition")
+			return nil
 		end
 		
 		local part = self:CreatePartInstance(state, definition, sourceId)
@@ -2462,7 +3017,7 @@ script BRSkillSystem extends Logic
 		end
 		if dropComponent ~= nil then
 			dropComponent:InitializeDrop(
-				self:ReadString(part.PartId, "slash_part"),
+				self:ReadString(part.PartId, self:GetDefaultBasicSkillId() .. "_part"),
 				self:GetSkillName(part),
 				self:GetPartShortText(part),
 				self:GetUserIdFromPlayer(playerEntity),
@@ -2795,6 +3350,25 @@ script BRSkillSystem extends Logic
 		self._T.localSkillRequiredExperience = math.max(1, math.floor(self:ReadNumber(requiredExperience, 1)))
 		self._T.localUnlockedChainSlots = math.max(1, math.floor(self:ReadNumber(unlockedSlots, self:GetBaseUnlockedChainSlots())))
 		self._T.localPanelUpdatedAt = _UtilLogic.ElapsedSeconds
+	end
+
+	@ExecSpace("Client")
+	method void ResetLocalBattleSkillRuntime(string userId, string reason)
+		-- Clears client-only common skill cooldowns that survive map changes.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return
+		end
+		if self:ReadString(userId, "") ~= self:ReadString(localPlayer.PlayerComponent.UserId, "") then
+			return
+		end
+		if _BRCommonSkillSystem ~= nil then
+			_BRCommonSkillSystem.localNextUniqueAt = 0
+			_BRCommonSkillSystem.localNextBlinkAt = 0
+			_BRCommonSkillSystem.localNextNimbusToggleAt = 0
+			_BRCommonSkillSystem.localNimbusActive = false
+			log("[BRSkillSystem] local common cooldown reset reason=" .. self:ReadString(reason, "reset"))
+		end
 	end
 
 	@ExecSpace("Client")
@@ -3498,11 +4072,50 @@ script BRSkillSystem extends Logic
 			return
 		end
 		local position = self:GetEntityPosition2(playerEntity)
+		if self:TryHandleBattleBoundsReturn(playerEntity, userId, position) == true then
+			return
+		end
 		if self:IsPositionOutsideMapBounds(playerEntity, position, self:GetPlayerBoundsPadding()) == true then
 			self:ReturnPlayerToLastSafeFoothold(playerEntity, userId, position)
 			return
 		end
 		self:RememberPlayerFootholdPosition(playerEntity, userId)
+	end
+
+	method boolean TryHandleBattleBoundsReturn(Entity playerEntity, string userId, Vector2 position)
+		-- Lets active battle maps apply their own damage and center-return rule.
+		local mapEntity = self:GetEntityMap(playerEntity)
+		if mapEntity == nil then
+			return false
+		end
+
+		---@type BRBattleLogic
+		local battleLogic = nil
+		local logicEntity = nil
+		local mapName = self:ReadString(playerEntity.CurrentMapName, "")
+		if mapName ~= "" then
+			logicEntity = _EntityService:GetEntityByPath("/maps/" .. mapName .. "/BattleLogic")
+		end
+		if logicEntity == nil then
+			logicEntity = mapEntity:GetChildByName("BattleLogic", false)
+		end
+		if logicEntity ~= nil then
+			battleLogic = logicEntity:GetComponent("script.BRBattleLogic")
+			if battleLogic == nil then
+				battleLogic = logicEntity:GetComponent("BRBattleLogic")
+			end
+		end
+		if battleLogic == nil then
+			battleLogic = mapEntity:GetComponent("script.BRBattleLogic")
+			if battleLogic == nil then
+				battleLogic = mapEntity:GetComponent("BRBattleLogic")
+			end
+		end
+		if battleLogic == nil then
+			return false
+		end
+
+		return battleLogic:HandlePlayerOutOfBoundsReturn(playerEntity, position) == true
 	end
 
 	method void RememberPlayerFootholdPosition(Entity playerEntity, string userId)

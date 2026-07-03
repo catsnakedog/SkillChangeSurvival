@@ -69,6 +69,12 @@ script BRBattleLogic extends Component
 
 	property boolean ResetHpOnEnter = true
 
+	property boolean EnableOutOfBoundsPenalty = true
+
+	property number OutOfBoundsDamage = 20
+
+	property number OutOfBoundsDamageCooldownSeconds = 1
+
 	property boolean VerboseBattleLog = false
 
 	property boolean LogPhysicsStateOnRegister = false
@@ -143,6 +149,8 @@ script BRBattleLogic extends Component
 		self._T.matchEndRequested = false
 		self._T.lastPositions = {}
 		self._T.basePhysicsStats = {}
+		self._T.outOfBoundsDamageUntil = {}
+		self._T.outOfBoundsRoomKeyByUser = {}
 		self._T.runtimeStarted = true
 		self._T.serverTimerId = _TimerService:SetTimerRepeat(function() self:RefreshBattlePlayers() end, self:GetPlayerScanSeconds(), 0)
 		if self.EnablePlatformFallback == true then
@@ -192,6 +200,8 @@ script BRBattleLogic extends Component
 		self._T.matchEndRequested = false
 		self._T.lastPositions = {}
 		self._T.basePhysicsStats = {}
+		self._T.outOfBoundsDamageUntil = {}
+		self._T.outOfBoundsRoomKeyByUser = {}
 		self._T.runtimeStarted = false
 		self.LifeMapName = ""
 		self.LifeSummary = ""
@@ -346,6 +356,12 @@ script BRBattleLogic extends Component
 		if self._T.basePhysicsStats ~= nil then
 			self._T.basePhysicsStats[userId] = nil
 		end
+		if self._T.outOfBoundsDamageUntil ~= nil then
+			self._T.outOfBoundsDamageUntil[userId] = nil
+		end
+		if self._T.outOfBoundsRoomKeyByUser ~= nil then
+			self._T.outOfBoundsRoomKeyByUser[userId] = nil
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -453,7 +469,7 @@ script BRBattleLogic extends Component
 	@ExecSpace("ServerOnly")
 	method void ResetSkillState(string userId)
 		if _BRSkillSystem ~= nil then
-			_BRSkillSystem:ResetUser(userId)
+			_BRSkillSystem:ResetUserForBattle(userId)
 		end
 	end
 
@@ -739,6 +755,120 @@ script BRBattleLogic extends Component
 	end
 
 	@ExecSpace("ServerOnly")
+	method boolean HandlePlayerOutOfBoundsReturn(Entity playerEntity, Vector2 fromPosition)
+		-- Applies a battle penalty and returns a player who has left the playable map bounds.
+		if self.EnableOutOfBoundsPenalty ~= true then
+			return false
+		end
+		self:EnsureServerRuntimeTables()
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
+		end
+		if playerEntity.CurrentMapName ~= self:GetBattleMapName() then
+			return false
+		end
+		if self:IsActiveMatchReady() ~= true then
+			return false
+		end
+		if self:IsBattleGameplayStarted() ~= true then
+			return false
+		end
+
+		local playerComponent = playerEntity.PlayerComponent
+		if playerComponent:IsDead() == true or playerComponent.Hp <= 0 then
+			return true
+		end
+
+		local userId = self:ReadString(playerComponent.UserId, "")
+		if userId == "" then
+			return false
+		end
+		if fromPosition == nil then
+			fromPosition = self:GetEntityPosition2(playerEntity)
+		end
+
+		local graph = self:GetLatestRoomGraph()
+		local currentRoom = self:GetLogicalRoomForPosition(graph, fromPosition)
+		local currentRoomKey = self:GetLogicalRoomKey(currentRoom)
+		if currentRoomKey ~= "" then
+			self._T.outOfBoundsRoomKeyByUser[userId] = currentRoomKey
+			return false
+		end
+
+		local returnRoom = self:GetOutOfBoundsReturnLogicalRoom(graph, userId, fromPosition)
+		local returnRoomKey = self:GetLogicalRoomKey(returnRoom)
+		local returnPosition = self:GetOutOfBoundsReturnPosition(playerEntity, fromPosition, returnRoom)
+		if returnPosition == nil then
+			return false
+		end
+		if returnRoomKey ~= "" then
+			self._T.outOfBoundsRoomKeyByUser[userId] = returnRoomKey
+		end
+
+		local now = self:Now()
+		local oldHp = math.max(0, math.floor(self:ReadNumber(playerComponent.Hp, 0)))
+		local damage = 0
+		if now >= self:ReadNumber(self._T.outOfBoundsDamageUntil[userId], 0) then
+			damage = self:GetOutOfBoundsDamage(playerEntity)
+			playerComponent.Hp = math.max(0, oldHp - damage)
+			self._T.outOfBoundsDamageUntil[userId] = now + self:GetOutOfBoundsDamageCooldownSeconds()
+			self:LockPortalUse(userId, now)
+		end
+
+		self:SetEntityWorldPosition2(playerEntity, returnPosition)
+		self:ApplyLocalBoundsReturnPosition(returnPosition, "out-of-bounds", userId)
+		self._T.lastPositions[userId] = returnPosition
+
+		log("[BRBattle] bounds return user=" .. userId
+			.. " damage=" .. tostring(damage)
+			.. " hp=" .. tostring(oldHp) .. "->" .. tostring(playerComponent.Hp)
+			.. " room=" .. self:ReadString(returnRoomKey, "-")
+			.. " from=(" .. tostring(fromPosition.x) .. "," .. tostring(fromPosition.y) .. ")"
+			.. " to=(" .. tostring(returnPosition.x) .. "," .. tostring(returnPosition.y) .. ")")
+
+		if damage > 0 and playerComponent.Hp <= 0 then
+			self:HandlePlayerFatalDeath(nil, playerEntity, "out-of-bounds")
+		else
+			if damage > 0 then
+				self:PlayBodyAction(playerEntity, MapleAvatarBodyActionState.Hit, true, 1)
+			end
+			self:UpdateAlivePlayerCount()
+			self:UpdateLifeSummary()
+		end
+		return true
+	end
+
+	@ExecSpace("Client")
+	method void ApplyLocalBoundsReturnPosition(Vector2 position, string reason)
+		-- Mirrors a server bounds-return teleport without touching dead/revive state.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+
+		if localPlayer.MovementComponent ~= nil then
+			localPlayer.MovementComponent:Stop()
+			localPlayer.MovementComponent:SetWorldPosition(position)
+		end
+		if localPlayer.RigidbodyComponent ~= nil then
+			localPlayer.RigidbodyComponent.IgnoreMoveBoundary = true
+			localPlayer.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			localPlayer.RigidbodyComponent:SetWorldPosition(position)
+			localPlayer.RigidbodyComponent:PositionReset()
+		elseif localPlayer.KinematicbodyComponent ~= nil then
+			localPlayer.KinematicbodyComponent:SetWorldPosition(position)
+		elseif localPlayer.SideviewbodyComponent ~= nil then
+			localPlayer.SideviewbodyComponent:SetWorldPosition(position)
+		end
+		local localUserId = ""
+		if localPlayer.PlayerComponent ~= nil then
+			localUserId = self:ReadString(localPlayer.PlayerComponent.UserId, "")
+			localPlayer.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
+		end
+		log("[BRBattle] local bounds return user=" .. localUserId .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ") reason=" .. self:ReadString(reason, ""))
+	end
+
+	@ExecSpace("ServerOnly")
 	method void LogReviveConfirm(string userId, Entity playerEntity, string source)
 		local safeUserId = self:ReadString(userId, "")
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
@@ -759,6 +889,10 @@ script BRBattleLogic extends Component
 			return
 		end
 		if self:IsAttackAction(event.ActionName) == false then
+			return
+		end
+		if self:IsBattleGameplayStarted() ~= true then
+			self:Log("attack ignored before start")
 			return
 		end
 		
@@ -981,6 +1115,7 @@ script BRBattleLogic extends Component
 			self:UpdateAlivePlayerCount()
 			self:UpdateLifeSummary()
 			self:Log("dead user=" .. userId .. " attacker=" .. attackerId .. " reason=" .. self:ReadString(reason, ""))
+			self:ReturnOutPlayerToLobby(userId, self:ReadString(reason, "dead"))
 			self:CheckLastManStanding(reason)
 			return
 		end
@@ -1016,7 +1151,25 @@ script BRBattleLogic extends Component
 		self:UpdateAlivePlayerCount()
 		self:UpdateLifeSummary()
 		self:Log("life out user=" .. userId .. " reason=" .. self:ReadString(reason, "") .. " attacker=" .. attackerId)
+		self:RefreshMiniMapPlayerCounts()
+		self:ReturnOutPlayerToLobby(userId, self:ReadString(reason, "life-out"))
 		self:CheckLastManStanding(reason)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ReturnOutPlayerToLobby(string userId, string reason)
+		-- Sends one out-of-lives player to lobby and clears revive UI state.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+
+		self:ReceiveReviveOptions("", "Eliminated.", 0, self:GetNextReviveOptionVersion(safeUserId), safeUserId)
+		local returned = false
+		if _BRBattleLauncher ~= nil then
+			returned = _BRBattleLauncher:ReturnEliminatedPlayerToLobby(self:GetBattleMapName(), safeUserId, self:ReadString(reason, "life-out"))
+		end
+		log("[BRBattle] eliminated user=" .. safeUserId .. " lobbyReturn=" .. tostring(returned) .. " reason=" .. self:ReadString(reason, ""))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -1327,6 +1480,182 @@ script BRBattleLogic extends Component
 		return _BRRoomGraphGenerator:GetLatestGraphForMap(self:GetBattleMapName())
 	end
 
+	method any GetOutOfBoundsReturnPosition(Entity playerEntity, Vector2 fromPosition, any preferredRoom)
+		-- Returns the player to the active room, falling back to the nearest room and then map center.
+		local graph = self:GetLatestRoomGraph()
+		local targetRoom = preferredRoom
+		if targetRoom == nil and playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+			targetRoom = self:GetOutOfBoundsReturnLogicalRoom(graph, self:ReadString(playerEntity.PlayerComponent.UserId, ""), fromPosition)
+		end
+		if targetRoom ~= nil then
+			local graphPosition = self:GetRespawnPositionForLogicalRoom(graph, targetRoom)
+			if graphPosition ~= nil then
+				return graphPosition
+			end
+		end
+		return self:GetMapCenterReturnPosition(playerEntity)
+	end
+
+	method any GetOutOfBoundsReturnLogicalRoom(any graph, string userId, Vector2 fromPosition)
+		-- Resolves the room that owns an out-of-room penalty return.
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local safeUserId = self:ReadString(userId, "")
+		if self._T.outOfBoundsRoomKeyByUser ~= nil and safeUserId ~= "" then
+			local storedRoom = self:FindLogicalRoomByKey(graph, self:ReadString(self._T.outOfBoundsRoomKeyByUser[safeUserId], ""))
+			if storedRoom ~= nil then
+				return storedRoom
+			end
+		end
+
+		local nearestRoom = self:GetNearestLogicalRoomForPosition(graph, fromPosition)
+		if nearestRoom ~= nil then
+			return nearestRoom
+		end
+
+		return self:GetCenterLogicalRoom(graph)
+	end
+
+	method any GetLogicalRoomForPosition(any graph, Vector2 position)
+		-- Finds the visited logical room whose assigned physical room contains the position.
+		if _BRRoomGraphGenerator == nil or graph == nil or position == nil then
+			return nil
+		end
+
+		return _BRRoomGraphGenerator:GetLogicalRoomForPosition(graph, position)
+	end
+
+	method any FindLogicalRoomByKey(any graph, string roomKey)
+		-- Finds a visited logical room by its row-column key.
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local safeKey = self:ReadString(roomKey, "")
+		if safeKey == "" then
+			return nil
+		end
+
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true and self:GetLogicalRoomKey(room) == safeKey then
+				return room
+			end
+		end
+		return nil
+	end
+
+	method any GetNearestLogicalRoomForPosition(any graph, Vector2 position)
+		-- Picks the assigned physical room rectangle nearest to a position outside every room.
+		if _BRRoomGraphGenerator == nil or graph == nil or graph.Rooms == nil or position == nil then
+			return nil
+		end
+
+		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(graph.MapName)
+		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(graph.MapName)
+		local bestRoom = nil
+		local bestDistance = nil
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				local roomName = self:GetAssignedPhysicalRoomName(room)
+				if roomName ~= "" then
+					local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(graph.MapName, root, roomName)
+					if center ~= nil then
+						local dx = math.max(0, math.abs(position.x - center.x) - halfSize.x)
+						local dy = math.max(0, math.abs(position.y - center.y) - halfSize.y)
+						local distance = dx * dx + dy * dy
+						if bestDistance == nil or distance < bestDistance then
+							bestDistance = distance
+							bestRoom = room
+						end
+					end
+				end
+			end
+		end
+		return bestRoom
+	end
+
+	method any GetCenterLogicalRoom(any graph)
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local centerRow = (math.max(1, self:ReadNumber(graph.Rows, 1)) + 1) * 0.5
+		local centerColumn = (math.max(1, self:ReadNumber(graph.Columns, 1)) + 1) * 0.5
+		local bestRoom = nil
+		local bestDistance = nil
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				local row = self:ReadNumber(room.Row, centerRow)
+				local column = self:ReadNumber(room.Column, centerColumn)
+				local dx = column - centerColumn
+				local dy = row - centerRow
+				local distance = dx * dx + dy * dy
+				if bestDistance == nil or distance < bestDistance then
+					bestDistance = distance
+					bestRoom = room
+				end
+			end
+		end
+		if bestRoom ~= nil then
+			return bestRoom
+		end
+
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil then
+				local row = self:ReadNumber(room.Row, centerRow)
+				local column = self:ReadNumber(room.Column, centerColumn)
+				local dx = column - centerColumn
+				local dy = row - centerRow
+				local distance = dx * dx + dy * dy
+				if bestDistance == nil or distance < bestDistance then
+					bestDistance = distance
+					bestRoom = room
+				end
+			end
+		end
+		return bestRoom
+	end
+
+	method any GetMapCenterReturnPosition(Entity playerEntity)
+		local bounds = self:GetMapBoundsForEntity(playerEntity)
+		if bounds == nil then
+			return Vector2(0, self:GetMainFloorY() + 0.1)
+		end
+
+		local rawPosition = Vector2((bounds.Left + bounds.Right) * 0.5, (bounds.Bottom + bounds.Top) * 0.5)
+		return self:GetFootholdAlignedRespawnPosition(bounds.MapName, rawPosition, bounds.Top - bounds.Bottom)
+	end
+
+	method any GetMapBoundsForEntity(Entity entity)
+		if entity == nil then
+			return nil
+		end
+		local mapEntity = entity.CurrentMap
+		if mapEntity == nil then
+			local mapName = self:ReadString(entity.CurrentMapName, "")
+			if mapName ~= "" then
+				mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
+			end
+		end
+		if mapEntity == nil or mapEntity.MapComponent == nil or mapEntity.MapComponent.UseCustomBound ~= true then
+			return nil
+		end
+		local leftBottom = mapEntity.MapComponent.LeftBottom
+		local rightTop = mapEntity.MapComponent.RightTop
+		if leftBottom == nil or rightTop == nil or rightTop.x <= leftBottom.x or rightTop.y <= leftBottom.y then
+			return nil
+		end
+		return {
+			Left = leftBottom.x,
+			Bottom = leftBottom.y,
+			Right = rightTop.x,
+			Top = rightTop.y,
+			MapName = self:ReadString(mapEntity.Name, self:GetBattleMapName())
+		}
+	end
+
 	method any FindLogicalRoomByCoordinate(any graph, number row, number column)
 		if graph == nil or graph.Rooms == nil then
 			return nil
@@ -1592,6 +1921,9 @@ script BRBattleLogic extends Component
 		if self.EnableLastManStandingEnd ~= true then
 			return
 		end
+		if self:IsBattleGameplayStarted() ~= true then
+			return
+		end
 
 		self:EnsureServerRuntimeTables()
 		if self._T.matchEndRequested == true then
@@ -1708,6 +2040,10 @@ script BRBattleLogic extends Component
 			self.BattlePhase = "Ending"
 			return
 		end
+		if self:IsBattleGameplayStarted() ~= true then
+			self.BattlePhase = "Ready"
+			return
+		end
 		if count > 0 then
 			self.BattlePhase = "Playing " .. tostring(count)
 		else
@@ -1791,6 +2127,12 @@ script BRBattleLogic extends Component
 		if self._T.basePhysicsStats == nil then
 			self._T.basePhysicsStats = {}
 		end
+		if self._T.outOfBoundsDamageUntil == nil then
+			self._T.outOfBoundsDamageUntil = {}
+		end
+		if self._T.outOfBoundsRoomKeyByUser == nil then
+			self._T.outOfBoundsRoomKeyByUser = {}
+		end
 		if self._T.localReviveReceivedAt == nil then
 			self._T.localReviveReceivedAt = 0
 		end
@@ -1805,6 +2147,20 @@ script BRBattleLogic extends Component
 			return false
 		end
 		return _BRBattleLauncher:IsActiveMatchForMap(self:GetBattleMapName())
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean IsBattleGameplayStarted()
+		if self.RequireActiveMatch ~= true then
+			return true
+		end
+		if self:IsActiveMatchReady() ~= true then
+			return false
+		end
+		if _BRBattleTimerSystem == nil then
+			return true
+		end
+		return _BRBattleTimerSystem.TimerRunning == true and self:ReadString(_BRBattleTimerSystem.TimerMapName, "") == self:GetBattleMapName()
 	end
 
 	method boolean IsAttackAction(string actionName)
@@ -1844,6 +2200,14 @@ script BRBattleLogic extends Component
 
 	method number GetBasicAttackDamage()
 		return math.max(1, math.floor(self:ReadNumber(self.BasicAttackDamage, 20)))
+	end
+
+	method number GetOutOfBoundsDamage(Entity playerEntity)
+		return math.max(1, math.floor(self:ReadNumber(self.OutOfBoundsDamage, self:GetBasicAttackDamage())))
+	end
+
+	method number GetOutOfBoundsDamageCooldownSeconds()
+		return math.max(0.1, self:ReadNumber(self.OutOfBoundsDamageCooldownSeconds, 1))
 	end
 
 	method number GetAliveBotCount()

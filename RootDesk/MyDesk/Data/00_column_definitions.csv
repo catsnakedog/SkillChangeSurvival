@@ -1,0 +1,99 @@
+﻿file_name,table_title,column_order,column_name,column_label,data_type,default_value,multiple,input_format,description,source_pages
+skills.csv,스킬,14,end_sound_ruid,종료 사운드 RUID,string,,N,,스킬 종료/해제 사운드 또는 보이스 RUID,p60
+skills.csv,스킬,15,common_speed,공용 스킬 속도,decimal,5.2,N,,근두운 같은 공용 이동 스킬 속도,p60
+jobs.csv,직업/계열,1,display_order,표시 순서,int,,N,,기획서 목록 순서,p2
+jobs.csv,직업/계열,2,name,이름,string,,N,,기획서에 표시된 직업/계열명,p2
+characters.csv,캐릭터,1,hp,체력,int,10000,N,,기본 10000,p20
+characters.csv,캐릭터,2,attack_power,공격력,int,300,N,,기본 300,p20
+characters.csv,캐릭터,3,basic_attack_id,기본공격 id,string,,N,,기본공격 id,p20
+characters.csv,캐릭터,4,passive_id,패시브 id,string,,N,,패시브 id,p20
+characters.csv,캐릭터,5,basic_skill_id,기본 스킬 id,string,,N,,기본 스킬 id,p20
+characters.csv,캐릭터,6,sprite_id,스프라이트 id,string,,N,,스프라이트 id,p20
+skills.csv,스킬,1,id,id,string,,N,,스킬 id,"p8,p29,p44"
+skills.csv,스킬,2,name,이름,string,,N,,스킬 이름,"p8,p29,p44"
+skills.csv,스킬,3,skill_category,스킬 범주,enum,,N,기본 스킬|스킬 파츠,기본 스킬 또는 스킬 파츠,"p8,p29,p44"
+skills.csv,스킬,4,icon_ruid,아이콘 RUID,string,,N,,아이콘 RUID,"p8,p29,p44"
+skills.csv,스킬,5,description,설명,string,,N,,스킬 설명,"p8,p29,p44"
+skills.csv,스킬,6,effect_ids,이펙트 id,pipe_string,,Y,effect1|effect2|effect3,복수 가능,"p8,p29,p44"
+skills.csv,스킬,7,total_length_frames,전체 길이,int,,N,,프레임 단위,"p8,p29,p44"
+skills.csv,스킬,8,frame_event_ids,프레임별 이벤트 id,frame_event_map,,Y,4:eventA|eventB;8:eventC,키: 프레임 인덱스 - 밸류: 이벤트 id. 각 프레임에 복수 이벤트 id 가능,"p8,p29,p44"
+skills.csv,스킬,9,cooldown,쿨타임,decimal,,N,,쿨타임,"p8,p29,p44"
+skills.csv,스킬,10,sound_ruid,사용 사운드 RUID,string,,N,,스킬 시전 사운드 RUID,p60
+skills.csv,스킬,11,disabled_icon_ruid,비활성 아이콘 RUID,string,,N,,쿨타임/비활성 상태 아이콘 RUID,p60
+skills.csv,스킬,12,mouseover_icon_ruid,마우스오버 아이콘 RUID,string,,N,,마우스오버 상태 아이콘 RUID,p60
+skills.csv,스킬,13,common_distance,공용 스킬 거리,decimal,2.8,N,,점멸 같은 공용 스킬 이동 거리,p60
+effects.csv,이펙트,1,effect_id,이펙트 id,string,,N,,스킬 데이터의 이펙트 id와 연결하기 위한 id,p22
+effects.csv,이펙트,2,effect_ruid,이펙트 RUID,string,,N,,이펙트 RUID,p22
+effects.csv,이펙트,3,is_loop,루프 여부,bool,,N,,루프 여부,p22
+effects.csv,이펙트,4,total_length_frames,전체 길이,int,,N,,전체 길이,p22
+skill_action_restrictions.csv,행동제한 데이터,1,skill_id,스킬 id,string,,N,,행동제한이 적용되는 스킬 id,"p22,p30"
+skill_action_restrictions.csv,행동제한 데이터,2,start_frame,행동 제한 시작 프레임,int,,N,,행동 제한 구간 시작,"p22,p30"
+skill_action_restrictions.csv,행동제한 데이터,3,end_frame,행동 제한 종료 프레임,int,,N,,행동 제한 구간 종료,"p22,p30"
+skill_action_restrictions.csv,행동제한 데이터,4,caster_move_speed_reduction_rate,시전자 이동속도 감소율,decimal,,N,,시전자 이동속도 감소율,"p22,p30"
+events.csv,이벤트,1,event_id,이벤트 id,string,,N,,특정 프레임 또는 프레임 구간에서 실행되는 작업 id,"p24,p33,p44"
+events.csv,이벤트,2,event_type,이벤트 종류,enum,,N,범위 대상포착|액션 실행,이벤트 종류,"p24,p33,p44"
+events.csv,이벤트,3,area_target_id,범위 대상포착 id,string,,N,,범위 대상포착 이벤트일 때 연결할 id,"p24,p33,p44"
+events.csv,이벤트,4,action_ids,액션 id,pipe_string,,Y,action1|action2|action3,액션 실행 이벤트일 때 연결할 액션 id. 복수 가능,"p24,p33,p44"
+area_target_captures.csv,범위 대상포착 데이터,1,area_target_id,범위 대상포착 id,string,,N,,범위 대상포착 id,"p41,p43,p44"
+area_target_captures.csv,범위 대상포착 데이터,2,hitbox_ids,히트박스 id,pipe_string,,Y,hitbox1|hitbox2|hitbox3,감지할 히트박스. 복수 가능,"p41,p43,p44"
+area_target_captures.csv,범위 대상포착 데이터,3,duration_frames,지속시간,int,,N,,프레임 단위,"p41,p43,p44"
+area_target_captures.csv,범위 대상포착 데이터,4,target,대상,enum,,N,아군|적군,아군 / 적군,"p41,p43,p44"
+area_target_captures.csv,범위 대상포착 데이터,5,action_ids,액션id,pipe_string,,Y,action1|action2|action3,연결할 액션 id. 복수 가능,"p41,p43,p44"
+rect_hitboxes.csv,히트박스 - 사각형 데이터,1,hitbox_id,히트박스 id,string,,N,,히트박스 id,"p40,p44,p47"
+rect_hitboxes.csv,히트박스 - 사각형 데이터,2,offset_x,원점 offset x좌표,int,,N,,offset 기준은 우측 하단 점의 위치,"p40,p44,p47"
+rect_hitboxes.csv,히트박스 - 사각형 데이터,3,offset_y,원점 offset y좌표,int,,N,,offset 기준은 우측 하단 점의 위치,"p40,p44,p47"
+rect_hitboxes.csv,히트박스 - 사각형 데이터,4,width,너비,int,,N,,기준 좌표계 px,"p40,p44,p47"
+rect_hitboxes.csv,히트박스 - 사각형 데이터,5,height,높이,int,,N,,기준 좌표계 px,"p40,p44,p47"
+circle_hitboxes.csv,히트박스 - 원형 데이터,1,hitbox_id,히트박스 id,string,,N,,히트박스 id,p40
+circle_hitboxes.csv,히트박스 - 원형 데이터,2,offset_x,원점 offset x좌표,int,,N,,offset 기준은 우측 하단 점의 위치,p40
+circle_hitboxes.csv,히트박스 - 원형 데이터,3,offset_y,원점 offset y좌표,int,,N,,offset 기준은 우측 하단 점의 위치,p40
+circle_hitboxes.csv,히트박스 - 원형 데이터,4,radius,반지름,int,,N,,반지름,p40
+actions.csv,액션,1,action_id,액션 id,string,,N,,액션 id,"p34,p43,p44,p60"
+actions.csv,액션,2,action_type,액션 종류,enum,,N,피해|디버프|후속효과|투사체 생성|장판 생성|트리거|이동,액션 종류,"p34,p43,p44,p60"
+actions.csv,액션,3,required_context,요구 컨택스트,pipe_string,,Y,시전자|대상,액션 실행에 필요한 컨택스트,"p34,p43,p44,p60"
+buff_actions.csv,버프 액션 데이터,1,action_id,액션 id,string,,N,,버프 액션 id,p60
+buff_actions.csv,버프 액션 데이터,2,status_id,상태 id,string,,N,,적용할 버프 상태 id,p60
+buff_actions.csv,버프 액션 데이터,3,duration_frames,지속시간,int,,N,,프레임 단위,p60
+buff_actions.csv,버프 액션 데이터,4,damage_taken_rate,피해 배율,decimal,1,N,,받는 피해 배율. 1이면 변화 없음,p60
+debuff_actions.csv,디버프 액션 데이터,1,action_id,액션 id,string,,N,,디버프 액션 id,p60
+debuff_actions.csv,디버프 액션 데이터,2,status_id,상태 id,string,,N,,적용할 디버프 상태 id,p60
+debuff_actions.csv,디버프 액션 데이터,3,duration_frames,지속시간,int,,N,,프레임 단위,p60
+debuff_actions.csv,디버프 액션 데이터,4,cancel_chain,스킬체인 취소 여부,bool,true,N,true|false,cc 디버프가 상대 스킬체인을 끊는지,p60
+damage_actions.csv,피해 액션 데이터,1,action_id,액션 id,string,,N,,피해 액션 id,p35
+damage_actions.csv,피해 액션 데이터,2,attack_power_coefficient_percent,공격력 계수,decimal,,N,n% 형식,"n% 형식, 1% 단위",p35
+damage_actions.csv,피해 액션 데이터,3,hit_effect_ruid,hit 이펙트 RUID,string,,N,,피해를 준 대상의 위치에서 재생할 이펙트 RUID,p35
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,1,id,id,string,,N,,투사체 생성 액션 id,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,2,projectile_sprite_ruid,투사체 스프라이트 RUID,string,,N,,투사체 스프라이트 RUID,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,3,projectile_range,투사체 사거리,int,,N,,투사체 사거리,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,4,projectile_speed,투사체 속도,decimal,,N,,투사체 속도,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,5,projectile_front_direction,투사체 방향 정면 여부,bool,,N,true|false,"투사체 방향이 스킬의 방향과 동일한지, 반대인지","p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,6,projectile_hitbox_id,투사체 히트박스 id,string,,N,,투사체 히트박스 id,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,7,projectile_pierce,투사체 관통,string,,N,,투사체 관통,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,8,collision_event_ids,충돌 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,9,expire_event_ids,소멸 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
+ground_area_spawn_actions.csv,장판 데이터,1,action_id,액션 id,string,,N,,장판 생성 액션 id,p52
+ground_area_spawn_actions.csv,장판 데이터,2,ground_area_cycle,장판 주기,int,,N,,장판 주기,p52
+ground_area_spawn_actions.csv,장판 데이터,3,ground_area_event_ids,장판 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,p52
+ground_area_spawn_actions.csv,장판 데이터,4,ground_area_effect_id,장판 이펙트 id,string,,N,,장판 이펙트 id,p52
+trigger_actions.csv,트리거 액션,1,action_id,액션 id,string,,N,,트리거 액션 id,"p53,p58,p59"
+trigger_actions.csv,트리거 액션,2,offset_x,offset x좌표,int,,N,,트리거 발생 위치 기준 가상 시전자 생성 offset x,"p53,p58,p59"
+trigger_actions.csv,트리거 액션,3,offset_y,offset y좌표,int,,N,,트리거 발생 위치 기준 가상 시전자 생성 offset y,"p53,p58,p59"
+dash_actions.csv,대쉬 데이터,1,action_id,액션 id,string,,N,,대쉬 액션 id,p60
+dash_actions.csv,대쉬 데이터,2,range,사거리,int,,N,,사거리,p60
+dash_actions.csv,대쉬 데이터,3,move_time_frames,이동시간,int,,N,,프레임 단위,p60
+teleport_actions.csv,텔레포트 데이터,1,action_id,액션 id,string,,N,,텔레포트 액션 id,p60
+teleport_actions.csv,텔레포트 데이터,2,destination_coordinate,텔레포트 목적지 좌표,string,,N,"x,y",텔레포트 목적지 좌표,p60
+skill_chains.csv,스킬 체인,1,chain_id,스킬체인 id,string,,N,,스킬체인 id,"p4,p17,p53,p54"
+skill_chains.csv,스킬 체인,2,slot1_skill_id,1번 슬롯 스킬 id,string,,N,,1번 슬롯,"p4,p17,p53,p54"
+skill_chains.csv,스킬 체인,3,slot2_skill_id,2번 슬롯 스킬 id,string,,N,,2번 슬롯,"p4,p17,p53,p54"
+skill_chains.csv,스킬 체인,4,slot3_skill_id,3번 슬롯 스킬 id,string,,N,,3번 슬롯,"p4,p17,p53,p54"
+skill_chains.csv,스킬 체인,5,slot4_skill_id,4번 슬롯 스킬 id,string,,N,,4번 슬롯,"p4,p17,p53,p54"
+skill_chains.csv,스킬 체인,6,slot5_skill_id,5번 슬롯 스킬 id,string,,N,,5번 슬롯,"p4,p17,p53,p54"
+character_default_skills.csv,클래스별 기본 스킬,1,character_key,클래스 키,string,Knight,N,Knight|Mage|Rogue|Archer,BRCharacterSystem 캐릭터 키,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,2,display_name,표시 이름,string,,N,,클래스 표시 이름,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,3,basic_attack_id,기본공격 id,string,,N,,클래스별 기본공격 스킬 id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,4,basic_skill_id,기본 스킬 id,string,,N,,클래스별 기본 스킬 id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,5,unique_skill_id,고유 스킬 id,string,,N,,Q 슬롯 등 공용 고유 스킬로 사용할 스킬 id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,6,passive_id,패시브 id,string,,N,,클래스별 패시브 스킬 id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,7,starter_chain_id,시작 스킬체인 id,string,,N,,전투 시작 시 기본 장착할 skill_chains.chain_id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,8,notes,비고,string,,N,,데이터 작성 메모,"p20,p29"

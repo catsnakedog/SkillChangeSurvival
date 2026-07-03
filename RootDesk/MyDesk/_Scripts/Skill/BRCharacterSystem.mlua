@@ -1,11 +1,49 @@
 @Logic
 script BRCharacterSystem extends Logic
 
-	property string DefaultCharacterKey = "Hero"
+	property string DefaultCharacterKey = "Knight"
+	property string CharacterDefaultSkillsTableName = "character_default_skills"
 
 	property boolean VerboseLog = true
+	property integer CharacterCatalogVersion = 2
+
+	property Entity classSelectRoot = "ff877862-5ed0-4b36-81e3-29f3385d63e8"
+
+	property Entity classSelectPanel = "c84fe406-b377-46af-81fa-33ac3aa8abd3"
+
+	property ButtonComponent knightButton = "5ca001f2-2e6d-4b66-a64a-0a800a369375"
+
+	property ButtonComponent mageButton = "f746d1d5-38b4-4b85-9d43-e0d31d6f7c72"
+
+	property ButtonComponent rogueButton = "f0710818-ad92-4570-ab39-fa8af9d6e7c3"
+
+	property ButtonComponent archerButton = "6191a152-e5cf-43ac-9266-ff0804b1b812"
+
+	property ButtonComponent classSelectCloseButton = "6fc62a6d-79f2-47c3-a61d-a85fca15aca9"
+
+	property Entity knightFrame = "e43a4ad3-7c6c-43f7-8958-e6f0927a8d98"
+
+	property Entity mageFrame = "d4efca76-4e6a-4929-b5e7-b4c1a4b3ec12"
+
+	property Entity rogueFrame = "c28c0e86-bee6-444c-af00-1db17763257d"
+
+	property Entity archerFrame = "5456b985-8baa-4cbb-a039-f38ebcc5c3e2"
 
 	property number clientSnapshotTimerId = 0
+
+	property boolean classSelectOpen = false
+
+	property string classSelectSource = ""
+
+	property any knightHandler = nil
+
+	property any mageHandler = nil
+
+	property any rogueHandler = nil
+
+	property any archerHandler = nil
+
+	property any classSelectCloseHandler = nil
 
 	method void OnBeginPlay()
 		self:EnsureRuntime()
@@ -13,11 +51,16 @@ script BRCharacterSystem extends Logic
 			self:Log("ready catalog=" .. tostring(#self:GetCharacterCatalog()))
 		end
 		if self:IsClient() then
+			self:HideClassSelectImmediate()
+			self:ConnectClassSelectButtons()
 			self.clientSnapshotTimerId = _TimerService:SetTimerOnce(function() self:RequestCharacterSnapshot() end, 0.2)
 		end
 	end
 
 	method void OnEndPlay()
+		if self:IsClient() then
+			self:DisconnectClassSelectButtons()
+		end
 		if self.clientSnapshotTimerId ~= nil and self.clientSnapshotTimerId > 0 then
 			_TimerService:ClearTimer(self.clientSnapshotTimerId)
 		end
@@ -35,15 +78,26 @@ script BRCharacterSystem extends Logic
 		self:Log("snapshot user=" .. userId .. " key=" .. key)
 	end
 
-	@ExecSpace("Server")
+	@ExecSpace("ClientOnly")
 	method void RequestCycleCharacter(string source)
-		local userId = self:ReadString(senderUserId, "")
-		if userId == "" then
+		if self:IsClassSelectReady() ~= true then
+			self:Log("classSelect open skipped reason=notReady source=" .. self:ReadString(source, ""))
 			return
 		end
-		local currentKey = self:GetServerCharacterKey(userId)
-		local nextKey = self:GetNextCharacterKey(currentKey)
-		self:SetServerCharacterKeyForUser(userId, nextKey, "cycle:" .. self:ReadString(source, "unknown"))
+		self.classSelectSource = self:ReadString(source, "npc")
+		self:ConnectClassSelectButtons()
+		self.classSelectOpen = true
+		self.classSelectRoot.Enable = true
+		self.classSelectRoot.Visible = true
+		self.classSelectPanel.Enable = true
+		self.classSelectPanel.Visible = true
+		if self.classSelectRoot.CanvasGroupComponent ~= nil then
+			self.classSelectRoot.CanvasGroupComponent.GroupAlpha = 1
+			self.classSelectRoot.CanvasGroupComponent.BlocksRaycasts = true
+			self.classSelectRoot.CanvasGroupComponent.Interactable = true
+		end
+		self:RefreshClassSelection()
+		self:Log("classSelect opened source=" .. self.classSelectSource)
 	end
 
 	@ExecSpace("Server")
@@ -78,7 +132,106 @@ script BRCharacterSystem extends Logic
 		end
 		local safeKey = self:NormalizeCharacterKey(characterKey)
 		self._T.localCharacterKey = safeKey
+		self:ApplyLocalCharacterAvatar(safeKey, reason)
 		self:Log("local key=" .. safeKey .. " reason=" .. self:ReadString(reason, ""))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PreviewLocalCharacter(string characterKey, string reason)
+		-- Applies a local preview immediately while the server-authoritative change is requested.
+		local safeKey = self:NormalizeCharacterKey(characterKey)
+		self._T.localCharacterKey = safeKey
+		self:ApplyLocalCharacterAvatar(safeKey, reason)
+		self:Log("preview key=" .. safeKey .. " reason=" .. self:ReadString(reason, ""))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OpenClassSelectFromNpc(string source)
+		if self:IsClassSelectReady() ~= true then
+			self:Log("classSelect open skipped reason=notReady source=" .. self:ReadString(source, ""))
+			return
+		end
+		self.classSelectSource = self:ReadString(source, "npc")
+		self:ConnectClassSelectButtons()
+		self.classSelectOpen = true
+		self.classSelectRoot.Enable = true
+		self.classSelectRoot.Visible = true
+		self.classSelectPanel.Enable = true
+		self.classSelectPanel.Visible = true
+		if self.classSelectRoot.CanvasGroupComponent ~= nil then
+			self.classSelectRoot.CanvasGroupComponent.GroupAlpha = 1
+			self.classSelectRoot.CanvasGroupComponent.BlocksRaycasts = true
+			self.classSelectRoot.CanvasGroupComponent.Interactable = true
+		end
+		self:RefreshClassSelection()
+		self:Log("classSelect opened source=" .. self.classSelectSource)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void CloseClassSelect()
+		if self.classSelectOpen ~= true then
+			self:HideClassSelectImmediate()
+			return
+		end
+		self.classSelectOpen = false
+		self:HideClassSelectImmediate()
+		self:Log("classSelect closed")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SelectClassFromUI(string characterKey)
+		local safeKey = self:NormalizeCharacterKey(characterKey)
+		local reason = "class-ui:" .. self.classSelectSource
+		self:PreviewLocalCharacter(safeKey, reason)
+		self:RequestSetCharacter(safeKey, reason)
+		self:RefreshClassSelectionByKey(safeKey)
+		self:Log("classSelect selected key=" .. safeKey)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalCharacterAvatar(string characterKey, string reason)
+		-- Applies the fixed class costume to the local player avatar.
+		local data = self:GetCharacterData(characterKey)
+		if data == nil or data.Avatar == nil then
+			self:Log("avatar skipped reason=noData key=" .. self:ReadString(characterKey, ""))
+			return
+		end
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.CostumeManagerComponent == nil then
+			self:Log("avatar skipped reason=noLocalCostume key=" .. self:ReadString(characterKey, ""))
+			return
+		end
+
+		local costume = localPlayer.CostumeManagerComponent
+		local avatar = data.Avatar
+		costume.UseCustomEquipOnly = true
+		costume.DefaultEquipUserId = ""
+
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.Body, self:ReadAvatarRuid(avatar, "Body"))
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.Hair, self:ReadAvatarRuid(avatar, "Hair"))
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.Face, self:ReadAvatarRuid(avatar, "Face"))
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.Cap, self:ReadAvatarRuid(avatar, "Cap"))
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.Longcoat, self:ReadAvatarRuid(avatar, "Longcoat"))
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.Coat, "")
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.Pants, "")
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.Shoes, self:ReadAvatarRuid(avatar, "Shoes"))
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.EyeAccessory, self:ReadAvatarRuid(avatar, "EyeAccessory"))
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.FaceAccessory, self:ReadAvatarRuid(avatar, "FaceAccessory"))
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.OneHandedWeapon, "")
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.TwoHandedWeapon, "")
+		self:SetAvatarEquip(costume, MapleAvatarItemCategory.SubWeapon, "")
+
+		local weaponRuid = self:ReadAvatarRuid(avatar, "Weapon")
+		local weaponSlot = self:ReadString(data.WeaponSlot, "OneHanded")
+		if self:IsOneHandedWeaponRuid(weaponRuid) == true then
+			weaponSlot = "OneHanded"
+		end
+		if weaponSlot == "TwoHanded" then
+			self:SetAvatarEquip(costume, MapleAvatarItemCategory.TwoHandedWeapon, weaponRuid)
+		else
+			self:SetAvatarEquip(costume, MapleAvatarItemCategory.OneHandedWeapon, weaponRuid)
+		end
+		self:Log("avatar applied key=" .. self:ReadString(data.Key, "") .. " reason=" .. self:ReadString(reason, ""))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -94,30 +247,76 @@ script BRCharacterSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method string GetLocalUniqueSkillKey()
-		-- Returns the local character's dedicated unique skill key.
+		-- Returns the local character's CSV-declared unique skill key.
+		local skillKey = self:GetCharacterDefaultSkillValue(self:GetLocalCharacterKey(), "unique_skill_id")
+		if skillKey ~= "" then
+			return skillKey
+		end
 		local data = self:GetCharacterData(self:GetLocalCharacterKey())
 		if data == nil then
-			return "UniqueHero"
+			return ""
 		end
-		return self:ReadString(data.UniqueSkillKey, "UniqueHero")
+		return self:ReadString(data.UniqueSkillKey, "")
 	end
 
+	@ExecSpace("ServerOnly")
 	method string GetServerUniqueSkillKey(string userId)
-		-- Returns the server-authoritative unique skill key for one user.
-		local data = self:GetCharacterData(self:GetServerCharacterKey(userId))
-		if data == nil then
-			return "UniqueHero"
+		-- Returns the server-authoritative CSV-declared unique skill key for one user.
+		local characterKey = self:GetServerCharacterKey(userId)
+		local skillKey = self:GetCharacterDefaultSkillValue(characterKey, "unique_skill_id")
+		if skillKey ~= "" then
+			return skillKey
 		end
-		return self:ReadString(data.UniqueSkillKey, "UniqueHero")
+		local data = self:GetCharacterData(characterKey)
+		if data == nil then
+			return ""
+		end
+		return self:ReadString(data.UniqueSkillKey, "")
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalBasicSkillKey()
+		-- Returns the local character's CSV-declared basic skill key.
+		return self:GetCharacterDefaultSkillValue(self:GetLocalCharacterKey(), "basic_skill_id")
+	end
+
+	@ExecSpace("ServerOnly")
+	method string GetServerBasicSkillKey(string userId)
+		-- Returns the server-authoritative CSV-declared basic skill key for one user.
+		return self:GetCharacterDefaultSkillValue(self:GetServerCharacterKey(userId), "basic_skill_id")
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalBasicAttackKey()
+		-- Returns the local character's CSV-declared basic attack key.
+		return self:GetCharacterDefaultSkillValue(self:GetLocalCharacterKey(), "basic_attack_id")
+	end
+
+	@ExecSpace("ServerOnly")
+	method string GetServerBasicAttackKey(string userId)
+		-- Returns the server-authoritative CSV-declared basic attack key for one user.
+		return self:GetCharacterDefaultSkillValue(self:GetServerCharacterKey(userId), "basic_attack_id")
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalPassiveSkillKey()
+		-- Returns the local character's CSV-declared passive skill key.
+		return self:GetCharacterDefaultSkillValue(self:GetLocalCharacterKey(), "passive_id")
+	end
+
+	@ExecSpace("ServerOnly")
+	method string GetServerPassiveSkillKey(string userId)
+		-- Returns the server-authoritative CSV-declared passive skill key for one user.
+		return self:GetCharacterDefaultSkillValue(self:GetServerCharacterKey(userId), "passive_id")
 	end
 
 	@ExecSpace("ClientOnly")
 	method string GetLocalCharacterDisplayName()
 		local data = self:GetCharacterData(self:GetLocalCharacterKey())
 		if data == nil then
-			return "Hero"
+			return "기사"
 		end
-		return self:ReadString(data.DisplayName, "Hero")
+		return self:ReadString(data.DisplayName, "기사")
 	end
 
 	method string GetServerCharacterKey(string userId)
@@ -157,11 +356,11 @@ script BRCharacterSystem extends Logic
 	end
 
 	method string GetDefaultCharacterKey()
-		local key = self:ReadString(self.DefaultCharacterKey, "Hero")
+		local key = self:ReadString(self.DefaultCharacterKey, "Knight")
 		if self:GetCharacterData(key) ~= nil then
 			return key
 		end
-		return "Hero"
+		return "Knight"
 	end
 
 	method any GetCharacterData(string characterKey)
@@ -189,16 +388,145 @@ script BRCharacterSystem extends Logic
 		return 1
 	end
 
+	method string GetCharacterDefaultSkillValue(string characterKey, string columnName)
+		-- Reads one class default skill field from the CSV-backed DataSet.
+		local key = self:ReadString(characterKey, "")
+		local column = self:ReadString(columnName, "")
+		if key == "" or column == "" then
+			return ""
+		end
+		local data = self:GetDataTable(self.CharacterDefaultSkillsTableName)
+		if data == nil then
+			return ""
+		end
+		local row = self:GetDataRowIndex(data, "character_key", key)
+		if row <= 0 then
+			return ""
+		end
+		return self:GetDataCell(data, row, column, "")
+	end
+
+	method any GetDataTable(string tableName)
+		-- Reads a UserDataSet by table name.
+		local safeName = self:ReadString(tableName, "")
+		if safeName == "" or _DataService == nil then
+			return nil
+		end
+		return _DataService:GetTable(safeName)
+	end
+
+	method string GetDataCell(any dataSet, number row, string columnName, string fallback)
+		-- Reads one DataSet cell as a string.
+		if dataSet == nil then
+			return self:ReadString(fallback, "")
+		end
+		local value = dataSet:GetCell(math.max(1, math.floor(row)), self:ReadString(columnName, ""))
+		if value == nil then
+			return self:ReadString(fallback, "")
+		end
+		return self:TrimString(tostring(value))
+	end
+
+	method number GetDataRowIndex(any dataSet, string keyColumnName, string keyValue)
+		-- Finds the first DataSet row whose key column matches the requested value.
+		if dataSet == nil then
+			return 0
+		end
+		local rowCount = math.max(0, math.floor(dataSet:GetRowCount()))
+		local column = self:ReadString(keyColumnName, "")
+		local key = self:ReadString(keyValue, "")
+		for row = 1, rowCount do
+			if self:GetDataCell(dataSet, row, column, "") == key then
+				return row
+			end
+		end
+		return 0
+	end
+
 	method any GetCharacterCatalog()
 		self:EnsureRuntime()
-		if self._T.characterCatalog == nil then
+		if self._T.characterCatalog == nil or self._T.characterCatalogVersion ~= self.CharacterCatalogVersion then
+			self._T.characterCatalogVersion = self.CharacterCatalogVersion
 			self._T.characterCatalog = {
-				{ Key = "Hero", DisplayName = "Hero", UniqueSkillKey = "UniqueHero" },
-				{ Key = "Storm", DisplayName = "Storm", UniqueSkillKey = "UniqueStorm" },
-				{ Key = "Arcane", DisplayName = "Arcane", UniqueSkillKey = "UniqueArcane" }
+				{
+					Key = "Knight",
+					DisplayName = "기사",
+					UniqueSkillKey = "",
+					WeaponSlot = "OneHanded",
+					Avatar = {
+						Face = "068838981d5b4815b7ee91dc3f64890b",
+						Weapon = "5c17efb794334d4980987edaace1f546",
+						Longcoat = "c92ab70d7a064aafaa34298c2e9890e3",
+						Hair = "61ef77418e654b738588e28803acb503",
+						Body = "5b510a5cb03b4ba9bfe1b1666b17b2cf",
+						Head = "0de02144a449440298009cd2702b9f49",
+						EyeAccessory = "a60a800c0b9a478db07fab711e2ba03f"
+					}
+				},
+				{
+					Key = "Mage",
+					DisplayName = "마법사",
+					UniqueSkillKey = "",
+					WeaponSlot = "OneHanded",
+					Avatar = {
+						Face = "068838981d5b4815b7ee91dc3f64890b",
+						Weapon = "37d1f2f65ace4ff583e388243b756682",
+						Longcoat = "c449931dbadc42d08b9386faf5c0fc62",
+						Hair = "61993256d4d24da2a398f983ef56ee4f",
+						Body = "5b510a5cb03b4ba9bfe1b1666b17b2cf",
+						Head = "0de02144a449440298009cd2702b9f49",
+						EyeAccessory = "5481b554e464411e8e76b9476b35f78e",
+						Shoes = "9318090ff92f45779183bafbadcb5daf",
+						FaceAccessory = "71f2ef2a67124648ba1871de72202c78"
+					}
+				},
+				{
+					Key = "Rogue",
+					DisplayName = "도적",
+					UniqueSkillKey = "",
+					WeaponSlot = "OneHanded",
+					Avatar = {
+						Face = "307de7f79dec4b43a934181e69dfc0b7",
+						Weapon = "f109234375b84d008cc9c363a2f22598",
+						Longcoat = "03a5d1d47b0c4eb1af64eefc362fccae",
+						Hair = "94e97522c67648b2a647e87a8d0ca99d",
+						Body = "3cf4cb29ae344577b9eed37e531688a4",
+						Head = "5069d11260b549869339cd46777306f9",
+						EyeAccessory = "39c4f9ab1fe44d609e8a45dacc77d6e1",
+						Shoes = "6174508d0ef342a4b56ae05c75e45a8c",
+						Cap = "6b02bc1d55ac4f95b07e8c2fb25e55dc"
+					}
+				},
+				{
+					Key = "Archer",
+					DisplayName = "궁수",
+					UniqueSkillKey = "",
+					WeaponSlot = "OneHanded",
+					Avatar = {
+						Face = "f449710325944469b357c4e71e21fd82",
+						Weapon = "bd723e9061d144b98d9fb693521313c8",
+						Longcoat = "05a8f762ba03471dbbded534436646c3",
+						Hair = "d034ee0a9f074eb4beaf5938e7505041",
+						Body = "5b510a5cb03b4ba9bfe1b1666b17b2cf",
+						Head = "0de02144a449440298009cd2702b9f49",
+						EyeAccessory = "2a47d29e70ad47de9462f8945dae1685",
+						Shoes = "d79e6681a08c467fa69b37ab0e9023be",
+						Cap = "9defd0fd49cd45629d1c8beefc10ebd9",
+						FaceAccessory = "61e1d65f0816495d99f6d15698fa3643"
+					}
+				}
 			}
 		end
 		return self._T.characterCatalog
+	end
+
+	method boolean IsOneHandedWeaponRuid(string ruid)
+		-- Current fixed class weapons are avatar item weapon/onehandedweapon resources.
+		local safeRuid = self:ReadString(ruid, "")
+		return safeRuid == "5c17efb794334d4980987edaace1f546"
+			or safeRuid == "37d1f2f65ace4ff583e388243b756682"
+			or safeRuid == "f109234375b84d008cc9c363a2f22598"
+			or safeRuid == "bd723e9061d144b98d9fb693521313c8"
 	end
 
 	method string GetLocalUserId()
@@ -215,11 +543,159 @@ script BRCharacterSystem extends Logic
 		end
 	end
 
+	method void SetAvatarEquip(any costume, any category, string ruid)
+		-- Writes one avatar slot, allowing an empty RUID to clear unused class parts.
+		if costume == nil or category == nil then
+			return
+		end
+		local safeRuid = self:ReadString(ruid, "")
+		if category == MapleAvatarItemCategory.Body then
+			costume.CustomBodyEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Hair then
+			costume.CustomHairEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Face then
+			costume.CustomFaceEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Cap then
+			costume.CustomCapEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Cape then
+			costume.CustomCapeEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Coat then
+			costume.CustomCoatEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Longcoat then
+			costume.CustomLongcoatEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Pants then
+			costume.CustomPantsEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Glove then
+			costume.CustomGloveEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Shoes then
+			costume.CustomShoesEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.OneHandedWeapon then
+			costume.CustomOneHandedWeaponEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.TwoHandedWeapon then
+			costume.CustomTwoHandedWeaponEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.SubWeapon or category == MapleAvatarItemCategory.Shield then
+			costume.CustomSubWeaponEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.FaceAccessory then
+			costume.CustomFaceAccessoryEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.EyeAccessory then
+			costume.CustomEyeAccessoryEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.EarAccessory then
+			costume.CustomEarAccessoryEquip = safeRuid
+		elseif category == MapleAvatarItemCategory.Ear then
+			costume.CustomEarEquip = safeRuid
+		else
+			self:Log("avatar equip skipped reason=unknownCategory ruid=" .. safeRuid)
+		end
+	end
+
+	method void RefreshClassSelection()
+		self:RefreshClassSelectionByKey(self:GetLocalCharacterKey())
+	end
+
+	method void RefreshClassSelectionByKey(string characterKey)
+		local key = self:NormalizeCharacterKey(characterKey)
+		self:SetClassSelectFrameActive(self.knightFrame, key == "Knight")
+		self:SetClassSelectFrameActive(self.mageFrame, key == "Mage")
+		self:SetClassSelectFrameActive(self.rogueFrame, key == "Rogue")
+		self:SetClassSelectFrameActive(self.archerFrame, key == "Archer")
+	end
+
+	method void ConnectClassSelectButtons()
+		self:DisconnectClassSelectButtons()
+		if self.knightButton ~= nil and self.knightButton.Entity ~= nil then
+			self.knightHandler = self.knightButton.Entity:ConnectEvent(ButtonClickEvent, function() self:SelectClassFromUI("Knight") end)
+		end
+		if self.mageButton ~= nil and self.mageButton.Entity ~= nil then
+			self.mageHandler = self.mageButton.Entity:ConnectEvent(ButtonClickEvent, function() self:SelectClassFromUI("Mage") end)
+		end
+		if self.rogueButton ~= nil and self.rogueButton.Entity ~= nil then
+			self.rogueHandler = self.rogueButton.Entity:ConnectEvent(ButtonClickEvent, function() self:SelectClassFromUI("Rogue") end)
+		end
+		if self.archerButton ~= nil and self.archerButton.Entity ~= nil then
+			self.archerHandler = self.archerButton.Entity:ConnectEvent(ButtonClickEvent, function() self:SelectClassFromUI("Archer") end)
+		end
+		if self.classSelectCloseButton ~= nil and self.classSelectCloseButton.Entity ~= nil then
+			self.classSelectCloseHandler = self.classSelectCloseButton.Entity:ConnectEvent(ButtonClickEvent, self.CloseClassSelect)
+		end
+	end
+
+	method void DisconnectClassSelectButtons()
+		if self.knightHandler ~= nil and self.knightButton ~= nil and self.knightButton.Entity ~= nil then
+			self.knightButton.Entity:DisconnectEvent(ButtonClickEvent, self.knightHandler)
+		end
+		if self.mageHandler ~= nil and self.mageButton ~= nil and self.mageButton.Entity ~= nil then
+			self.mageButton.Entity:DisconnectEvent(ButtonClickEvent, self.mageHandler)
+		end
+		if self.rogueHandler ~= nil and self.rogueButton ~= nil and self.rogueButton.Entity ~= nil then
+			self.rogueButton.Entity:DisconnectEvent(ButtonClickEvent, self.rogueHandler)
+		end
+		if self.archerHandler ~= nil and self.archerButton ~= nil and self.archerButton.Entity ~= nil then
+			self.archerButton.Entity:DisconnectEvent(ButtonClickEvent, self.archerHandler)
+		end
+		if self.classSelectCloseHandler ~= nil and self.classSelectCloseButton ~= nil and self.classSelectCloseButton.Entity ~= nil then
+			self.classSelectCloseButton.Entity:DisconnectEvent(ButtonClickEvent, self.classSelectCloseHandler)
+		end
+		self.knightHandler = nil
+		self.mageHandler = nil
+		self.rogueHandler = nil
+		self.archerHandler = nil
+		self.classSelectCloseHandler = nil
+	end
+
+	method void HideClassSelectImmediate()
+		if self.classSelectRoot ~= nil then
+			self.classSelectRoot.Enable = false
+			self.classSelectRoot.Visible = false
+			if self.classSelectRoot.CanvasGroupComponent ~= nil then
+				self.classSelectRoot.CanvasGroupComponent.GroupAlpha = 0
+				self.classSelectRoot.CanvasGroupComponent.BlocksRaycasts = false
+				self.classSelectRoot.CanvasGroupComponent.Interactable = false
+			end
+		end
+		if self.classSelectPanel ~= nil then
+			self.classSelectPanel.Enable = false
+			self.classSelectPanel.Visible = false
+		end
+	end
+
+	method void SetClassSelectFrameActive(Entity frame, boolean active)
+		if frame == nil then
+			return
+		end
+		frame.Enable = active == true
+		frame.Visible = active == true
+	end
+
+	method boolean IsClassSelectReady()
+		return self.classSelectRoot ~= nil
+			and self.classSelectPanel ~= nil
+			and self.knightButton ~= nil
+			and self.mageButton ~= nil
+			and self.rogueButton ~= nil
+			and self.archerButton ~= nil
+			and self.classSelectCloseButton ~= nil
+	end
+
+	method string ReadAvatarRuid(any avatar, string key)
+		-- Reads one class avatar RUID by table key.
+		if avatar == nil then
+			return ""
+		end
+		local value = avatar[self:ReadString(key, "")]
+		return self:ReadString(value, "")
+	end
+
 	method string ReadString(any value, string fallback)
 		if value == nil or value == "" then
 			return fallback
 		end
 		return tostring(value)
+	end
+
+	method string TrimString(string value)
+		-- Trims leading and trailing whitespace from CSV/DataSet strings.
+		local text = self:ReadString(value, "")
+		return self:ReadString(string.match(text, "^%s*(.-)%s*$"), "")
 	end
 
 	method void Log(string message)

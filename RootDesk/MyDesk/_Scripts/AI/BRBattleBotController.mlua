@@ -43,6 +43,12 @@ script BRBattleBotController extends Component
 	@Sync
 	property string BotState = "Ready"
 
+	@Sync
+	property string VisualState = "IDLE"
+
+	@Sync
+	property integer VisualSequence = 0
+
 	property number spawnX = 0
 
 	property number spawnY = 0
@@ -65,7 +71,10 @@ script BRBattleBotController extends Component
 		self.CurrentHp = math.max(1, math.floor(self:ReadNumber(self.CurrentHp, self.MaxHp)))
 		self.CurrentLives = math.max(1, math.floor(self:ReadNumber(self.CurrentLives, self.MaxLives)))
 		self.BotState = "ALIVE"
+		self:SetupAvatarAppearance()
+		self:ConfigureAvatarAnimation()
 		self:ConfigureMovement()
+		self:SetAvatarState("IDLE")
 		self:SetupBehaviourTree()
 		self:RegisterToBattleLogic()
 		self:UpdateNameTag()
@@ -102,7 +111,10 @@ script BRBattleBotController extends Component
 		self.CurrentLives = self.MaxLives
 		self.CurrentHp = self.MaxHp
 		self.BotState = "ALIVE"
+		self:SetupAvatarAppearance()
+		self:ConfigureAvatarAnimation()
 		self:ConfigureMovement()
+		self:SetAvatarState("IDLE")
 		self:SetupBehaviourTree()
 		self:RegisterToBattleLogic()
 		self:UpdateNameTag()
@@ -181,6 +193,7 @@ script BRBattleBotController extends Component
 
 		self._T.nextAttackAt = now + self:GetAttackCooldownSeconds()
 		self:FaceTarget(target)
+		self:SetAvatarState("ATTACK")
 		self:ApplyAttackToTarget(target)
 		return BehaviourTreeStatus.Running
 	end
@@ -238,6 +251,7 @@ script BRBattleBotController extends Component
 		local damage = math.max(1, math.floor(self:ReadNumber(rawDamage, 1)))
 		self.CurrentHp = math.max(0, self.CurrentHp - damage)
 		self._T.invincibleUntil = now + self:GetHitInvincibleSeconds()
+		self:SetAvatarState("HIT")
 		self:FlashHit()
 		self:UpdateNameTag()
 		log("[BRBot] hit id=" .. self.BotId .. " damage=" .. tostring(damage) .. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()) .. " source=" .. self:ReadString(source, "skill"))
@@ -256,6 +270,7 @@ script BRBattleBotController extends Component
 		self.CurrentLives = math.max(0, math.floor(self:ReadNumber(self.CurrentLives, self.MaxLives)) - 1)
 		self.CurrentHp = 0
 		self:StopMove()
+		self:SetAvatarState("DEAD")
 		self:SetAIEnabled(false)
 
 		if self.CurrentLives > 0 then
@@ -287,6 +302,7 @@ script BRBattleBotController extends Component
 		self.BotState = "ALIVE"
 		self:MoveToPosition(Vector2(self.spawnX, self.spawnY))
 		self:SetAIEnabled(true)
+		self:SetAvatarState("IDLE")
 		self._T.invincibleUntil = self:Now() + 1.0
 		self:UpdateNameTag()
 		self:NotifyBattleLogicChanged("bot-revive")
@@ -390,8 +406,10 @@ script BRBattleBotController extends Component
 		if self.Entity.MovementComponent ~= nil then
 			self.Entity.MovementComponent.InputSpeed = self:GetMoveSpeed()
 			self.Entity.MovementComponent:MoveToDirection(Vector2(safeDirection, 0), self:ReadNumber(delta, 0.033))
+			self:SetAvatarState("MOVE")
 		elseif self.Entity.RigidbodyComponent ~= nil then
 			self.Entity.RigidbodyComponent.MoveVelocity = Vector2(safeDirection * self:GetMoveSpeed(), 0)
+			self:SetAvatarState("MOVE")
 		end
 	end
 
@@ -423,6 +441,7 @@ script BRBattleBotController extends Component
 		if self.Entity.RigidbodyComponent ~= nil then
 			self.Entity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
 		end
+		self:SetAvatarState("IDLE")
 	end
 
 	method void FaceTarget(Entity target)
@@ -441,6 +460,9 @@ script BRBattleBotController extends Component
 			if self.Entity.SpriteRendererComponent ~= nil then
 				self.Entity.SpriteRendererComponent.FlipX = false
 			end
+		end
+		if self.Entity.MovementComponent ~= nil then
+			self.Entity.MovementComponent:MoveToDirection(Vector2(self._T.lookDirection, 0), 0)
 		end
 	end
 
@@ -503,6 +525,155 @@ script BRBattleBotController extends Component
 		end
 	end
 
+	method void SetupAvatarAppearance()
+		if self.Entity == nil or self.Entity.CostumeManagerComponent == nil then
+			return
+		end
+
+		local costume = self.Entity.CostumeManagerComponent
+		costume.Enable = true
+		if self:ReadString(costume.DefaultEquipUserId, "") ~= "" then
+			return
+		end
+
+		local mapName = self:ReadString(self.Entity.CurrentMapName, "")
+		if mapName == "" then
+			return
+		end
+
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users == nil then
+			return
+		end
+
+		for index, player in ipairs(users) do
+			if player ~= nil and player.PlayerComponent ~= nil then
+				local userId = self:ReadString(player.PlayerComponent.UserId, "")
+				if userId ~= "" then
+					costume.DefaultEquipUserId = userId
+					costume.UseCustomEquipOnly = false
+					log("[BRBot] avatar copied from user=" .. userId .. " bot=" .. self:ReadString(self.BotId, ""))
+					return
+				end
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ConfigureAvatarAnimation()
+		if self.Entity == nil or self.Entity.AvatarStateAnimationComponent == nil then
+			return
+		end
+
+		local animation = self.Entity.AvatarStateAnimationComponent
+		animation.Enable = true
+		animation:SetActionSheet("IDLE", "stand")
+		animation:SetActionSheet("MOVE", "walk")
+		animation:SetActionSheet("ATTACK", "attack")
+		animation:SetActionSheet("HIT", "hit")
+		animation:SetActionSheet("JUMP", "fall")
+		animation:SetActionSheet("FALL", "fall")
+		animation:SetActionSheet("DEAD", "dead")
+	end
+
+	method void OnSyncProperty(string name, any value)
+		if name ~= "VisualState" and name ~= "VisualSequence" then
+			return
+		end
+		self:PlayAvatarStateClient(self.VisualState, true, self:GetAvatarPlayRate(self.VisualState))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SetAvatarState(string stateName)
+		if self.Entity == nil or self.Entity.AvatarRendererComponent == nil then
+			return
+		end
+
+		local key = self:NormalizeAvatarState(stateName)
+		local now = self:Now()
+		local forceReset = self:IsAvatarOneShotState(key)
+		local currentState = self:ReadString(self._T.avatarState, "")
+		local holdUntil = self:ReadNumber(self._T.avatarHoldUntil, 0)
+		if forceReset == false then
+			if now < holdUntil then
+				return
+			end
+			if currentState == key then
+				return
+			end
+		end
+
+		self._T.avatarState = key
+		self._T.avatarHoldUntil = now + self:GetAvatarHoldSeconds(key)
+		self.VisualState = key
+		self.VisualSequence = self.VisualSequence + 1
+		if self.EnableBTDebugLog == true or self._T.avatarLoggedStates[key] ~= true then
+			self._T.avatarLoggedStates[key] = true
+			log("[BRBot] visual state id=" .. self:ReadString(self.BotId, "") .. " state=" .. key .. " seq=" .. tostring(self.VisualSequence))
+		end
+		self:PlayAvatarStateClient(key, forceReset, self:GetAvatarPlayRate(key))
+	end
+
+	@ExecSpace("Client")
+	method void PlayAvatarStateClient(string stateName, boolean resetAction, number playRate)
+		if self.Entity == nil or self.Entity.AvatarRendererComponent == nil then
+			return
+		end
+
+		local key = self:NormalizeAvatarState(stateName)
+		local actionState = MapleAvatarBodyActionState.Stand
+		if key == "MOVE" then
+			actionState = MapleAvatarBodyActionState.Walk
+		elseif key == "ATTACK" then
+			actionState = MapleAvatarBodyActionState.Attack
+		elseif key == "HIT" then
+			actionState = MapleAvatarBodyActionState.Hit
+		elseif key == "DEAD" then
+			actionState = MapleAvatarBodyActionState.Dead
+		elseif key == "JUMP" or key == "FALL" then
+			actionState = MapleAvatarBodyActionState.Fall
+		end
+
+		self.Entity:SendEvent(BodyActionStateChangeEvent(resetAction, actionState, 0, 2147483647, self:ReadNumber(playRate, 1)))
+	end
+
+	method string NormalizeAvatarState(string stateName)
+		local key = self:ReadString(stateName, "IDLE")
+		if key == "MOVE" or key == "ATTACK" or key == "HIT" or key == "DEAD" or key == "JUMP" or key == "FALL" then
+			return key
+		end
+		return "IDLE"
+	end
+
+	method boolean IsAvatarOneShotState(string stateName)
+		local key = self:NormalizeAvatarState(stateName)
+		return key == "ATTACK" or key == "HIT" or key == "DEAD"
+	end
+
+	method number GetAvatarHoldSeconds(string stateName)
+		local key = self:NormalizeAvatarState(stateName)
+		if key == "ATTACK" then
+			return 0.34
+		elseif key == "HIT" then
+			return 0.22
+		elseif key == "DEAD" then
+			return 0.8
+		end
+		return 0
+	end
+
+	method number GetAvatarPlayRate(string stateName)
+		local key = self:NormalizeAvatarState(stateName)
+		if key == "MOVE" then
+			return 1.55
+		elseif key == "ATTACK" then
+			return 1.35
+		elseif key == "HIT" then
+			return 1.15
+		end
+		return 1
+	end
+
 	method void SetTarget(Entity target)
 		self._T.targetEntity = target
 		if self.Entity ~= nil and self.Entity.AIComponent ~= nil and self.Entity.AIComponent.BlackBoard ~= nil then
@@ -523,11 +694,28 @@ script BRBattleBotController extends Component
 	end
 
 	method boolean IsAlive()
-		return self.EnableBattleBot == true and self.BotState == "ALIVE" and self.CurrentHp > 0
+		return self.EnableBattleBot == true and self.BotState == "ALIVE" and self.CurrentHp > 0 and self:IsBattleGameplayStarted() == true
 	end
 
 	method boolean IsContending()
 		return self.BotState ~= "OUT" and self.CurrentLives > 0
+	end
+
+	method boolean IsBattleGameplayStarted()
+		if _BRBattleLauncher == nil or self.Entity == nil then
+			return true
+		end
+		local mapName = self:ReadString(self.Entity.CurrentMapName, "")
+		if mapName == "" then
+			return true
+		end
+		if _BRBattleLauncher:IsActiveMatchForMap(mapName) ~= true then
+			return true
+		end
+		if _BRBattleTimerSystem == nil then
+			return true
+		end
+		return _BRBattleTimerSystem.TimerRunning == true and self:ReadString(_BRBattleTimerSystem.TimerMapName, "") == mapName
 	end
 
 	method boolean IsSkillTargetValid()
@@ -589,18 +777,28 @@ script BRBattleBotController extends Component
 	end
 
 	method void FlashHit()
-		if self.Entity == nil or self.Entity.SpriteRendererComponent == nil then
+		if self.Entity == nil then
 			return
 		end
-		self.Entity.SpriteRendererComponent.Color = Color(1, 0.32, 0.26, 1)
+		if self.Entity.SpriteRendererComponent ~= nil then
+			self.Entity.SpriteRendererComponent.Color = Color(1, 0.32, 0.26, 1)
+		end
+		if self.Entity.AvatarRendererComponent ~= nil then
+			self.Entity.AvatarRendererComponent:SetColor(1, 0.32, 0.26, 1)
+		end
 		_TimerService:SetTimerOnce(function() self:RestoreColor() end, 0.12)
 	end
 
 	method void RestoreColor()
-		if self.Entity == nil or self.Entity.SpriteRendererComponent == nil then
+		if self.Entity == nil then
 			return
 		end
-		self.Entity.SpriteRendererComponent.Color = Color(1, 1, 1, 1)
+		if self.Entity.SpriteRendererComponent ~= nil then
+			self.Entity.SpriteRendererComponent.Color = Color(1, 1, 1, 1)
+		end
+		if self.Entity.AvatarRendererComponent ~= nil then
+			self.Entity.AvatarRendererComponent:SetColor(1, 1, 1, 1)
+		end
 	end
 
 	method void UpdateNameTag()
@@ -635,6 +833,15 @@ script BRBattleBotController extends Component
 		end
 		if self._T.invincibleUntil == nil then
 			self._T.invincibleUntil = 0
+		end
+		if self._T.avatarState == nil then
+			self._T.avatarState = ""
+		end
+		if self._T.avatarHoldUntil == nil then
+			self._T.avatarHoldUntil = 0
+		end
+		if self._T.avatarLoggedStates == nil then
+			self._T.avatarLoggedStates = {}
 		end
 	end
 

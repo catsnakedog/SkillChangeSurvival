@@ -1,0 +1,2 @@
+﻿id,projectile_sprite_ruid,projectile_range,projectile_speed,projectile_front_direction,projectile_hitbox_id,projectile_pierce,collision_event_ids,expire_event_ids
+애로우 블로우/투사체 생성,64f775829e234918bd65e9d22214bb06,2000,1000,true,애로우 블로우/투사체 히트박스,1,애로우 블로우/피해,

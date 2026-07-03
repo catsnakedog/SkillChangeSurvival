@@ -100,42 +100,6 @@
         },
         {
           "TargetType": "script.BRPartBox",
-          "Name": "TouchRadius",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 1.25
-        },
-        {
-          "TargetType": "script.BRPartBox",
-          "Name": "PollSeconds",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 0.1
-        },
-        {
-          "TargetType": "script.BRPartBox",
-          "Name": "RespawnSeconds",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 20
-        },
-        {
-          "TargetType": "script.BRPartBox",
-          "Name": "DropCount",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 1
-        },
-        {
-          "TargetType": "script.BRPartBox",
           "Name": "AutoEquipOnDrop",
           "ValueType": {
             "$type": "MODNativeType",

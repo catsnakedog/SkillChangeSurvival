@@ -1,0 +1,4 @@
+﻿hitbox_id,offset_x,offset_y,width,height
+ds1b1,0,0,248,90
+ds1b2,-248,0,43,63
+애로우 블로우/투사체 히트박스,59,-10,82,20

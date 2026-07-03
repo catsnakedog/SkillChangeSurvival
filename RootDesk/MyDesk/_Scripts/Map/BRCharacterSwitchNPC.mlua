@@ -45,7 +45,7 @@ script BRCharacterSwitchNPC extends Component
 
 	@ExecSpace("ClientOnly")
 	method void OnInteractionKeyDown(KeyDownEvent event)
-		-- Requests the next character only when the local player is near the NPC.
+		-- Opens the fixed class selector only when the local player is near the NPC.
 		if self:IsInteractionKey(event) ~= true then
 			return
 		end
@@ -53,11 +53,11 @@ script BRCharacterSwitchNPC extends Component
 			return
 		end
 		if _BRCharacterSystem == nil then
-			self:Log("switch skipped reason=noCharacterSystem")
+			self:Log("open skipped reason=noCharacterSystem")
 			return
 		end
 		_BRCharacterSystem:RequestCycleCharacter(self:GetNpcName())
-		self:Log("switch requested npc=" .. self:GetNpcName())
+		self:Log("open requested npc=" .. self:GetNpcName())
 	end
 
 	method boolean IsInteractionKey(KeyDownEvent event)

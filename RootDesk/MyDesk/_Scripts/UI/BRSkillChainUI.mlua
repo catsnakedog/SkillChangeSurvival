@@ -1,11 +1,11 @@
 @Component
 script BRSkillChainUI extends Component
 
-	property string ChainRootPath = "/ui/BRSkillChainGroup"
+	property string ChainRootPath = "/ui/BRBattleHudGroup"
 
 	property string InventoryRootPath = "/ui/BRSkillInventoryGroup"
 
-	property string RootPath = "/ui/BRSkillChainGroup"
+	property string RootPath = "/ui/BRBattleHudGroup"
 
 	property number RefreshSeconds = 0.15
 
@@ -22,6 +22,8 @@ script BRSkillChainUI extends Component
 	property number InventoryPanelYOffset = 0
 
 	property boolean VerboseLog = true
+
+	property boolean runtimeDisabled = false
 
 	property number refreshTimerId = 0
 
@@ -69,8 +71,6 @@ script BRSkillChainUI extends Component
 
 	property boolean ShowBattleHudStatus = true
 
-	property string HudTextTemplatePath = "/ui/BossTimerGroup/TimerPanel/LabelText"
-
 	property number HudPanelWidth = 940
 
 	property number HudPanelHeight = 112
@@ -83,10 +83,22 @@ script BRSkillChainUI extends Component
 
 	property number HudSlotSpacing = 58
 
+	property number BattleHudScale = 0.72
+
+	property number AuthoredHudGaugeWidth = 243
+
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
 		self:EnsureRuntime()
-		self:ApplySlotOnlyLayout()
+		if self:IsControllerInChainRoot() ~= true then
+			self.runtimeDisabled = true
+			self:Log("ignored controller path=" .. self:GetSelfPath() .. " chainRoot=" .. self:GetChainRootPath())
+			return
+		end
+		self.runtimeDisabled = false
+		if self:HasAuthoredBattleHudLayout() ~= true then
+			self:ApplySlotOnlyLayout()
+		end
 		self:EnsureBattleHudLayout()
 		self:ConnectHandlers()
 		self:SetDragGhostActive(false)
@@ -107,6 +119,9 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void Refresh()
+		if self.runtimeDisabled == true then
+			return
+		end
 		local localPlayer = _UserService.LocalPlayer
 		if localPlayer == nil or localPlayer.PlayerComponent == nil then
 			self:SetChainPanelActive(false)
@@ -730,7 +745,11 @@ script BRSkillChainUI extends Component
 		local borderColor = self:GetSlotBorderColor(safeTier, occupied == true, isLeadSlot == true)
 		local iconColor = self:GetSlotIconColor(safeTier, occupied == true)
 
-		self:SetVisualSpriteColor(safeRootKind, safeBasePath, baseColor)
+		if self:HasAuthoredBattleHudLayout() == true and safeRootKind == "CHAIN" then
+			self:SetVisualSpriteColor(safeRootKind, safeBasePath, Color(1, 1, 1, 1))
+		else
+			self:SetVisualSpriteColor(safeRootKind, safeBasePath, baseColor)
+		end
 		self:SetVisualSpriteImage(safeRootKind, safeBasePath .. "/Icon", iconRuid)
 		self:SetVisualSpriteColor(safeRootKind, safeBasePath .. "/Icon", iconColor)
 		self:SetSlotFrameColor(safeRootKind, safeBasePath, borderColor)
@@ -1533,7 +1552,11 @@ script BRSkillChainUI extends Component
 	end
 
 	method Entity GetChainEntity(string relativePath)
-		return self:GetEntityFromRoot(self:GetChainRootPath(), relativePath)
+		local entity = self:GetEntityFromRoot(self:GetChainRootPath(), relativePath)
+		if entity ~= nil then
+			return entity
+		end
+		return self:GetBattleHudAliasEntity(relativePath)
 	end
 
 	method Entity GetInventoryEntity(string relativePath)
@@ -1545,10 +1568,76 @@ script BRSkillChainUI extends Component
 		if path == "" then
 			return nil
 		end
+		if self:IsForSavePath(path) == true then
+			return nil
+		end
 		if string.sub(path, 1, 1) ~= "/" then
 			path = self:ReadString(rootPath, self:GetChainRootPath()) .. "/" .. path
 		end
+		if self:IsForSavePath(path) == true then
+			return nil
+		end
 		return _EntityService:GetEntityByPath(path)
+	end
+
+	method Entity GetBattleHudAliasEntity(string relativePath)
+		local aliasPath = self:GetBattleHudAliasRelativePath(relativePath)
+		if aliasPath == "" then
+			return nil
+		end
+		return self:GetEntityFromRoot(self:GetChainRootPath(), aliasPath)
+	end
+
+	method string GetBattleHudAliasRelativePath(string relativePath)
+		local path = self:ReadString(relativePath, "")
+		if path == "" or self:IsForSavePath(path) == true then
+			return ""
+		end
+		if string.sub(path, 1, 1) == "/" then
+			return ""
+		end
+		if path == "Panel" or path == "Panel/Bg" or path == "Panel/Chain" then
+			return "Bg"
+		end
+		if self:StartsWith(path, "Panel/Chain/SlotTouch_") == true then
+			return self:GetBattleHudSlotAlias(path, "Panel/Chain/SlotTouch_")
+		end
+		if self:StartsWith(path, "Panel/Chain/Slot_") == true then
+			return self:GetBattleHudSlotAlias(path, "Panel/Chain/Slot_")
+		end
+		if self:StartsWith(path, "Panel/Chain/Common_") == true then
+			return "Bg/Common_" .. string.sub(path, string.len("Panel/Chain/Common_") + 1)
+		end
+		if path == "Panel/HudLevelText" then
+			return "Bg/HudLevelText"
+		end
+		if path == "Panel/HudHpFill" or path == "Panel/HudHpBack" then
+			return "Bg/HudHpFill"
+		end
+		if path == "Panel/HudExpFill" or path == "Panel/HudExpBack" then
+			return "Bg/HudExpFill"
+		end
+		return ""
+	end
+
+	method string GetBattleHudSlotAlias(string path, string prefix)
+		local safePath = self:ReadString(path, "")
+		local safePrefix = self:ReadString(prefix, "")
+		for index = 7, 1, -1 do
+			local token = safePrefix .. tostring(index)
+			if self:StartsWith(safePath, token) == true then
+				local suffix = string.sub(safePath, string.len(token) + 1)
+				if index == 1 then
+					return "Bg/SkillChain_5" .. suffix
+				end
+				return "Bg/ChainPart_" .. tostring(index - 1) .. suffix
+			end
+		end
+		return ""
+	end
+
+	method boolean IsForSavePath(string path)
+		return string.find(self:ReadString(path, ""), "ForSave") ~= nil
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1577,6 +1666,9 @@ script BRSkillChainUI extends Component
 	@ExecSpace("ClientOnly")
 	method void ApplySlotOnlyLayout()
 		-- Hides static labels so the skill-chain UI is composed only of slots.
+		if self:HasAuthoredBattleHudLayout() == true then
+			return
+		end
 		self:SetChainTextByPath("Panel/Title", "")
 		self:SetChainTextByPath("Panel/Stats", "")
 		self:SetChainTextByPath("DragGhost/Label", "")
@@ -1610,6 +1702,14 @@ script BRSkillChainUI extends Component
 		if self.EnableBattleHudLayout ~= true then
 			return
 		end
+		self:ApplyBattleHudScale()
+		if self:HasAuthoredBattleHudLayout() == true then
+			self:EnsureCommonSkillSlots()
+			self:RefreshCommonSkillSlots()
+			self:RefreshBattleHud(_UserService.LocalPlayer)
+			self:Log("authored battle hud scale=" .. tostring(self:GetBattleHudScale()))
+			return
+		end
 		self:EnsureCommonSkillSlots()
 		self:ApplyBattleHudPanelLayout()
 		self:ApplyBattleHudSlotLayout()
@@ -1620,6 +1720,9 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void ApplyBattleHudPanelLayout()
+		if self:HasAuthoredBattleHudLayout() == true then
+			return
+		end
 		local panel = self:GetChainEntity("Panel")
 		if panel == nil then
 			return
@@ -1647,6 +1750,9 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void ApplyBattleHudSlotLayout()
+		if self:HasAuthoredBattleHudLayout() == true then
+			return
+		end
 		local size = self:GetHudSlotSize()
 		local spacing = self:GetHudSlotSpacing()
 		local startX = -128
@@ -1664,21 +1770,10 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void EnsureCommonSkillSlots()
-		local chain = self:GetChainEntity("Panel/Chain")
-		local template = self:GetChainEntity("Panel/Chain/Slot_1")
-		if chain == nil or template == nil then
-			return
-		end
-
+		-- Uses statically authored common skill slots from the HUD UI file.
 		for index = 1, self:GetCommonSkillSlotCount() do
 			local name = "Common_" .. tostring(index)
-			local slot = chain:GetChildByName(name, false)
-			if slot == nil then
-				slot = template:Clone(name)
-				if slot ~= nil then
-					slot:AttachTo(chain)
-				end
-			end
+			local slot = self:GetChainEntity("Panel/Chain/" .. name)
 			if slot ~= nil then
 				self:SetChainTextByPath("Panel/Chain/" .. name .. "/Label", "")
 				self:SetChainTextByPath("Panel/Chain/" .. name .. "/Tier", "")
@@ -1802,24 +1897,17 @@ script BRSkillChainUI extends Component
 			return nil
 		end
 		local safeName = self:ReadString(name, "")
-		local entity = panel:GetChildByName(safeName, false)
+		local entity = self:GetAuthoredHudTextEntity(safeName)
 		if entity == nil then
-			local template = _EntityService:GetEntityByPath(self:ReadString(self.HudTextTemplatePath, ""))
-			if template == nil then
-				template = self:GetChainEntity("Panel/Title")
-			end
-			if template == nil then
-				return nil
-			end
-			entity = template:Clone(safeName)
-			if entity ~= nil then
-				entity:AttachTo(panel)
-			end
+			entity = panel:GetChildByName(safeName, false)
 		end
 		if entity == nil then
 			return nil
 		end
 		entity.Enable = true
+		if self:HasAuthoredBattleHudLayout() == true then
+			return entity
+		end
 		self:ApplyHudRect(entity, x, y, width, height, Vector2(0, 0.5))
 		if entity.SpriteGUIRendererComponent ~= nil then
 			entity.SpriteGUIRendererComponent.Enable = false
@@ -1837,27 +1925,25 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void EnsureHudGauge(string key, number x, number y, number width, number height, Color fillColor)
+		-- Prepares a HUD gauge with a fixed max-size fill sprite.
 		local panel = self:GetChainEntity("Panel")
-		local template = self:GetChainEntity("Panel/Chain/Slot_1/FrameTop")
-		if panel == nil or template == nil then
+		if panel == nil then
 			return
 		end
 
 		local safeKey = self:ReadString(key, "Gauge")
+		if self:HasAuthoredBattleHudLayout() == true then
+			local authoredFill = self:GetAuthoredHudGaugeFillEntity(safeKey)
+			if authoredFill ~= nil then
+				authoredFill.Enable = true
+				if authoredFill.SpriteGUIRendererComponent ~= nil then
+					authoredFill.SpriteGUIRendererComponent.RaycastTarget = false
+				end
+			end
+			return
+		end
 		local back = panel:GetChildByName("Hud" .. safeKey .. "Back", false)
-		if back == nil then
-			back = template:Clone("Hud" .. safeKey .. "Back")
-			if back ~= nil then
-				back:AttachTo(panel)
-			end
-		end
 		local fill = panel:GetChildByName("Hud" .. safeKey .. "Fill", false)
-		if fill == nil then
-			fill = template:Clone("Hud" .. safeKey .. "Fill")
-			if fill ~= nil then
-				fill:AttachTo(panel)
-			end
-		end
 
 		if back ~= nil then
 			back.Enable = true
@@ -1872,6 +1958,9 @@ script BRSkillChainUI extends Component
 			self:ApplyHudRect(fill, x, y, width, height, Vector2(0, 0.5))
 			self:SetSpriteColor(fill, fillColor)
 			if fill.SpriteGUIRendererComponent ~= nil then
+				fill.SpriteGUIRendererComponent.Type = ImageType.Filled
+				fill.SpriteGUIRendererComponent.FillMethod = FillMethodType.Horizontal
+				fill.SpriteGUIRendererComponent.FillOrigin = 0
 				fill.SpriteGUIRendererComponent.RaycastTarget = false
 			end
 		end
@@ -1879,11 +1968,30 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void SetHudGaugeRatio(string key, number ratio)
+		-- Updates the visible gauge amount without changing the authored max width.
 		local panel = self:GetChainEntity("Panel")
 		if panel == nil then
 			return
 		end
 		local safeKey = self:ReadString(key, "Gauge")
+		if self:HasAuthoredBattleHudLayout() == true then
+			local authoredFill = self:GetAuthoredHudGaugeFillEntity(safeKey)
+			if authoredFill == nil then
+				return
+			end
+			local safeRatio = math.max(0, math.min(1, self:ReadNumber(ratio, 0)))
+			if authoredFill.SpriteGUIRendererComponent ~= nil then
+				authoredFill.SpriteGUIRendererComponent.Type = ImageType.Filled
+				authoredFill.SpriteGUIRendererComponent.FillMethod = FillMethodType.Horizontal
+				authoredFill.SpriteGUIRendererComponent.FillOrigin = 0
+				authoredFill.SpriteGUIRendererComponent.FillAmount = safeRatio
+			end
+			if authoredFill.UITransformComponent ~= nil then
+				authoredFill.UITransformComponent.Pivot = Vector2(0, 0.5)
+				authoredFill.UITransformComponent.RectSize = Vector2(self:GetAuthoredHudGaugeWidth(), authoredFill.UITransformComponent.RectSize.y)
+			end
+			return
+		end
 		local back = panel:GetChildByName("Hud" .. safeKey .. "Back", false)
 		local fill = panel:GetChildByName("Hud" .. safeKey .. "Fill", false)
 		if back == nil or fill == nil or back.UITransformComponent == nil or fill.UITransformComponent == nil then
@@ -1891,7 +1999,14 @@ script BRSkillChainUI extends Component
 		end
 		local safeRatio = math.max(0, math.min(1, self:ReadNumber(ratio, 0)))
 		local backSize = back.UITransformComponent.RectSize
-		fill.UITransformComponent.RectSize = Vector2(math.max(1, backSize.x * safeRatio), backSize.y)
+		fill.UITransformComponent.Pivot = Vector2(0, 0.5)
+		fill.UITransformComponent.RectSize = Vector2(math.max(1, backSize.x), backSize.y)
+		if fill.SpriteGUIRendererComponent ~= nil then
+			fill.SpriteGUIRendererComponent.Type = ImageType.Filled
+			fill.SpriteGUIRendererComponent.FillMethod = FillMethodType.Horizontal
+			fill.SpriteGUIRendererComponent.FillOrigin = 0
+			fill.SpriteGUIRendererComponent.FillAmount = safeRatio
+		end
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1900,7 +2015,11 @@ script BRSkillChainUI extends Component
 		if panel == nil then
 			return
 		end
-		local entity = panel:GetChildByName(self:ReadString(name, ""), false)
+		local safeName = self:ReadString(name, "")
+		local entity = self:GetAuthoredHudTextEntity(safeName)
+		if entity == nil then
+			entity = panel:GetChildByName(safeName, false)
+		end
 		if entity ~= nil and entity.TextComponent ~= nil then
 			entity.TextComponent.Text = self:ReadString(text, "")
 			entity.TextComponent.FontColor = color
@@ -1958,6 +2077,10 @@ script BRSkillChainUI extends Component
 		end
 		if ghost ~= nil then
 			ghost.Enable = active == true
+			if ghost.UITransformComponent ~= nil then
+				local scale = self:GetBattleHudScale()
+				ghost.UITransformComponent.UIScale = Vector3(scale, scale, 1)
+			end
 			if active == true and ghost.UITransformComponent ~= nil then
 				_UILogic:SetSiblingIndex(ghost.UITransformComponent, 1000000)
 			end
@@ -2029,12 +2152,112 @@ script BRSkillChainUI extends Component
 		return math.max(self:GetHudSlotSize(), self:ReadNumber(self.HudSlotSpacing, 58))
 	end
 
+	method number GetBattleHudScale()
+		local scale = self:ReadNumber(self.BattleHudScale, 0.72)
+		return math.max(0.25, math.min(1, scale))
+	end
+
+	method number GetAuthoredHudGaugeWidth()
+		return math.max(1, self:ReadNumber(self.AuthoredHudGaugeWidth, 243))
+	end
+
 	method number GetClickDragThreshold()
 		return math.max(1, self:ReadNumber(self.ClickDragThreshold, 8))
 	end
 
 	method string GetChainRootPath()
-		return self:ReadString(self.ChainRootPath, self:ReadString(self.RootPath, "/ui/BRSkillChainGroup"))
+		local ownerRootPath = self:GetOwnerUiRootPath()
+		if self:IsBattleHudRootPath(ownerRootPath) == true then
+			return ownerRootPath
+		end
+		return self:ReadString(self.ChainRootPath, self:ReadString(self.RootPath, "/ui/BRBattleHudGroup"))
+	end
+
+	method string GetOwnerUiRootPath()
+		local selfPath = self:GetSelfPath()
+		if self:StartsWith(selfPath, "/ui/") ~= true then
+			return ""
+		end
+		local searchStart = string.len("/ui/") + 1
+		local nextSlash, nextSlashEnd = string.find(selfPath, "/", searchStart)
+		if nextSlashEnd == nil then
+			return selfPath
+		end
+		return string.sub(selfPath, 1, nextSlash - 1)
+	end
+
+	method boolean IsBattleHudRootPath(string path)
+		local rootPath = self:ReadString(path, "")
+		return rootPath == "/ui/BRBattleHudGroup" or rootPath == "/ui/BRBattleHubGroup"
+	end
+
+	method string GetSelfPath()
+		if self.Entity == nil then
+			return ""
+		end
+		if self.Entity.Path == nil then
+			return ""
+		end
+		return self:ReadString(self.Entity.Path, "")
+	end
+
+	method boolean IsControllerInChainRoot()
+		local selfPath = self:GetSelfPath()
+		local rootPath = self:GetChainRootPath()
+		if self:IsForSavePath(selfPath) == true then
+			return false
+		end
+		if selfPath == "" or rootPath == "" then
+			return true
+		end
+		if selfPath == rootPath then
+			return true
+		end
+		local prefix = rootPath .. "/"
+		return string.sub(selfPath, 1, string.len(prefix)) == prefix
+	end
+
+	method boolean HasAuthoredBattleHudLayout()
+		local bg = self:GetEntityFromRoot(self:GetChainRootPath(), "Bg")
+		local slot = self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/ChainPart_1")
+		return bg ~= nil and slot ~= nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyBattleHudScale()
+		local scaleRoot = self:GetEntityFromRoot(self:GetChainRootPath(), "Bg")
+		if scaleRoot == nil then
+			scaleRoot = self:GetEntityFromRoot(self:GetChainRootPath(), "Panel")
+		end
+		if scaleRoot ~= nil and scaleRoot.UITransformComponent ~= nil then
+			local scale = self:GetBattleHudScale()
+			scaleRoot.UITransformComponent.UIScale = Vector3(scale, scale, 1)
+		end
+	end
+
+	method Entity GetAuthoredHudTextEntity(string name)
+		local safeName = self:ReadString(name, "")
+		if safeName == "HudLevelText" then
+			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudLevelText")
+		end
+		if safeName == "HudHpValue" then
+			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudHpFill/HudHpValue")
+		end
+		if safeName == "HudExpValue" then
+			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudExpFill/HudExpValue")
+		end
+		return nil
+	end
+
+	method Entity GetAuthoredHudGaugeFillEntity(string key)
+		local safeKey = self:ReadString(key, "")
+		if safeKey == "Hp" then
+			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudHpFill")
+		end
+		if safeKey == "Exp" then
+			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudExpFill")
+		end
+		return nil
 	end
 
 	method string GetInventoryRootPath()
@@ -2062,6 +2285,15 @@ script BRSkillChainUI extends Component
 			return fallback
 		end
 		return numberValue
+	end
+
+	method boolean StartsWith(string text, string prefix)
+		local safeText = self:ReadString(text, "")
+		local safePrefix = self:ReadString(prefix, "")
+		if safePrefix == "" then
+			return true
+		end
+		return string.sub(safeText, 1, string.len(safePrefix)) == safePrefix
 	end
 
 	method void Log(string message)

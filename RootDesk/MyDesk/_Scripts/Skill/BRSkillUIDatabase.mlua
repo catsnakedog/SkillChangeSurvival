@@ -118,6 +118,22 @@ script BRSkillUIDatabase extends Logic
 					IconRUID = guard,
 					ByTier = { [1] = guard, [2] = guard, [3] = field, [4] = field }
 				},
+				UniqueKnight = {
+					IconRUID = guard,
+					ByTier = { [1] = guard, [2] = guard, [3] = field, [4] = field }
+				},
+				UniqueMage = {
+					IconRUID = burst,
+					ByTier = { [1] = burst, [2] = burst, [3] = field, [4] = field }
+				},
+				UniqueRogue = {
+					IconRUID = slash,
+					ByTier = { [1] = slash, [2] = shot, [3] = burst, [4] = burst }
+				},
+				UniqueArcher = {
+					IconRUID = shot,
+					ByTier = { [1] = shot, [2] = shot, [3] = burst, [4] = burst }
+				},
 				UniqueHero = {
 					IconRUID = guard,
 					ByTier = { [1] = guard, [2] = guard, [3] = field, [4] = field }

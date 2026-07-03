@@ -1,0 +1,5 @@
+﻿action_id,action_type,required_context
+ds1hit,피해,시전자|대상
+ds1stun,디버프,대상
+애로우 블로우/투사체 생성,투사체 생성,위치|방향|시전자
+애로우 블로우/피해,피해,시전자|대상

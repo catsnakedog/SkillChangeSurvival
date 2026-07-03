@@ -1,0 +1,18 @@
+﻿file_name,table_title,source_pages,column_count,sample_row_count,notes
+jobs.csv,직업/계열,p2,2,11,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+characters.csv,캐릭터,p20,6,1,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+skills.csv,스킬,"p8,p29,p44",9,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+effects.csv,이펙트,p22,4,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+skill_action_restrictions.csv,행동제한 데이터,"p22,p30",4,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+events.csv,이벤트,"p24,p33,p44",4,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+area_target_captures.csv,범위 대상포착 데이터,"p41,p43,p44",5,1,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+rect_hitboxes.csv,히트박스 - 사각형 데이터,"p40,p44,p47",5,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+circle_hitboxes.csv,히트박스 - 원형 데이터,p40,4,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+actions.csv,액션,"p34,p43,p44,p60",3,4,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+damage_actions.csv,피해 액션 데이터,p35,3,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,"p49,p50",9,1,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+ground_area_spawn_actions.csv,장판 데이터,p52,4,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+trigger_actions.csv,트리거 액션,"p53,p58,p59",3,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+dash_actions.csv,대쉬 데이터,p60,3,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+teleport_actions.csv,텔레포트 데이터,p60,2,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+skill_chains.csv,스킬 체인,"p4,p17,p53,p54",6,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력

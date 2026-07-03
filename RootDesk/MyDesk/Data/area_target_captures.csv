@@ -1,0 +1,2 @@
+﻿area_target_id,hitbox_ids,duration_frames,target,action_ids
+divineSwingArea1,ds1b1|ds1b2,4,적군,ds1hit|ds1stun

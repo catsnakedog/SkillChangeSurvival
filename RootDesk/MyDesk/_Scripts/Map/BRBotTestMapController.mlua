@@ -1,0 +1,462 @@
+@Component
+script BRBotTestMapController extends Component
+
+	property boolean EnableBotTestMap = true
+
+	property string BotModelId = "battlebot"
+
+	property string BotIdPrefix = "TEST_BOT_"
+
+	property string BotNamePrefix = "TestBattleBot_"
+
+	property integer BotCount = 4
+
+	property number SpawnCenterX = 0
+
+	property number SpawnY = 2.6
+
+	property number SpawnSpacing = 3
+
+	property number SpawnDelaySeconds = 0.35
+
+	property number PlayerStartX = -10
+
+	property number PlayerStartY = 2.6
+
+	property number PlayerStartRetrySeconds = 0.2
+
+	property number BotMaxHp = 160
+
+	property number BotLives = 99
+
+	property number BotAttackDamage = 12
+
+	property number BotMoveSpeed = 1.2
+
+	property boolean ClearExistingTestBots = true
+
+	property integer spawnTimerId = 0
+
+	property integer playerStartTimerId = 0
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		-- Spawns test bots after the map battle logic has had a chance to initialize.
+		if self.EnableBotTestMap == false then
+			return
+		end
+
+		self:PlacePlayersAtTestStart("begin")
+		local retrySeconds = self:GetPlayerStartRetrySeconds()
+		if retrySeconds > 0 then
+			self.playerStartTimerId = _TimerService:SetTimerOnce(function()
+				self.playerStartTimerId = 0
+				self:PlacePlayersAtTestStart("delayed")
+			end, retrySeconds)
+		end
+
+		self.spawnTimerId = _TimerService:SetTimerOnce(function() self:SpawnTestBots() end, self:GetSpawnDelaySeconds())
+		log("[BRBotTestMap] scheduled map=" .. self:GetMapName() .. " count=" .. tostring(self:GetBotCount()))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnEndPlay()
+		-- Clears any pending delayed spawn when the test map unloads.
+		if self.spawnTimerId > 0 and _TimerService ~= nil then
+			_TimerService:ClearTimer(self.spawnTimerId)
+		end
+		self.spawnTimerId = 0
+
+		if self.playerStartTimerId > 0 and _TimerService ~= nil then
+			_TimerService:ClearTimer(self.playerStartTimerId)
+		end
+		self.playerStartTimerId = 0
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PlacePlayersAtTestStart(string reason)
+		-- Places users on the test map's main foothold before bot combat begins.
+		local mapName = self:GetMapName()
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users == nil then
+			log("[BRBotTestMap] player start skipped reason=" .. reason .. " map=" .. mapName .. " users=nil")
+			return
+		end
+
+		local startPosition = self:GetPlayerStartPosition()
+		local moved = 0
+		for _, userEntity in ipairs(users) do
+			if userEntity ~= nil and userEntity.PlayerComponent ~= nil then
+				self:MovePlayerToStart(userEntity, startPosition, reason)
+				moved = moved + 1
+			end
+		end
+
+		log("[BRBotTestMap] player start pass reason=" .. reason .. " moved=" .. tostring(moved) .. " pos=(" .. tostring(startPosition.x) .. "," .. tostring(startPosition.y) .. ")")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void MovePlayerToStart(Entity playerEntity, Vector2 startPosition, string reason)
+		-- Applies the bot-test spawn point to server physics and mirrors it to the owning client.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		local appliedBy = ""
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		playerEntity.PlayerComponent.RespawnPosition = Vector3(startPosition.x, startPosition.y, 0)
+
+		if playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent:Stop()
+			playerEntity.MovementComponent:SetWorldPosition(startPosition)
+			appliedBy = appliedBy .. "Movement"
+		end
+
+		if playerEntity.RigidbodyComponent ~= nil then
+			playerEntity.RigidbodyComponent.IgnoreMoveBoundary = true
+			playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			playerEntity.RigidbodyComponent:SetWorldPosition(startPosition)
+			playerEntity.RigidbodyComponent:PositionReset()
+			appliedBy = appliedBy .. "+Rigidbody"
+		elseif playerEntity.KinematicbodyComponent ~= nil then
+			playerEntity.KinematicbodyComponent:SetWorldPosition(startPosition)
+			appliedBy = appliedBy .. "+Kinematicbody"
+		elseif playerEntity.SideviewbodyComponent ~= nil then
+			playerEntity.SideviewbodyComponent:SetWorldPosition(startPosition)
+			appliedBy = appliedBy .. "+Sideviewbody"
+		end
+
+		playerEntity.PlayerComponent:SetWorldPosition(Vector3(startPosition.x, startPosition.y, 0))
+		appliedBy = appliedBy .. "+Player"
+
+		if userId ~= "" then
+			self:ApplyLocalPlayerStart(startPosition, reason, userId)
+		end
+
+		log("[BRBotTestMap] player start user=" .. userId .. " reason=" .. reason .. " pos=(" .. tostring(startPosition.x) .. "," .. tostring(startPosition.y) .. ") by=" .. appliedBy)
+	end
+
+	@ExecSpace("Client")
+	method void ApplyLocalPlayerStart(Vector2 startPosition, string reason)
+		-- Mirrors the server-side test spawn correction on the owning client.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+
+		local appliedBy = ""
+		if localPlayer.MovementComponent ~= nil then
+			localPlayer.MovementComponent:Stop()
+			localPlayer.MovementComponent:SetWorldPosition(startPosition)
+			appliedBy = appliedBy .. "Movement"
+		end
+
+		if localPlayer.RigidbodyComponent ~= nil then
+			localPlayer.RigidbodyComponent.IgnoreMoveBoundary = true
+			localPlayer.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			localPlayer.RigidbodyComponent:SetWorldPosition(startPosition)
+			localPlayer.RigidbodyComponent:PositionReset()
+			appliedBy = appliedBy .. "+Rigidbody"
+		elseif localPlayer.KinematicbodyComponent ~= nil then
+			localPlayer.KinematicbodyComponent:SetWorldPosition(startPosition)
+			appliedBy = appliedBy .. "+Kinematicbody"
+		elseif localPlayer.SideviewbodyComponent ~= nil then
+			localPlayer.SideviewbodyComponent:SetWorldPosition(startPosition)
+			appliedBy = appliedBy .. "+Sideviewbody"
+		end
+
+		if localPlayer.PlayerComponent ~= nil then
+			localPlayer.PlayerComponent:SetWorldPosition(Vector3(startPosition.x, startPosition.y, 0))
+			appliedBy = appliedBy .. "+Player"
+		end
+
+		local currentPosition = Vector3(0, 0, 0)
+		if localPlayer.TransformComponent ~= nil then
+			currentPosition = localPlayer.TransformComponent.WorldPosition
+		end
+		log("[BRBotTestMap] local player start reason=" .. reason .. " target=(" .. tostring(startPosition.x) .. "," .. tostring(startPosition.y) .. ") current=(" .. tostring(currentPosition.x) .. "," .. tostring(currentPosition.y) .. ") by=" .. appliedBy)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SpawnTestBots()
+		-- Creates AI competitors for direct combat testing without a match room.
+		self.spawnTimerId = 0
+		local mapEntity = self:GetMapEntity()
+		if mapEntity == nil then
+			log("[BRBotTestMap] spawn skipped reason=noMap")
+			return
+		end
+
+		local battleLogic = self:GetBattleLogic(mapEntity)
+		if battleLogic ~= nil then
+			battleLogic.RequireActiveMatch = false
+			battleLogic.EnableLastManStandingEnd = false
+			battleLogic.VerboseBattleLog = true
+			battleLogic.BattleMaxHp = 1000
+			battleLogic.LifeReviveRequireSelection = false
+			battleLogic.LifeReviveDelaySeconds = 2
+			battleLogic.LifeReviveHpPercent = 1
+			battleLogic:StartServerRuntime()
+		else
+			log("[BRBotTestMap] battle logic missing; bots still spawn")
+		end
+
+		if self.ClearExistingTestBots == true then
+			self:ClearTestBots(mapEntity, battleLogic)
+		end
+
+		local count = self:GetBotCount()
+		local spawned = 0
+		for index = 1, count do
+			local spawnPosition = self:GetBotSpawnPosition(index, count)
+			local botId = self:GetBotId(index)
+			local entityName = self:GetBotEntityName(index)
+			local botEntity = _SpawnService:SpawnByModelId(self:GetBotModelId(), entityName, Vector3(spawnPosition.x, spawnPosition.y, 0), mapEntity)
+			if botEntity ~= nil then
+				local bot = self:GetBattleBotController(botEntity)
+				if bot ~= nil then
+					local oldBotId = self:ReadString(bot.BotId, "")
+					bot.AttackDamage = self:GetBotAttackDamage()
+					bot.MoveSpeed = self:GetBotMoveSpeed()
+					bot.EnableBTDebugLog = false
+					bot:InitializeBattleBot(botId, spawnPosition, self:GetBotMaxHp(), self:GetBotLives())
+					if battleLogic ~= nil and oldBotId ~= "" and oldBotId ~= botId then
+						battleLogic:UnregisterBattleBot(oldBotId)
+					end
+					spawned = spawned + 1
+					log("[BRBotTestMap] spawned id=" .. botId .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
+				else
+					log("[BRBotTestMap] spawn missing BRBattleBotController entity=" .. entityName)
+					botEntity:Destroy()
+				end
+			else
+				log("[BRBotTestMap] spawn failed model=" .. self:GetBotModelId() .. " index=" .. tostring(index))
+			end
+		end
+
+		log("[BRBotTestMap] ready spawned=" .. tostring(spawned) .. "/" .. tostring(count))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ClearTestBots(Entity mapEntity, any battleLogic)
+		-- Removes old test bots before creating a fresh wave.
+		if mapEntity == nil then
+			return
+		end
+
+		local components = mapEntity:GetChildComponentsByTypeName("script.BRBattleBotController", true)
+		if components == nil then
+			components = mapEntity:GetChildComponentsByTypeName("BRBattleBotController", true)
+		end
+		if components == nil then
+			return
+		end
+
+		for index, bot in ipairs(components) do
+			if bot ~= nil and bot.Entity ~= nil then
+				local botController = self:GetBattleBotController(bot.Entity)
+				local botId = ""
+				if botController ~= nil then
+					botId = self:ReadString(botController.BotId, "")
+				end
+				local entityName = self:ReadString(bot.Entity.Name, "")
+				if self:IsTestBotName(botId) == true or self:IsTestBotEntityName(entityName) == true then
+					if battleLogic ~= nil then
+						battleLogic:UnregisterBattleBot(botId)
+					end
+					bot.Entity:Destroy()
+				end
+			end
+		end
+	end
+
+	method boolean IsTestBotName(string botId)
+		-- Checks if a bot id belongs to this map's test wave.
+		local prefix = self:ReadString(self.BotIdPrefix, "TEST_BOT_")
+		local value = self:ReadString(botId, "")
+		if value == "" then
+			return false
+		end
+		return string.sub(value, 1, string.len(prefix)) == prefix
+	end
+
+	method boolean IsTestBotEntityName(string entityName)
+		-- Checks if an entity name belongs to this map's test wave.
+		local prefix = self:ReadString(self.BotNamePrefix, "TestBattleBot_")
+		local value = self:ReadString(entityName, "")
+		if value == "" then
+			return false
+		end
+		return string.sub(value, 1, string.len(prefix)) == prefix
+	end
+
+	method any GetBattleLogic(Entity mapEntity)
+		-- Finds the BattleLogic component placed on the current map.
+		if mapEntity == nil then
+			return nil
+		end
+
+		local logicEntity = mapEntity:GetChildByName("BattleLogic", false)
+		if logicEntity ~= nil then
+			local direct = logicEntity:GetComponent("script.BRBattleLogic")
+			if direct == nil then
+				direct = logicEntity:GetComponent("BRBattleLogic")
+			end
+			if direct ~= nil then
+				return direct
+			end
+		end
+
+		local components = mapEntity:GetChildComponentsByTypeName("script.BRBattleLogic", true)
+		if components == nil then
+			components = mapEntity:GetChildComponentsByTypeName("BRBattleLogic", true)
+		end
+		if components ~= nil then
+			for index, battleLogic in ipairs(components) do
+				if battleLogic ~= nil then
+					return battleLogic
+				end
+			end
+		end
+		return nil
+	end
+
+	method any GetBattleBotController(Entity entity)
+		-- Reads the bot controller from a newly spawned bot entity.
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRBattleBotController")
+		if component == nil then
+			component = entity:GetComponent("BRBattleBotController")
+		end
+		return component
+	end
+
+	method Entity GetMapEntity()
+		-- Returns the map entity this controller is attached to.
+		if self.Entity == nil then
+			return nil
+		end
+		if self.Entity.CurrentMap ~= nil then
+			return self.Entity.CurrentMap
+		end
+		return self.Entity
+	end
+
+	method Vector2 GetBotSpawnPosition(integer index, integer totalCount)
+		-- Calculates evenly spaced spawn positions around the map center.
+		local count = math.max(1, math.floor(self:ReadNumber(totalCount, self:GetBotCount())))
+		local centerOffset = (count - 1) * 0.5
+		local offsetIndex = (index - 1) - centerOffset
+		local x = self:GetSpawnCenterX() + offsetIndex * self:GetSpawnSpacing()
+		return Vector2(x, self:GetSpawnY())
+	end
+
+	method Vector2 GetPlayerStartPosition()
+		-- Returns the player test spawn position just above the main foothold.
+		return Vector2(self:GetPlayerStartX(), self:GetPlayerStartY())
+	end
+
+	method string GetBotId(integer index)
+		-- Builds a stable test bot id.
+		return self:ReadString(self.BotIdPrefix, "TEST_BOT_") .. tostring(index)
+	end
+
+	method string GetBotEntityName(integer index)
+		-- Builds a stable runtime entity name for a test bot.
+		return self:ReadString(self.BotNamePrefix, "TestBattleBot_") .. tostring(index)
+	end
+
+	method string GetBotModelId()
+		-- Reads the model id used by test bots.
+		return self:ReadString(self.BotModelId, "battlebot")
+	end
+
+	method integer GetBotCount()
+		-- Reads the number of test bots to spawn.
+		return math.max(1, math.floor(self:ReadNumber(self.BotCount, 4)))
+	end
+
+	method number GetSpawnCenterX()
+		-- Reads the center x coordinate for test bot placement.
+		return self:ReadNumber(self.SpawnCenterX, 0)
+	end
+
+	method number GetSpawnY()
+		-- Reads the y coordinate used for bot placement.
+		return self:ReadNumber(self.SpawnY, 2.6)
+	end
+
+	method number GetPlayerStartX()
+		-- Reads the player start x coordinate.
+		return self:ReadNumber(self.PlayerStartX, -10)
+	end
+
+	method number GetPlayerStartY()
+		-- Reads the player start y coordinate.
+		return self:ReadNumber(self.PlayerStartY, 2.6)
+	end
+
+	method number GetSpawnSpacing()
+		-- Reads the spacing between adjacent test bots.
+		return math.max(0.5, self:ReadNumber(self.SpawnSpacing, 3))
+	end
+
+	method number GetSpawnDelaySeconds()
+		-- Reads the delayed spawn time in seconds.
+		return math.max(0.05, self:ReadNumber(self.SpawnDelaySeconds, 0.35))
+	end
+
+	method number GetPlayerStartRetrySeconds()
+		-- Reads the delayed second pass used after map entry settles.
+		return math.max(0, self:ReadNumber(self.PlayerStartRetrySeconds, 0.2))
+	end
+
+	method number GetBotMaxHp()
+		-- Reads the HP value assigned to each test bot.
+		return math.max(1, math.floor(self:ReadNumber(self.BotMaxHp, 160)))
+	end
+
+	method number GetBotLives()
+		-- Reads the life count assigned to each test bot.
+		return math.max(1, math.floor(self:ReadNumber(self.BotLives, 99)))
+	end
+
+	method number GetBotAttackDamage()
+		-- Reads the damage value assigned to each test bot.
+		return math.max(1, self:ReadNumber(self.BotAttackDamage, 12))
+	end
+
+	method number GetBotMoveSpeed()
+		-- Reads the movement speed assigned to each test bot.
+		return math.max(0.1, self:ReadNumber(self.BotMoveSpeed, 1.2))
+	end
+
+	method string GetMapName()
+		-- Reads the current map name for logs.
+		local mapEntity = self:GetMapEntity()
+		if mapEntity ~= nil then
+			return self:ReadString(mapEntity.Name, "BotTestMap")
+		end
+		return "BotTestMap"
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+end

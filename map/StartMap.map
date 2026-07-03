@@ -7108,7 +7108,7 @@
       {
         "id": "fe95d242-cbe8-469a-9b4f-d981bf4ad0ff",
         "path": "/maps/StartMap/npc-5039",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.StateComponent,MOD.Core.ChatBalloonComponent,MOD.Core.StateAnimationComponent,MOD.Core.NameTagComponent",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.StateComponent,MOD.Core.ChatBalloonComponent,MOD.Core.StateAnimationComponent,MOD.Core.NameTagComponent,script.BRCharacterSwitchNPC",
         "jsonString": {
           "name": "npc-5039",
           "path": "/maps/StartMap/npc-5039",
@@ -7197,6 +7197,13 @@
                 "DataId": "9bf18287398c44699c20fc5123d1a1ae"
               },
               "Enable": true
+            },
+            {
+              "@type": "script.BRCharacterSwitchNPC",
+              "Enable": true,
+              "InteractionKeyName": "C",
+              "InteractionRange": 1.8,
+              "VerboseLog": true
             }
           ],
           "@version": 1

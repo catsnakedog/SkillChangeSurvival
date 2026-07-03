@@ -220,6 +220,10 @@ script BRSkillSystem extends Logic
 		self:AddSkillRuntimeDefinition(skills, "Field", 2, "Field II", 14, 26, { [5] = { "fieldCreateWideAction" } })
 		self:AddSkillRuntimeDefinition(skills, "Field", 3, "Field III", 16, 28, { [4] = { "fieldCreatePulseAction" } })
 		self:AddSkillRuntimeDefinition(skills, "Field", 4, "Field IV", 18, 32, { [3] = { "fieldCreateStormAction" }, [9] = { "fieldCreateWideAction" } })
+		self:AddSkillRuntimeDefinition(skills, "UniqueKnight", 1, "Knight Unique", 18, 46, { [1] = { "uniqueHeroAdvance" }, [4] = { "uniqueHeroArea" }, [9] = { "slashFollowEffect" } })
+		self:AddSkillRuntimeDefinition(skills, "UniqueMage", 1, "Mage Unique", 22, 52, { [2] = { "uniqueArcaneField" }, [8] = { "uniqueArcaneBurst" } })
+		self:AddSkillRuntimeDefinition(skills, "UniqueRogue", 1, "Rogue Unique", 18, 44, { [0] = { "dashLongMoveAction" }, [3] = { "dashBreakArea" }, [7] = { "uniqueStormProjectile" } })
+		self:AddSkillRuntimeDefinition(skills, "UniqueArcher", 1, "Archer Unique", 20, 48, { [2] = { "uniqueStormProjectile" }, [5] = { "uniqueStormProjectile" }, [8] = { "uniqueStormProjectile" } })
 		self:AddSkillRuntimeDefinition(skills, "UniqueHero", 1, "Hero Unique", 18, 46, { [1] = { "uniqueHeroAdvance" }, [4] = { "uniqueHeroArea" }, [9] = { "slashFollowEffect" } })
 		self:AddSkillRuntimeDefinition(skills, "UniqueStorm", 1, "Storm Unique", 20, 48, { [2] = { "uniqueStormProjectile" }, [5] = { "uniqueStormProjectile" }, [8] = { "uniqueStormProjectile" } })
 		self:AddSkillRuntimeDefinition(skills, "UniqueArcane", 1, "Arcane Unique", 22, 52, { [2] = { "uniqueArcaneField" }, [8] = { "uniqueArcaneBurst" } })
@@ -626,11 +630,14 @@ script BRSkillSystem extends Logic
 
 	method string NormalizeUniqueSkillKey(string skillKey)
 		-- Keeps unique-skill requests inside the known character catalog.
-		local safeSkillKey = self:ReadString(skillKey, "UniqueHero")
+		local safeSkillKey = self:ReadString(skillKey, "UniqueKnight")
+		if safeSkillKey == "UniqueKnight" or safeSkillKey == "UniqueMage" or safeSkillKey == "UniqueRogue" or safeSkillKey == "UniqueArcher" then
+			return safeSkillKey
+		end
 		if safeSkillKey == "UniqueHero" or safeSkillKey == "UniqueStorm" or safeSkillKey == "UniqueArcane" then
 			return safeSkillKey
 		end
-		return "UniqueHero"
+		return "UniqueKnight"
 	end
 
 	method boolean TryCastNextChainSkill(Entity casterEntity)

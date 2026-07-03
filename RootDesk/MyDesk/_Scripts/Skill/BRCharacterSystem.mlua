@@ -2,6 +2,7 @@
 script BRCharacterSystem extends Logic
 
 	property string DefaultCharacterKey = "Knight"
+	property string CharacterDefaultSkillsTableName = "character_default_skills"
 
 	property boolean VerboseLog = true
 	property integer CharacterCatalogVersion = 2
@@ -246,21 +247,67 @@ script BRCharacterSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method string GetLocalUniqueSkillKey()
-		-- Returns the local character's dedicated unique skill key.
+		-- Returns the local character's CSV-declared unique skill key.
+		local skillKey = self:GetCharacterDefaultSkillValue(self:GetLocalCharacterKey(), "unique_skill_id")
+		if skillKey ~= "" then
+			return skillKey
+		end
 		local data = self:GetCharacterData(self:GetLocalCharacterKey())
 		if data == nil then
-			return "UniqueKnight"
+			return ""
 		end
-		return self:ReadString(data.UniqueSkillKey, "UniqueKnight")
+		return self:ReadString(data.UniqueSkillKey, "")
 	end
 
+	@ExecSpace("ServerOnly")
 	method string GetServerUniqueSkillKey(string userId)
-		-- Returns the server-authoritative unique skill key for one user.
-		local data = self:GetCharacterData(self:GetServerCharacterKey(userId))
-		if data == nil then
-			return "UniqueKnight"
+		-- Returns the server-authoritative CSV-declared unique skill key for one user.
+		local characterKey = self:GetServerCharacterKey(userId)
+		local skillKey = self:GetCharacterDefaultSkillValue(characterKey, "unique_skill_id")
+		if skillKey ~= "" then
+			return skillKey
 		end
-		return self:ReadString(data.UniqueSkillKey, "UniqueKnight")
+		local data = self:GetCharacterData(characterKey)
+		if data == nil then
+			return ""
+		end
+		return self:ReadString(data.UniqueSkillKey, "")
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalBasicSkillKey()
+		-- Returns the local character's CSV-declared basic skill key.
+		return self:GetCharacterDefaultSkillValue(self:GetLocalCharacterKey(), "basic_skill_id")
+	end
+
+	@ExecSpace("ServerOnly")
+	method string GetServerBasicSkillKey(string userId)
+		-- Returns the server-authoritative CSV-declared basic skill key for one user.
+		return self:GetCharacterDefaultSkillValue(self:GetServerCharacterKey(userId), "basic_skill_id")
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalBasicAttackKey()
+		-- Returns the local character's CSV-declared basic attack key.
+		return self:GetCharacterDefaultSkillValue(self:GetLocalCharacterKey(), "basic_attack_id")
+	end
+
+	@ExecSpace("ServerOnly")
+	method string GetServerBasicAttackKey(string userId)
+		-- Returns the server-authoritative CSV-declared basic attack key for one user.
+		return self:GetCharacterDefaultSkillValue(self:GetServerCharacterKey(userId), "basic_attack_id")
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalPassiveSkillKey()
+		-- Returns the local character's CSV-declared passive skill key.
+		return self:GetCharacterDefaultSkillValue(self:GetLocalCharacterKey(), "passive_id")
+	end
+
+	@ExecSpace("ServerOnly")
+	method string GetServerPassiveSkillKey(string userId)
+		-- Returns the server-authoritative CSV-declared passive skill key for one user.
+		return self:GetCharacterDefaultSkillValue(self:GetServerCharacterKey(userId), "passive_id")
 	end
 
 	@ExecSpace("ClientOnly")
@@ -341,6 +388,61 @@ script BRCharacterSystem extends Logic
 		return 1
 	end
 
+	method string GetCharacterDefaultSkillValue(string characterKey, string columnName)
+		-- Reads one class default skill field from the CSV-backed DataSet.
+		local key = self:ReadString(characterKey, "")
+		local column = self:ReadString(columnName, "")
+		if key == "" or column == "" then
+			return ""
+		end
+		local data = self:GetDataTable(self.CharacterDefaultSkillsTableName)
+		if data == nil then
+			return ""
+		end
+		local row = self:GetDataRowIndex(data, "character_key", key)
+		if row <= 0 then
+			return ""
+		end
+		return self:GetDataCell(data, row, column, "")
+	end
+
+	method any GetDataTable(string tableName)
+		-- Reads a UserDataSet by table name.
+		local safeName = self:ReadString(tableName, "")
+		if safeName == "" or _DataService == nil then
+			return nil
+		end
+		return _DataService:GetTable(safeName)
+	end
+
+	method string GetDataCell(any dataSet, number row, string columnName, string fallback)
+		-- Reads one DataSet cell as a string.
+		if dataSet == nil then
+			return self:ReadString(fallback, "")
+		end
+		local value = dataSet:GetCell(math.max(1, math.floor(row)), self:ReadString(columnName, ""))
+		if value == nil then
+			return self:ReadString(fallback, "")
+		end
+		return self:TrimString(tostring(value))
+	end
+
+	method number GetDataRowIndex(any dataSet, string keyColumnName, string keyValue)
+		-- Finds the first DataSet row whose key column matches the requested value.
+		if dataSet == nil then
+			return 0
+		end
+		local rowCount = math.max(0, math.floor(dataSet:GetRowCount()))
+		local column = self:ReadString(keyColumnName, "")
+		local key = self:ReadString(keyValue, "")
+		for row = 1, rowCount do
+			if self:GetDataCell(dataSet, row, column, "") == key then
+				return row
+			end
+		end
+		return 0
+	end
+
 	method any GetCharacterCatalog()
 		self:EnsureRuntime()
 		if self._T.characterCatalog == nil or self._T.characterCatalogVersion ~= self.CharacterCatalogVersion then
@@ -349,7 +451,7 @@ script BRCharacterSystem extends Logic
 				{
 					Key = "Knight",
 					DisplayName = "기사",
-					UniqueSkillKey = "UniqueKnight",
+					UniqueSkillKey = "",
 					WeaponSlot = "OneHanded",
 					Avatar = {
 						Face = "068838981d5b4815b7ee91dc3f64890b",
@@ -364,7 +466,7 @@ script BRCharacterSystem extends Logic
 				{
 					Key = "Mage",
 					DisplayName = "마법사",
-					UniqueSkillKey = "UniqueMage",
+					UniqueSkillKey = "",
 					WeaponSlot = "OneHanded",
 					Avatar = {
 						Face = "068838981d5b4815b7ee91dc3f64890b",
@@ -381,7 +483,7 @@ script BRCharacterSystem extends Logic
 				{
 					Key = "Rogue",
 					DisplayName = "도적",
-					UniqueSkillKey = "UniqueRogue",
+					UniqueSkillKey = "",
 					WeaponSlot = "OneHanded",
 					Avatar = {
 						Face = "307de7f79dec4b43a934181e69dfc0b7",
@@ -398,7 +500,7 @@ script BRCharacterSystem extends Logic
 				{
 					Key = "Archer",
 					DisplayName = "궁수",
-					UniqueSkillKey = "UniqueArcher",
+					UniqueSkillKey = "",
 					WeaponSlot = "OneHanded",
 					Avatar = {
 						Face = "f449710325944469b357c4e71e21fd82",
@@ -588,6 +690,12 @@ script BRCharacterSystem extends Logic
 			return fallback
 		end
 		return tostring(value)
+	end
+
+	method string TrimString(string value)
+		-- Trims leading and trailing whitespace from CSV/DataSet strings.
+		local text = self:ReadString(value, "")
+		return self:ReadString(string.match(text, "^%s*(.-)%s*$"), "")
 	end
 
 	method void Log(string message)

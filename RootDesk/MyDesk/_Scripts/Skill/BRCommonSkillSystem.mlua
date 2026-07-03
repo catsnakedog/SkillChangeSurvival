@@ -122,7 +122,7 @@ script BRCommonSkillSystem extends Logic
 
 		if _BRSkillSystem ~= nil then
 			local userId = self:ReadString(localPlayer.PlayerComponent.UserId, "")
-    local uniqueSkillKey = "UniqueKnight"
+			local uniqueSkillKey = ""
 			if _BRCharacterSystem ~= nil then
 				uniqueSkillKey = _BRCharacterSystem:GetLocalUniqueSkillKey()
 			end

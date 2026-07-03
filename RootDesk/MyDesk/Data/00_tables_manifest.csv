@@ -9,6 +9,8 @@ area_target_captures.csv,범위 대상포착 데이터,"p41,p43,p44",5,1,기획�
 rect_hitboxes.csv,히트박스 - 사각형 데이터,"p40,p44,p47",5,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
 circle_hitboxes.csv,히트박스 - 원형 데이터,p40,4,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
 actions.csv,액션,"p34,p43,p44,p60",3,4,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+buff_actions.csv,버프 액션 데이터,p60,4,0,기획서의 버프 액션 상세 데이터. 복수 가능 값은 pipe(|)로 입력
+debuff_actions.csv,디버프 액션 데이터,p60,4,1,기획서의 디버프 액션 상세 데이터. 복수 가능 값은 pipe(|)로 입력
 damage_actions.csv,피해 액션 데이터,p35,3,2,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
 projectile_spawn_actions.csv,투사체 생성 액션 데이터,"p49,p50",9,1,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
 ground_area_spawn_actions.csv,장판 데이터,p52,4,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
@@ -16,3 +18,4 @@ trigger_actions.csv,트리거 액션,"p53,p58,p59",3,0,기획서 항목 기준. 
 dash_actions.csv,대쉬 데이터,p60,3,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
 teleport_actions.csv,텔레포트 데이터,p60,2,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
 skill_chains.csv,스킬 체인,"p4,p17,p53,p54",6,0,기획서 항목 기준. 복수 가능 값은 pipe(|)로 입력
+character_default_skills.csv,클래스별 기본 스킬,"p20,p29",8,4,캐릭터/클래스별 기본 공격·기본 스킬·고유 스킬 지정. 복수 가능 값은 pipe(|)로 입력

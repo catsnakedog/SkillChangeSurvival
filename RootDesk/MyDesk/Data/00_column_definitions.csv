@@ -45,6 +45,14 @@ circle_hitboxes.csv,히트박스 - 원형 데이터,4,radius,반지름,int,,N,,�
 actions.csv,액션,1,action_id,액션 id,string,,N,,액션 id,"p34,p43,p44,p60"
 actions.csv,액션,2,action_type,액션 종류,enum,,N,피해|디버프|후속효과|투사체 생성|장판 생성|트리거|이동,액션 종류,"p34,p43,p44,p60"
 actions.csv,액션,3,required_context,요구 컨택스트,pipe_string,,Y,시전자|대상,액션 실행에 필요한 컨택스트,"p34,p43,p44,p60"
+buff_actions.csv,버프 액션 데이터,1,action_id,액션 id,string,,N,,버프 액션 id,p60
+buff_actions.csv,버프 액션 데이터,2,status_id,상태 id,string,,N,,적용할 버프 상태 id,p60
+buff_actions.csv,버프 액션 데이터,3,duration_frames,지속시간,int,,N,,프레임 단위,p60
+buff_actions.csv,버프 액션 데이터,4,damage_taken_rate,피해 배율,decimal,1,N,,받는 피해 배율. 1이면 변화 없음,p60
+debuff_actions.csv,디버프 액션 데이터,1,action_id,액션 id,string,,N,,디버프 액션 id,p60
+debuff_actions.csv,디버프 액션 데이터,2,status_id,상태 id,string,,N,,적용할 디버프 상태 id,p60
+debuff_actions.csv,디버프 액션 데이터,3,duration_frames,지속시간,int,,N,,프레임 단위,p60
+debuff_actions.csv,디버프 액션 데이터,4,cancel_chain,스킬체인 취소 여부,bool,true,N,true|false,cc 디버프가 상대 스킬체인을 끊는지,p60
 damage_actions.csv,피해 액션 데이터,1,action_id,액션 id,string,,N,,피해 액션 id,p35
 damage_actions.csv,피해 액션 데이터,2,attack_power_coefficient_percent,공격력 계수,decimal,,N,n% 형식,"n% 형식, 1% 단위",p35
 damage_actions.csv,피해 액션 데이터,3,hit_effect_ruid,hit 이펙트 RUID,string,,N,,피해를 준 대상의 위치에서 재생할 이펙트 RUID,p35
@@ -75,3 +83,11 @@ skill_chains.csv,스킬 체인,3,slot2_skill_id,2번 슬롯 스킬 id,string,,N,
 skill_chains.csv,스킬 체인,4,slot3_skill_id,3번 슬롯 스킬 id,string,,N,,3번 슬롯,"p4,p17,p53,p54"
 skill_chains.csv,스킬 체인,5,slot4_skill_id,4번 슬롯 스킬 id,string,,N,,4번 슬롯,"p4,p17,p53,p54"
 skill_chains.csv,스킬 체인,6,slot5_skill_id,5번 슬롯 스킬 id,string,,N,,5번 슬롯,"p4,p17,p53,p54"
+character_default_skills.csv,클래스별 기본 스킬,1,character_key,클래스 키,string,Knight,N,Knight|Mage|Rogue|Archer,BRCharacterSystem 캐릭터 키,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,2,display_name,표시 이름,string,,N,,클래스 표시 이름,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,3,basic_attack_id,기본공격 id,string,,N,,클래스별 기본공격 스킬 id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,4,basic_skill_id,기본 스킬 id,string,,N,,클래스별 기본 스킬 id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,5,unique_skill_id,고유 스킬 id,string,,N,,Q 슬롯 등 공용 고유 스킬로 사용할 스킬 id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,6,passive_id,패시브 id,string,,N,,클래스별 패시브 스킬 id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,7,starter_chain_id,시작 스킬체인 id,string,,N,,전투 시작 시 기본 장착할 skill_chains.chain_id,"p20,p29"
+character_default_skills.csv,클래스별 기본 스킬,8,notes,비고,string,,N,,데이터 작성 메모,"p20,p29"

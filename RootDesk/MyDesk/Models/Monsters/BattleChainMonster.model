@@ -200,33 +200,6 @@
         },
         {
           "TargetType": "script.BRTrainingDummy",
-          "Name": "MaxHp",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 600
-        },
-        {
-          "TargetType": "script.BRTrainingDummy",
-          "Name": "ResetDelaySeconds",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 3
-        },
-        {
-          "TargetType": "script.BRTrainingDummy",
-          "Name": "DamageFlashSeconds",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 0.12
-        },
-        {
-          "TargetType": "script.BRTrainingDummy",
           "Name": "VerboseLog",
           "ValueType": {
             "$type": "MODNativeType",
@@ -251,15 +224,6 @@
             "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
           },
           "Value": true
-        },
-        {
-          "TargetType": "script.BRTrainingDummy",
-          "Name": "SkillExperienceReward",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 1
         },
         {
           "TargetType": "MOD.Core.PolygonRendererComponent",

@@ -1,3 +1,3 @@
 ﻿id,name,skill_category,icon_ruid,description,effect_ids,total_length_frames,frame_event_ids,cooldown
-divineSwing,,,,,,,4:divineSwing1,
-애로우 블로우,애로우 블로우,기본 스킬,f62b353e3f704eb097e427b7fc97980e,,애로우 블로우/effect,,,
+divineSwing,divineSwing,스킬 파츠,,,divineSwing/effect,8,4:divineSwing1,0.18
+애로우 블로우,애로우 블로우,기본 스킬,f62b353e3f704eb097e427b7fc97980e,,애로우 블로우/effect,12,0:애로우 블로우/시전,0.18

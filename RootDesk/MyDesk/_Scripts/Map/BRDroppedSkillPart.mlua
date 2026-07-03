@@ -1,7 +1,7 @@
 @Component
 script BRDroppedSkillPart extends Component
 
-	property string PartId = "slash_part"
+	property string PartId = ""
 
 	property string DisplayName = "Skill"
 
@@ -300,7 +300,7 @@ script BRDroppedSkillPart extends Component
 
 	method string GetPartId()
 		-- Returns a valid skill part id.
-		return self:ReadString(self.PartId, "slash_part")
+		return self:ReadString(self.PartId, "")
 	end
 
 	method string GetDisplayName()

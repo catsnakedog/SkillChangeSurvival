@@ -327,6 +327,7 @@ script BRBattleLauncher extends Logic
 				local spawnIndex = self:GetStartCornerSlotIndex(movedCount + 1)
 				local spawnPosition = self:GetSpawnPosition(matchRoom, spawnIndex, total, owner)
 				local spawnCornerName = self:GetStartCornerRoomName(spawnIndex)
+				self:ResetPlayerSkillStateForBattle(playerEntity, self:ReadString(matchRoom.MatchId, ""))
 				self:MovePlayerToBattleStart(playerEntity, targetMapName, spawnPosition, spawnIndex)
 				self:SetGatherName(player.UserId, spawnIndex, total)
 				player.SpawnIndex = spawnIndex
@@ -341,6 +342,19 @@ script BRBattleLauncher extends Logic
 		end
 		log("[BRBattleLauncher] moved players to fixed map: map=" .. targetMapName .. " count=" .. tostring(movedCount) .. "/" .. tostring(total))
 		return movedCount
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ResetPlayerSkillStateForBattle(Entity playerEntity, string matchId)
+		if _BRSkillSystem == nil or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		if userId == "" then
+			return
+		end
+		_BRSkillSystem:ResetUserForBattle(userId)
+		log("[BRBattleLauncher] skill battle reset user=" .. userId .. " match=" .. self:ReadString(matchId, ""))
 	end
 
 	@ExecSpace("ServerOnly")

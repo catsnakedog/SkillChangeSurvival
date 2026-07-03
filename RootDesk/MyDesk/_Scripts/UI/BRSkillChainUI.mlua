@@ -905,22 +905,7 @@ script BRSkillChainUI extends Component
 	end
 
 	method string InferSkillKey(any shortText, any displayName)
-		-- Infers a skill key for old snapshots that did not include SkillKey.
-		local short = self:ReadString(shortText, "")
-		local display = self:ReadString(displayName, "")
-		if short == "SL" or string.find(display, "Slash") ~= nil then
-			return "Slash"
-		elseif short == "SH" or string.find(display, "Shot") ~= nil then
-			return "Shot"
-		elseif short == "BU" or string.find(display, "Burst") ~= nil then
-			return "Burst"
-		elseif short == "DA" or string.find(display, "Dash") ~= nil then
-			return "Dash"
-		elseif short == "GU" or string.find(display, "Guard") ~= nil or string.find(display, "Barrier") ~= nil or string.find(display, "Fortress") ~= nil or string.find(display, "Aegis") ~= nil then
-			return "Guard"
-		elseif short == "FI" or string.find(display, "Field") ~= nil then
-			return "Field"
-		end
+		-- Old snapshots without SkillKey cannot be safely mapped after CSV migration.
 		return "Default"
 	end
 

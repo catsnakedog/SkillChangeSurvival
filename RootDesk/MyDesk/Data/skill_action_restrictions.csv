@@ -1,1 +1,3 @@
 ﻿skill_id,start_frame,end_frame,caster_move_speed_reduction_rate
+divineSwing,0,8,0.45
+애로우 블로우,0,12,0.45

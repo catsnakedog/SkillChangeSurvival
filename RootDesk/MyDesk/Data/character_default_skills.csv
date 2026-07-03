@@ -1,0 +1,5 @@
+﻿character_key,display_name,basic_attack_id,basic_skill_id,unique_skill_id,passive_id,starter_chain_id,notes
+Knight,기사,,애로우 블로우,애로우 블로우,,,현재 더미 기본 스킬 공통 지정
+Mage,마법사,,애로우 블로우,애로우 블로우,,,현재 더미 기본 스킬 공통 지정
+Rogue,도적,,애로우 블로우,애로우 블로우,,,현재 더미 기본 스킬 공통 지정
+Archer,궁수,,애로우 블로우,애로우 블로우,,,현재 더미 기본 스킬 공통 지정

@@ -1,4 +1,4 @@
-id,name,skill_category,icon_ruid,description,effect_ids,total_length_frames,frame_event_ids,cooldown,sound_ruid,disabled_icon_ruid,mouseover_icon_ruid,common_distance,end_sound_ruid,common_speed
+﻿id,name,skill_category,icon_ruid,description,effect_ids,total_length_frames,frame_event_ids,cooldown,sound_ruid,disabled_icon_ruid,mouseover_icon_ruid,common_distance,end_sound_ruid,common_speed
 Nimbus,근두운,기본 스킬,24475495ebf24048be84d194d98cf10b,비전투 전용 자유 이동 라이딩,Nimbus/repeat|Nimbus/end,0,,0.35,626819a606324e038c632018086bb9de,173ca13f8b3743ee938d589b7a4efa62,1d4ddb5b3e474222ba8f5aa9cf1b6388,,7a11ec9a27384286bc7de630bc0dcabb,5.2
 divineSwing,divineSwing,스킬 파츠,,,divineSwing/effect,8,4:divineSwing1,0.18,,,,,,
 애로우 블로우,애로우 블로우,기본 스킬,f62b353e3f704eb097e427b7fc97980e,,애로우 블로우/effect,12,0:애로우 블로우/시전,0.18,,,,,,

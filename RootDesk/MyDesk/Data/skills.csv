@@ -3,3 +3,7 @@ Nimbus,근두운,기본 스킬,24475495ebf24048be84d194d98cf10b,비전투 전용
 divineSwing,divineSwing,스킬 파츠,,,divineSwing/effect,8,4:divineSwing1,0.18,,,,,,
 애로우 블로우,애로우 블로우,기본 스킬,f62b353e3f704eb097e427b7fc97980e,전방에 100% 피해 화살 발사!,애로우 블로우/effect,9,0:애로우 블로우/시전,0.18,,,,,,
 Blink,버스트 스텝,기본 스킬,e510bb0b57d54643892bb7109f6d6714,방향키+C 직선 점멸,Blink/effect|Blink/effect0|Blink/effect1|Blink/special,8,,1.2,287c154aa1de458cb8f8eaf892c84b24,3ad6505e851c4052b217a026d67f70b3,4acc20387885456faae15fd0447c866f,2.8,,
+전사_보조_스킬,강 슬래시,기본 스킬,1dc02c9673284efb94da9c86e7414eeb,,전사_보조_스킬_effect,10,5:전사_보조_스킬_event_1,,afbb81b51fed47eaaee26cc403d59ccf,,,,,
+스피릿_블레이드,스피릿 블레이드,기본 스킬,e9e9dea63a5545a692459fa1cd4a11e4,,스피릿_블레이드_effect,12,6:스피릿_블레이드_event_1,,267c7840593c419098060eb07e2b4dbb,,,,,
+샤프_슬래시,샤프 슬래시,기본 스킬,a97da11639a64af483961c2b08790ede,,샤프_슬래시_effect,7,1:샤프_슬래시_event_1;2:샤프_슬래시_event_2,,07df4d0d720544fb8e153a6c754cd46f,,,,,
+슬래시_스톰,슬래시 스톰,기본 스킬,a1f571fb695a46baabe8d64aef29a410,,슬래시_스톰_effect,6,0:슬래시_스톰_event_1,,3a0e45300efd4623addaa0c30ba4cadc,,,,,

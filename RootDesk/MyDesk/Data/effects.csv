@@ -35,3 +35,7 @@ Blink/effect,8dc15776c4f349a0bfa155e911e4a7be,false,8
 Blink/effect0,df5bd4514ffb461fb8479ff0d88ec204,false,8
 Blink/effect1,c4755faee88149738692350b34aa5766,false,8
 Blink/special,ba3f9119b8634a1f80e85017adc426f7,false,8
+전사_보조_스킬_effect,eaa71284041b4c8390c32ade11286e16,false,10
+스피릿_블레이드_effect,e4d8f3edcb824141a989ad41b4c2351c,false,12
+샤프_슬래시_effect,ffaf507b148744f49715a8253477fec0,false,7
+슬래시_스톰_effect,74f8d58d6b2b4386bd20f7556c4898a1,false,6

@@ -1,2 +1,7 @@
 ﻿area_target_id,hitbox_ids,duration_frames,target,action_ids
 divineSwingArea1,ds1b1|ds1b2,4,적군,ds1hit|ds1stun
+전사_보조_스킬_event_1_target,전사_보조_스킬_event_1_hitbox_0|전사_보조_스킬_event_1_hitbox_1,4,적군,전사_보조_스킬_event_1_damage
+스피릿_블레이드_event_1_target,,1,적군,스피릿_블레이드_event_1_damage
+샤프_슬래시_event_1_target,샤프_슬래시_event_1_hitbox_0|샤프_슬래시_event_1_hitbox_1,4,적군,샤프_슬래시_event_1_damage
+샤프_슬래시_event_2_target,샤프_슬래시_event_2_hitbox_0|샤프_슬래시_event_2_hitbox_1,3,적군,샤프_슬래시_event_2_damage
+슬래시_스톰_event_1_target,슬래시_스톰_event_1_hitbox_0,5,적군,슬래시_스톰_event_1_damage

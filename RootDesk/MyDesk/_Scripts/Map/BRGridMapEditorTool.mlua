@@ -753,6 +753,8 @@ script BRGridMapEditorTool extends Component
 
 		portal.PortalComponent.BoxOffset = Vector2(0, 0)
 		portal.PortalComponent.BoxSize = self:GetPortalBoxSize(direction)
+		portal.PortalComponent.Enable = false
+		portal.PortalComponent.PortalEntityRef = nil
 	end
 
 	method Entity CloneTemplateLabel(Entity room)

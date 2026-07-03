@@ -74,6 +74,7 @@ script BRCharacterSystem extends Logic
 			return
 		end
 		local key = self:GetServerCharacterKey(userId)
+		self:ApplyCharacterAvatarToUser(userId, key, "snapshot-server")
 		self:ApplyCharacterClient(userId, key, "snapshot")
 		self:Log("snapshot user=" .. userId .. " key=" .. key)
 	end
@@ -117,6 +118,7 @@ script BRCharacterSystem extends Logic
 		end
 		local safeKey = self:NormalizeCharacterKey(characterKey)
 		self._T.serverCharacterByUserId[safeUserId] = safeKey
+		self:ApplyCharacterAvatarToUser(safeUserId, safeKey, reason)
 		self:ApplyCharacterClient(safeUserId, safeKey, reason)
 		if _BRSkillSystem ~= nil then
 			_BRSkillSystem:NotifyUserChanged(safeUserId)
@@ -191,9 +193,10 @@ script BRCharacterSystem extends Logic
 	@ExecSpace("ClientOnly")
 	method void ApplyLocalCharacterAvatar(string characterKey, string reason)
 		-- Applies the fixed class costume to the local player avatar.
-		local data = self:GetCharacterData(characterKey)
+		local safeKey = self:NormalizeCharacterKey(characterKey)
+		local data = self:GetCharacterData(safeKey)
 		if data == nil or data.Avatar == nil then
-			self:Log("avatar skipped reason=noData key=" .. self:ReadString(characterKey, ""))
+			self:Log("avatar skipped reason=noData key=" .. safeKey)
 			return
 		end
 		local localPlayer = _UserService.LocalPlayer
@@ -202,8 +205,48 @@ script BRCharacterSystem extends Logic
 			return
 		end
 
-		local costume = localPlayer.CostumeManagerComponent
+		self:ApplyCharacterAvatarToEntityInternal(localPlayer, safeKey, reason)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyCharacterAvatarToUser(string userId, string characterKey, string reason)
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil then
+			self:Log("avatar server skipped reason=noUserEntity user=" .. safeUserId .. " key=" .. self:ReadString(characterKey, ""))
+			return
+		end
+		self:ApplyCharacterAvatarToEntityInternal(playerEntity, characterKey, reason)
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean ApplyCharacterAvatarToEntityServer(Entity targetEntity, string characterKey, string reason)
+		return self:ApplyCharacterAvatarToEntityInternal(targetEntity, characterKey, reason)
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean ApplyCharacterAvatarToEntityClient(Entity targetEntity, string characterKey, string reason)
+		return self:ApplyCharacterAvatarToEntityInternal(targetEntity, characterKey, reason)
+	end
+
+	method boolean ApplyCharacterAvatarToEntityInternal(Entity targetEntity, string characterKey, string reason)
+		local safeKey = self:NormalizeCharacterKey(characterKey)
+		local data = self:GetCharacterData(safeKey)
+		if data == nil or data.Avatar == nil then
+			self:Log("avatar skipped reason=noData key=" .. self:ReadString(characterKey, ""))
+			return false
+		end
+		if targetEntity == nil or targetEntity.CostumeManagerComponent == nil then
+			self:Log("avatar skipped reason=noCostume key=" .. safeKey)
+			return false
+		end
+
+		local costume = targetEntity.CostumeManagerComponent
 		local avatar = data.Avatar
+		costume.Enable = true
 		costume.UseCustomEquipOnly = true
 		costume.DefaultEquipUserId = ""
 
@@ -231,7 +274,8 @@ script BRCharacterSystem extends Logic
 		else
 			self:SetAvatarEquip(costume, MapleAvatarItemCategory.OneHandedWeapon, weaponRuid)
 		end
-		self:Log("avatar applied key=" .. self:ReadString(data.Key, "") .. " reason=" .. self:ReadString(reason, ""))
+		self:Log("avatar applied key=" .. self:ReadString(data.Key, "") .. " entity=" .. self:GetEntityDebugName(targetEntity) .. " reason=" .. self:ReadString(reason, ""))
+		return true
 	end
 
 	@ExecSpace("ClientOnly")
@@ -386,6 +430,33 @@ script BRCharacterSystem extends Logic
 			end
 		end
 		return 1
+	end
+
+	method string GetCharacterKeyByIndex(number rawIndex)
+		return self:GetCharacterKeyByIndexInternal(rawIndex)
+	end
+
+	@ExecSpace("ServerOnly")
+	method string GetServerCharacterKeyByIndex(number rawIndex)
+		return self:GetCharacterKeyByIndexInternal(rawIndex)
+	end
+
+	method string GetCharacterKeyByIndexInternal(number rawIndex)
+		local catalog = self:GetCharacterCatalog()
+		local count = #catalog
+		if count <= 0 then
+			return self:GetDefaultCharacterKey()
+		end
+		local index = math.floor(self:ReadNumber(rawIndex, 1))
+		if index < 1 then
+			index = 1
+		end
+		index = ((index - 1) % count) + 1
+		local data = catalog[index]
+		if data == nil then
+			return self:GetDefaultCharacterKey()
+		end
+		return self:ReadString(data.Key, self:GetDefaultCharacterKey())
 	end
 
 	method string GetCharacterDefaultSkillValue(string characterKey, string columnName)
@@ -690,6 +761,25 @@ script BRCharacterSystem extends Logic
 			return fallback
 		end
 		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method string GetEntityDebugName(Entity entity)
+		if entity == nil then
+			return "nil"
+		end
+		local name = self:ReadString(entity.Name, "")
+		if name ~= "" then
+			return name
+		end
+		return self:ReadString(entity.Id, "entity")
 	end
 
 	method string TrimString(string value)

@@ -1217,6 +1217,8 @@ script BRRoomGraphGenerator extends Logic
 			portal.PortalComponent.Enable = open == true and customControlled ~= true
 			if open == true and destinationPortal ~= nil and customControlled ~= true then
 				portal.PortalComponent.PortalEntityRef = EntityRef(destinationPortal)
+			else
+				portal.PortalComponent.PortalEntityRef = nil
 			end
 		elseif open == true then
 			self:Log("portal component missing: " .. portal.Path)

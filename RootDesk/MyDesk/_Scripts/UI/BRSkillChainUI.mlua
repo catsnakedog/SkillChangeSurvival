@@ -15,7 +15,11 @@ script BRSkillChainUI extends Component
 
 	property number BagSlotCount = 2
 
-	property boolean AttachInventoryPanel = true
+	property boolean AttachInventoryPanel = false
+
+	property boolean EnableChainEditing = false
+
+	property boolean ShowSkillInventoryPanel = false
 
 	property number InventoryAttachGap = -2
 
@@ -104,7 +108,7 @@ script BRSkillChainUI extends Component
 		self:SetDragGhostActive(false)
 		self:Refresh()
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds(), 0.1)
-		self:Log("slot highlight mode=frame")
+		self:Log("slot highlight mode=sequence")
 		self:Log("ready chainRoot=" .. self:GetChainRootPath() .. " inventoryRoot=" .. self:GetInventoryRootPath())
 	end
 
@@ -130,7 +134,7 @@ script BRSkillChainUI extends Component
 		end
 
 		self:SetChainPanelActive(true)
-		self:SetInventoryPanelActive(true)
+		self:SetInventoryPanelActive(self.ShowSkillInventoryPanel == true)
 		self:RefreshBattleHud(localPlayer)
 		local now = _UtilLogic.ElapsedSeconds
 		if _BRSkillSystem ~= nil and now >= self.nextRequestAt then
@@ -141,7 +145,6 @@ script BRSkillChainUI extends Component
 		if _BRSkillSystem == nil then
 			self:RefreshCommonSkillSlots()
 			self:RenderChain()
-			self:RenderBag()
 			return
 		end
 
@@ -155,7 +158,6 @@ script BRSkillChainUI extends Component
 		self._T.chainSlots = self:ParseChainText(_BRSkillSystem:GetLocalChainText())
 		self._T.bagParts = self:ParseBagText(_BRSkillSystem:GetLocalBagText())
 		self:RenderChain()
-		self:RenderBag()
 		self:RefreshCommonSkillSlots()
 	end
 
@@ -164,6 +166,11 @@ script BRSkillChainUI extends Component
 		self:EnsureRuntime()
 		self:DisconnectHandlers()
 		self._T.handlers = {}
+
+		if self.EnableChainEditing ~= true then
+			self:Log("handlers skipped mode=sequence-display")
+			return
+		end
 
 		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnInputKeyDown)
 		self.inputKeyUpHandler = _InputService:ConnectEvent(KeyUpEvent, self.OnInputKeyUp)
@@ -648,11 +655,13 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void RenderChain()
-		-- Renders the chain as icon-only slots with tier frames.
+		-- Renders one representative skill icon and five internal sequence slots.
 		local slots = self._T.chainSlots
+		self:RenderChainRepresentativeVisual(slots)
 		for slotIndex = 1, self:GetChainSlotCount() do
-			local labelPath = "Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Label"
-			local tierPath = "Panel/Chain/Slot_" .. tostring(slotIndex) .. "/Tier"
+			local basePath = self:GetInternalChainSlotPath(slotIndex)
+			local labelPath = basePath .. "/Label"
+			local tierPath = basePath .. "/Tier"
 			local record = nil
 			if slots ~= nil then
 				record = slots[slotIndex]
@@ -661,6 +670,21 @@ script BRSkillChainUI extends Component
 			self:SetChainTextByPath(tierPath, "")
 			self:RenderChainSlotVisual(slotIndex, record)
 		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderChainRepresentativeVisual(any slots)
+		-- Uses the left icon as the whole chain's representative image.
+		local representativePath = self:GetRepresentativeChainSlotPath()
+		local record = self:GetRepresentativeChainRecord(slots)
+		local skillKey = "Default"
+		if record ~= nil then
+			skillKey = self:GetRecordSkillKey(record)
+		end
+		self:SetChainTextByPath(representativePath .. "/Label", "")
+		self:SetChainTextByPath(representativePath .. "/Tier", "")
+		self:SetSkillSlotVisual("CHAIN", representativePath, skillKey, 5, true, true, false)
+		self:SetSlotFrameColor("CHAIN", representativePath, Color(1.0, 0.86, 0.24, 1.0))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -687,9 +711,9 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void RenderChainSlotVisual(number slotIndex, any record)
-		-- Applies icon, base tint, and tier frame to one chain slot.
+		-- Applies icon, base tint, and order frame to one internal chain slot.
 		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
-		local basePath = "Panel/Chain/Slot_" .. tostring(safeSlotIndex)
+		local basePath = self:GetInternalChainSlotPath(safeSlotIndex)
 		if self:IsLockedChainSlotRecord(record) == true then
 			self:SetSkillSlotVisual("CHAIN", basePath, "Default", 0, false, false, false)
 			self:SetVisualSpriteColor("CHAIN", basePath, Color(0.035, 0.04, 0.055, 0.82))
@@ -697,17 +721,14 @@ script BRSkillChainUI extends Component
 			return
 		end
 		local occupied = record ~= nil and self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0
-		local isLead = false
-		local displayTier = 1
+		local displayTier = safeSlotIndex
 		local skillKey = "Default"
 		if occupied == true then
-			isLead = self:IsLeadChainSlot(safeSlotIndex, record)
-			displayTier = self:GetChainDisplayTier(safeSlotIndex, record)
 			skillKey = self:GetRecordSkillKey(record)
 		else
 			displayTier = 0
 		end
-		self:SetSkillSlotVisual("CHAIN", basePath, skillKey, displayTier, occupied, isLead, false)
+		self:SetSkillSlotVisual("CHAIN", basePath, skillKey, displayTier, occupied, false, false)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -743,7 +764,7 @@ script BRSkillChainUI extends Component
 		local iconRuid = self:GetSlotIconRUID(skillKey, safeTier, isLeadSlot == true)
 		local baseColor = self:GetSlotBaseColor(occupied == true, safeTier, equipped == true)
 		local borderColor = self:GetSlotBorderColor(safeTier, occupied == true, isLeadSlot == true)
-		local iconColor = self:GetSlotIconColor(safeTier, occupied == true)
+		local iconColor = self:GetSolidSlotIconColor(skillKey, safeTier, occupied == true, isLeadSlot == true)
 
 		if self:HasAuthoredBattleHudLayout() == true and safeRootKind == "CHAIN" then
 			self:SetVisualSpriteColor(safeRootKind, safeBasePath, Color(1, 1, 1, 1))
@@ -789,11 +810,52 @@ script BRSkillChainUI extends Component
 	end
 
 	method string GetSlotIconRUID(string skillKey, number tier, boolean isLeadSlot)
-		-- Reads icon RUID data from the temporary skill UI database.
-		if _BRSkillUIDatabase ~= nil then
-			return _BRSkillUIDatabase:GetSlotIconRUID(self:GetBaseSkillKey(skillKey), tier, isLeadSlot == true)
-		end
+		-- Skill-chain HUD uses one solid placeholder sprite and communicates order by tint.
 		return self:GetFallbackIconRUID()
+	end
+
+	method Color GetSolidSlotIconColor(string skillKey, number tier, boolean occupied, boolean isRepresentative)
+		if occupied ~= true then
+			return Color(1, 1, 1, 0)
+		end
+		if isRepresentative == true then
+			return Color(1.0, 0.86, 0.24, 1.0)
+		end
+
+		local order = math.max(1, math.floor(self:ReadNumber(tier, 1)))
+		local paletteIndex = ((order + self:GetSkillPaletteOffset(skillKey) - 2) % 5) + 1
+		if paletteIndex == 1 then
+			return Color(0.22, 0.72, 1.0, 0.98)
+		elseif paletteIndex == 2 then
+			return Color(0.28, 0.94, 0.58, 0.98)
+		elseif paletteIndex == 3 then
+			return Color(1.0, 0.78, 0.22, 0.98)
+		elseif paletteIndex == 4 then
+			return Color(1.0, 0.36, 0.26, 0.98)
+		end
+		return Color(0.78, 0.42, 1.0, 0.98)
+	end
+
+	method number GetSkillPaletteOffset(string skillKey)
+		local key = self:GetBaseSkillKey(skillKey)
+		if key == "Default" or key == "" then
+			return 0
+		end
+		if key == "divineSwing" then
+			return 0
+		elseif key == "Blink" then
+			return 1
+		elseif key == "Nimbus" then
+			return 2
+		elseif key == "Unique" then
+			return 3
+		end
+
+		local total = 0
+		for index = 1, string.len(key) do
+			total = total + string.byte(key, index)
+		end
+		return total % 5
 	end
 
 	method Color GetSlotBaseColor(boolean occupied, number tier, boolean equipped)
@@ -922,6 +984,36 @@ script BRSkillChainUI extends Component
 	method string GetFallbackIconRUID()
 		-- Returns a safe placeholder RUID when the icon database is unavailable.
 		return "4fea64a3307cda641809ad8be0d4890b"
+	end
+
+	method string GetRepresentativeChainSlotPath()
+		-- Authored battle HUD stores the whole-skill icon separately from sequence parts.
+		if self:HasAuthoredBattleHudLayout() == true then
+			return "Panel/Chain/Representative"
+		end
+		return "Panel/Chain/Slot_1"
+	end
+
+	method string GetInternalChainSlotPath(number slotIndex)
+		-- In the authored HUD, Slot_1 is reserved for the representative image alias.
+		local safeSlotIndex = math.max(1, math.floor(self:ReadNumber(slotIndex, 1)))
+		if self:HasAuthoredBattleHudLayout() == true then
+			return "Panel/Chain/Slot_" .. tostring(safeSlotIndex + 1)
+		end
+		return "Panel/Chain/Slot_" .. tostring(safeSlotIndex)
+	end
+
+	method any GetRepresentativeChainRecord(any slots)
+		if slots == nil then
+			return nil
+		end
+		for slotIndex = 1, self:GetChainSlotCount() do
+			local record = slots[slotIndex]
+			if record ~= nil and self:IsLockedChainSlotRecord(record) ~= true and self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0 then
+				return record
+			end
+		end
+		return nil
 	end
 
 	method any ParseChainText(string text)
@@ -1583,6 +1675,12 @@ script BRSkillChainUI extends Component
 		end
 		if path == "Panel" or path == "Panel/Bg" or path == "Panel/Chain" then
 			return "Bg"
+		end
+		if path == "Panel/Chain/Representative" then
+			return "Bg/SkillChain_5"
+		end
+		if self:StartsWith(path, "Panel/Chain/Representative/") == true then
+			return "Bg/SkillChain_5" .. string.sub(path, string.len("Panel/Chain/Representative") + 1)
 		end
 		if self:StartsWith(path, "Panel/Chain/SlotTouch_") == true then
 			return self:GetBattleHudSlotAlias(path, "Panel/Chain/SlotTouch_")

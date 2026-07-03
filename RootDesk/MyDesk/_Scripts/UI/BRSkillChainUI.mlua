@@ -657,6 +657,8 @@ script BRSkillChainUI extends Component
 	method void RenderChain()
 		-- Renders one representative skill icon and five internal sequence slots.
 		local slots = self._T.chainSlots
+		local lockedCount = 0
+		local effectCount = 0
 		self:RenderChainRepresentativeVisual(slots)
 		for slotIndex = 1, self:GetChainSlotCount() do
 			local basePath = self:GetInternalChainSlotPath(slotIndex)
@@ -668,8 +670,16 @@ script BRSkillChainUI extends Component
 			end
 			self:SetChainTextByPath(labelPath, "")
 			self:SetChainTextByPath(tierPath, "")
+			if self:IsLockedChainSlotRecord(record) == true then
+				lockedCount = lockedCount + 1
+			elseif record ~= nil and self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0 then
+				if self:IsLeadChainSlot(slotIndex, record) == true and self:GetChainDisplayTier(slotIndex, record) > 1 then
+					effectCount = effectCount + 1
+				end
+			end
 			self:RenderChainSlotVisual(slotIndex, record)
 		end
+		self:LogChainDecorationSummary(lockedCount, effectCount)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -714,21 +724,66 @@ script BRSkillChainUI extends Component
 		-- Applies icon, base tint, and order frame to one internal chain slot.
 		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
 		local basePath = self:GetInternalChainSlotPath(safeSlotIndex)
-		if self:IsLockedChainSlotRecord(record) == true then
+		local locked = self:IsLockedChainSlotRecord(record)
+		self:SetChainSlotLockVisual(safeSlotIndex, locked)
+		self:SetChainSlotChainEffectVisual(safeSlotIndex, 0, false)
+		if locked == true then
 			self:SetSkillSlotVisual("CHAIN", basePath, "Default", 0, false, false, false)
 			self:SetVisualSpriteColor("CHAIN", basePath, Color(0.035, 0.04, 0.055, 0.82))
 			self:SetSlotFrameColor("CHAIN", basePath, Color(0.78, 0.82, 0.9, 0.62))
 			return
 		end
 		local occupied = record ~= nil and self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0
-		local displayTier = safeSlotIndex
+		local displayTier = 0
+		local isLeadSlot = false
 		local skillKey = "Default"
 		if occupied == true then
 			skillKey = self:GetRecordSkillKey(record)
+			displayTier = self:GetChainDisplayTier(safeSlotIndex, record)
+			isLeadSlot = self:IsLeadChainSlot(safeSlotIndex, record)
 		else
 			displayTier = 0
 		end
-		self:SetSkillSlotVisual("CHAIN", basePath, skillKey, displayTier, occupied, false, false)
+		self:SetSkillSlotVisual("CHAIN", basePath, skillKey, displayTier, occupied, isLeadSlot, false)
+		self:SetChainSlotChainEffectVisual(safeSlotIndex, displayTier, occupied == true and isLeadSlot == true and displayTier > 1)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetChainSlotLockVisual(number slotIndex, boolean locked)
+		-- Authored HUD slots expose a child named Lock for the locked overlay.
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlotIndex <= 0 then
+			return
+		end
+		local basePath = self:GetInternalChainSlotPath(safeSlotIndex)
+		self:SetChainEntityEnabled(basePath .. "/Lock", locked == true)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetChainSlotChainEffectVisual(number slotIndex, number tier, boolean active)
+		-- Only the lead slot in a folded chain run shows Chain_N. Tier 1 has no effect.
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlotIndex <= 0 then
+			return
+		end
+		local basePath = self:GetInternalChainSlotPath(safeSlotIndex)
+		for effectTier = 2, self:GetChainSlotCount() do
+			self:SetChainEntityEnabled(basePath .. "/Chain_" .. tostring(effectTier), false)
+		end
+		local safeTier = math.floor(self:ReadNumber(tier, 0))
+		if active == true and safeTier > 1 then
+			self:SetChainEntityEnabled(basePath .. "/Chain_" .. tostring(safeTier), true)
+		end
+	end
+
+	method void LogChainDecorationSummary(number lockedCount, number effectCount)
+		self:EnsureRuntime()
+		local summary = "locked=" .. tostring(math.floor(self:ReadNumber(lockedCount, 0))) .. " effects=" .. tostring(math.floor(self:ReadNumber(effectCount, 0)))
+		if self._T.lastChainDecorationSummary == summary then
+			return
+		end
+		self._T.lastChainDecorationSummary = summary
+		self:Log("chain decoration refresh " .. summary)
 	end
 
 	@ExecSpace("ClientOnly")

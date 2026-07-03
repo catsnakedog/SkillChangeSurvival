@@ -23,6 +23,12 @@ script BRGridMapEditorTool extends Component
 
 	property boolean AllowRuntimeRoomCloning = false
 
+	property boolean RefreshGeneratedRoomPhysicsOnSync = true
+
+	property number GeneratedRoomPhysicsNudgeAmount = 0.01
+
+	property number GeneratedRoomPhysicsRestoreDelaySeconds = 0.03
+
 	property string SupplyChildName = "SupplyBox"
 
 	property number SupplyOffsetX = 0
@@ -33,7 +39,16 @@ script BRGridMapEditorTool extends Component
 
 	method void OnBeginPlay()
 		-- Logs the current grid authoring settings when the tool entity loads.
+		self:EnsureRuntimeTables()
 		self:Log("ready grid=" .. tostring(self:GetColumns()) .. "x" .. tostring(self:GetRows()) .. " parts=" .. tostring(self:GetMapPartCount()) .. " fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. " pool=" .. tostring(self:GetPoolPartCount()) .. " room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. ") gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. ") number=" .. self:GetPartRangeText() .. " runtimeClone=" .. tostring(self:IsRuntimeRoomCloningAllowed()))
+		self:RefreshGeneratedRoomPhysics(self:GetGeneratedRoot(), "begin play")
+	end
+
+	method void EnsureRuntimeTables()
+		-- Keeps transient runtime flags local to this grid tool component.
+		if self._T == nil then
+			self._T = {}
+		end
 	end
 
 	@InspectorButton("Generate Grid Preview")
@@ -245,6 +260,81 @@ script BRGridMapEditorTool extends Component
 		local boundsText = self:SyncMapBoundsFromGrid()
 		local summary = "grid=" .. tostring(columns) .. "x" .. tostring(rows) .. ", parts=" .. tostring(self:GetMapPartCount()) .. ", fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. ", pool=" .. tostring(self:GetPoolPartCount()) .. ", number=" .. self:GetPartRangeText() .. ", room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. "), gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. "), runtimeClone=" .. tostring(allowRuntimeClone) .. ", reused=" .. tostring(reusedCount) .. ", created=" .. tostring(createdCount) .. ", missing=" .. tostring(missingCount)
 		self:Log(self:ReadString(actionName, "synced") .. " " .. summary .. ", hiddenOutOfRange=" .. tostring(hiddenOutOfRange) .. ", bounds=" .. boundsText)
+		self:RefreshGeneratedRoomPhysics(root, self:ReadString(actionName, "synced"))
+	end
+
+	method void RefreshGeneratedRoomPhysics(Entity root, string reason)
+		-- Nudges generated room roots for one tick so copied visual and physical caches re-align.
+		self:EnsureRuntimeTables()
+		if self.RefreshGeneratedRoomPhysicsOnSync ~= true then
+			return
+		end
+		if root == nil or root.Children == nil then
+			return
+		end
+		if self._T.generatedRoomPhysicsNudgePending == true then
+			self:Log("generated room physics nudge skipped reason=" .. self:ReadString(reason, "sync") .. " pending=true")
+			return
+		end
+
+		local amount = self:GetGeneratedRoomPhysicsNudgeAmount()
+		if amount <= 0 then
+			return
+		end
+
+		local snapshots = {}
+		local count = 0
+		local children = root.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil and child.TransformComponent ~= nil and child.Enable == true and self:IsGeneratedRoomName(child.Name) == true then
+				local partSlot = self:GetGeneratedRoomNumberFromName(child.Name)
+				if self:IsRoomNumberInCurrentGrid(partSlot) == true then
+					local position = child.TransformComponent.Position
+					count = count + 1
+					snapshots[count] = {
+						Entity = child,
+						X = position.x,
+						Y = position.y,
+						Z = position.z
+					}
+					child.TransformComponent.Position = Vector3(position.x + amount, position.y, position.z)
+				end
+			end
+		end
+
+		if count <= 0 then
+			return
+		end
+
+		local safeReason = self:ReadString(reason, "sync")
+		self._T.generatedRoomPhysicsNudgePending = true
+		self:Log("generated room physics nudge reason=" .. safeReason .. " count=" .. tostring(count) .. " amount=" .. tostring(amount))
+		if _TimerService ~= nil then
+			_TimerService:SetTimerOnce(function()
+				self:RestoreGeneratedRoomPhysicsSnapshots(snapshots, safeReason)
+			end, self:GetGeneratedRoomPhysicsRestoreDelaySeconds())
+		else
+			self:RestoreGeneratedRoomPhysicsSnapshots(snapshots, safeReason)
+		end
+	end
+
+	method void RestoreGeneratedRoomPhysicsSnapshots(any snapshots, string reason)
+		-- Restores generated room roots to their exact authored positions after the nudge tick.
+		self:EnsureRuntimeTables()
+		local count = 0
+		if snapshots ~= nil then
+			for index, snapshot in ipairs(snapshots) do
+				if snapshot ~= nil then
+					local room = snapshot.Entity
+					if room ~= nil and isvalid(room) == true and room.TransformComponent ~= nil then
+						room.TransformComponent.Position = Vector3(self:ReadNumber(snapshot.X, 0), self:ReadNumber(snapshot.Y, 0), self:ReadNumber(snapshot.Z, self:GetRoomZ()))
+						count = count + 1
+					end
+				end
+			end
+		end
+		self._T.generatedRoomPhysicsNudgePending = false
+		self:Log("generated room physics restore reason=" .. self:ReadString(reason, "sync") .. " count=" .. tostring(count))
 	end
 
 	method string SyncMapBoundsFromGrid()
@@ -1102,6 +1192,16 @@ script BRGridMapEditorTool extends Component
 	method number GetRoomHeight()
 		-- Returns the room height in world units.
 		return math.max(1, self:ReadNumber(self.RoomHeight, 10))
+	end
+
+	method number GetGeneratedRoomPhysicsNudgeAmount()
+		-- Returns the tiny movement used to force generated room physics refresh.
+		return math.max(0, self:ReadNumber(self.GeneratedRoomPhysicsNudgeAmount, 0.01))
+	end
+
+	method number GetGeneratedRoomPhysicsRestoreDelaySeconds()
+		-- Returns how long the generated rooms stay nudged before returning.
+		return math.max(0.01, self:ReadNumber(self.GeneratedRoomPhysicsRestoreDelaySeconds, 0.03))
 	end
 
 	method number GetGapX()

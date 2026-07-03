@@ -39,6 +39,14 @@ script BRLobbyTrainingController extends Component
 
 	property boolean ApplySkillStatsInLobby = true
 
+	property boolean MatchBattleMovementInLobby = true
+
+	property number LobbyWalkSpeed = 1.8
+
+	property number LobbyWalkJump = 1.8
+
+	property number LobbyGravity = 1.8
+
 	property boolean VerboseLog = true
 
 	@Sync
@@ -68,6 +76,7 @@ script BRLobbyTrainingController extends Component
 		self._T.baseMaxHp = {}
 		self._T.skillReset = {}
 		self._T.starterGranted = {}
+		self._T.lobbyMovementLogValues = {}
 		self.scanTimerId = _TimerService:SetTimerRepeat(function() self:RefreshLobbyPlayers() end, self:GetPlayerScanSeconds(), 0)
 		self:RefreshLobbyPlayers()
 		self.LobbyTrainingStatus = "Ready"
@@ -92,6 +101,7 @@ script BRLobbyTrainingController extends Component
 		self._T.baseMaxHp = {}
 		self._T.skillReset = {}
 		self._T.starterGranted = {}
+		self._T.lobbyMovementLogValues = {}
 		self.LobbyTrainingStatus = "Stopped"
 	end
 
@@ -175,6 +185,7 @@ script BRLobbyTrainingController extends Component
 		end
 
 		playerEntity.PlayerComponent.PVPMode = false
+		self:ApplyBattleMovementInLobby(playerEntity)
 		self:GrantStarterPartsIfNeeded(playerEntity)
 		self:ApplyLobbySkillStats(playerEntity)
 
@@ -242,6 +253,40 @@ script BRLobbyTrainingController extends Component
 		end
 
 		_BRSkillSystem:ApplyMovementStatsToPlayer(playerEntity, self:CaptureBasePhysicsStats(playerEntity))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyBattleMovementInLobby(Entity playerEntity)
+		if self.MatchBattleMovementInLobby == false or playerEntity == nil then
+			return
+		end
+
+		local speed = self:GetLobbyWalkSpeed()
+		local jump = self:GetLobbyWalkJump()
+		local gravity = self:GetLobbyGravity()
+
+		if playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent.InputSpeed = speed
+			playerEntity.MovementComponent.JumpForce = jump
+		end
+		if playerEntity.RigidbodyComponent ~= nil then
+			playerEntity.RigidbodyComponent.Gravity = gravity
+			playerEntity.RigidbodyComponent.WalkSpeed = speed
+			playerEntity.RigidbodyComponent.WalkJump = jump
+		end
+
+		self:EnsureRuntimeTables()
+		local userId = self:GetUserId(playerEntity)
+		if userId == "" then
+			return
+		end
+
+		local signature = tostring(speed) .. ":" .. tostring(jump) .. ":" .. tostring(gravity)
+		if self._T.lobbyMovementLogValues[userId] == signature then
+			return
+		end
+		self._T.lobbyMovementLogValues[userId] = signature
+		self:Log("battle movement user=" .. userId .. " speed=" .. tostring(speed) .. " jump=" .. tostring(jump) .. " gravity=" .. tostring(gravity))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -330,18 +375,20 @@ script BRLobbyTrainingController extends Component
 		end
 
 		local stats = {
-			InputSpeed = 1,
-			JumpForce = 1,
-			WalkSpeed = 1,
-			WalkJump = 1
+			InputSpeed = self:GetLobbyWalkSpeed(),
+			JumpForce = self:GetLobbyWalkJump(),
+			WalkSpeed = self:GetLobbyWalkSpeed(),
+			WalkJump = self:GetLobbyWalkJump()
 		}
-		if playerEntity.MovementComponent ~= nil then
-			stats.InputSpeed = self:ReadNumber(playerEntity.MovementComponent.InputSpeed, stats.InputSpeed)
-			stats.JumpForce = self:ReadNumber(playerEntity.MovementComponent.JumpForce, stats.JumpForce)
-		end
-		if playerEntity.RigidbodyComponent ~= nil then
-			stats.WalkSpeed = self:ReadNumber(playerEntity.RigidbodyComponent.WalkSpeed, stats.WalkSpeed)
-			stats.WalkJump = self:ReadNumber(playerEntity.RigidbodyComponent.WalkJump, stats.WalkJump)
+		if self.MatchBattleMovementInLobby == false then
+			if playerEntity.MovementComponent ~= nil then
+				stats.InputSpeed = self:ReadNumber(playerEntity.MovementComponent.InputSpeed, stats.InputSpeed)
+				stats.JumpForce = self:ReadNumber(playerEntity.MovementComponent.JumpForce, stats.JumpForce)
+			end
+			if playerEntity.RigidbodyComponent ~= nil then
+				stats.WalkSpeed = self:ReadNumber(playerEntity.RigidbodyComponent.WalkSpeed, stats.WalkSpeed)
+				stats.WalkJump = self:ReadNumber(playerEntity.RigidbodyComponent.WalkJump, stats.WalkJump)
+			end
 		end
 
 		self._T.basePhysicsStats[userId] = stats
@@ -411,6 +458,18 @@ script BRLobbyTrainingController extends Component
 
 	method number GetPlayerScanSeconds()
 		return math.max(0.033, self:ReadNumber(self.PlayerScanSeconds, 0.15))
+	end
+
+	method number GetLobbyWalkSpeed()
+		return math.max(0.1, self:ReadNumber(self.LobbyWalkSpeed, 1.8))
+	end
+
+	method number GetLobbyWalkJump()
+		return math.max(0.1, self:ReadNumber(self.LobbyWalkJump, 1.8))
+	end
+
+	method number GetLobbyGravity()
+		return math.max(0.1, self:ReadNumber(self.LobbyGravity, 1.8))
 	end
 
 	method number GetStarterPartCount()
@@ -487,6 +546,9 @@ script BRLobbyTrainingController extends Component
 		end
 		if self._T.starterGranted == nil then
 			self._T.starterGranted = {}
+		end
+		if self._T.lobbyMovementLogValues == nil then
+			self._T.lobbyMovementLogValues = {}
 		end
 	end
 

@@ -761,10 +761,11 @@ script BRSkillChainUI extends Component
 		local safeRootKind = self:ReadString(rootKind, "CHAIN")
 		local safeBasePath = self:ReadString(basePath, "")
 		local safeTier = math.max(1, math.floor(self:ReadNumber(tier, 1)))
-		local iconRuid = self:GetSlotIconRUID(skillKey, safeTier, isLeadSlot == true)
+		local useSolidIcon = self:ShouldUseSolidSkillIcon(safeRootKind, safeBasePath, isLeadSlot == true)
+		local iconRuid = self:GetSlotIconRUID(skillKey, safeTier, isLeadSlot == true, useSolidIcon)
 		local baseColor = self:GetSlotBaseColor(occupied == true, safeTier, equipped == true)
 		local borderColor = self:GetSlotBorderColor(safeTier, occupied == true, isLeadSlot == true)
-		local iconColor = self:GetSolidSlotIconColor(skillKey, safeTier, occupied == true, isLeadSlot == true)
+		local iconColor = self:GetSlotIconDisplayColor(skillKey, safeTier, occupied == true, isLeadSlot == true, useSolidIcon)
 
 		if self:HasAuthoredBattleHudLayout() == true and safeRootKind == "CHAIN" then
 			self:SetVisualSpriteColor(safeRootKind, safeBasePath, Color(1, 1, 1, 1))
@@ -809,9 +810,50 @@ script BRSkillChainUI extends Component
 		return self:GetChainEntity(relativePath)
 	end
 
-	method string GetSlotIconRUID(string skillKey, number tier, boolean isLeadSlot)
-		-- Skill-chain HUD uses one solid placeholder sprite and communicates order by tint.
+	method boolean ShouldUseSolidSkillIcon(string rootKind, string basePath, boolean isLeadSlot)
+		-- Returns true only for the five internal chain sequence slots.
+		if self:ReadString(rootKind, "CHAIN") ~= "CHAIN" then
+			return false
+		end
+		if isLeadSlot == true then
+			return false
+		end
+		local path = self:ReadString(basePath, "")
+		if path == "" then
+			return false
+		end
+		if path == "Panel/Chain/Representative" then
+			return false
+		end
+		if self:StartsWith(path, "Panel/Chain/Representative/") == true then
+			return false
+		end
+		if self:StartsWith(path, "Panel/Chain/Common_") == true then
+			return false
+		end
+		return self:StartsWith(path, "Panel/Chain/Slot_")
+	end
+
+	method string GetSlotIconRUID(string skillKey, number tier, boolean isLeadSlot, boolean useSolidIcon)
+		-- Returns a solid sequence marker only for internal chain slots; all other skill slots use CSV icons.
+		if useSolidIcon == true then
+			return self:GetFallbackIconRUID()
+		end
+		if _BRSkillUIDatabase ~= nil then
+			local iconRuid = _BRSkillUIDatabase:GetSlotIconRUID(skillKey, tier, isLeadSlot == true)
+			if self:ReadString(iconRuid, "") ~= "" then
+				return iconRuid
+			end
+		end
 		return self:GetFallbackIconRUID()
+	end
+
+	method Color GetSlotIconDisplayColor(string skillKey, number tier, boolean occupied, boolean isRepresentative, boolean useSolidIcon)
+		-- Tints only the solid sequence marker; real icon slots stay neutral.
+		if useSolidIcon == true then
+			return self:GetSolidSlotIconColor(skillKey, tier, occupied == true, isRepresentative == true)
+		end
+		return self:GetSlotIconColor(tier, occupied == true)
 	end
 
 	method Color GetSolidSlotIconColor(string skillKey, number tier, boolean occupied, boolean isRepresentative)

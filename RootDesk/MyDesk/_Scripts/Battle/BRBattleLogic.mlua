@@ -59,13 +59,13 @@ script BRBattleLogic extends Component
 
 	property number FallResetY = -5
 
-	property number BattleGravity = 1
+	property number BattleGravity = 1.8
 
 	property number BattleWalkSpeed = 1.8
 
 	property number BattleWalkJump = 1.8
 
-	property boolean OverridePlayerPhysicsStats = false
+	property boolean OverridePlayerPhysicsStats = true
 
 	property boolean ResetHpOnEnter = true
 
@@ -74,6 +74,10 @@ script BRBattleLogic extends Component
 	property number OutOfBoundsDamage = 20
 
 	property number OutOfBoundsDamageCooldownSeconds = 1
+
+	property boolean EnableRoomBottomOutOfBounds = true
+
+	property number RoomBottomOutOfBoundsPadding = 0.1
 
 	property boolean VerboseBattleLog = false
 
@@ -259,6 +263,7 @@ script BRBattleLogic extends Component
 					local userId = playerEntity.PlayerComponent.UserId
 					activeUsers[userId] = true
 					self:RegisterBattlePlayer(playerEntity)
+					self:CheckBattlePlayerRoomBounds(playerEntity)
 				end
 			end
 		end
@@ -788,14 +793,25 @@ script BRBattleLogic extends Component
 		end
 
 		local graph = self:GetLatestRoomGraph()
-		local currentRoom = self:GetLogicalRoomForPosition(graph, fromPosition)
-		local currentRoomKey = self:GetLogicalRoomKey(currentRoom)
-		if currentRoomKey ~= "" then
-			self._T.outOfBoundsRoomKeyByUser[userId] = currentRoomKey
+		if graph == nil or graph.Rooms == nil then
 			return false
 		end
 
-		local returnRoom = self:GetOutOfBoundsReturnLogicalRoom(graph, userId, fromPosition)
+		local currentRoom = self:GetLogicalRoomForPosition(graph, fromPosition)
+		local currentRoomKey = self:GetLogicalRoomKey(currentRoom)
+		local returnReason = "out-of-bounds"
+		if currentRoomKey ~= "" then
+			self._T.outOfBoundsRoomKeyByUser[userId] = currentRoomKey
+			if self:IsBelowLogicalRoomBottom(graph, currentRoom, fromPosition) ~= true then
+				return false
+			end
+			returnReason = "room-bottom"
+		end
+
+		local returnRoom = currentRoom
+		if returnRoom == nil then
+			returnRoom = self:GetOutOfBoundsReturnLogicalRoom(graph, userId, fromPosition)
+		end
 		local returnRoomKey = self:GetLogicalRoomKey(returnRoom)
 		local returnPosition = self:GetOutOfBoundsReturnPosition(playerEntity, fromPosition, returnRoom)
 		if returnPosition == nil then
@@ -816,10 +832,11 @@ script BRBattleLogic extends Component
 		end
 
 		self:SetEntityWorldPosition2(playerEntity, returnPosition)
-		self:ApplyLocalBoundsReturnPosition(returnPosition, "out-of-bounds", userId)
+		self:ApplyLocalBoundsReturnPosition(returnPosition, returnReason, userId)
 		self._T.lastPositions[userId] = returnPosition
 
 		log("[BRBattle] bounds return user=" .. userId
+			.. " reason=" .. returnReason
 			.. " damage=" .. tostring(damage)
 			.. " hp=" .. tostring(oldHp) .. "->" .. tostring(playerComponent.Hp)
 			.. " room=" .. self:ReadString(returnRoomKey, "-")
@@ -836,6 +853,15 @@ script BRBattleLogic extends Component
 			self:UpdateLifeSummary()
 		end
 		return true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void CheckBattlePlayerRoomBounds(Entity playerEntity)
+		-- Checks active-room bottom bounds during the battle scan, independent of skill tick timing.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		self:HandlePlayerOutOfBoundsReturn(playerEntity, self:GetEntityPosition2(playerEntity))
 	end
 
 	@ExecSpace("Client")
@@ -1516,6 +1542,46 @@ script BRBattleLogic extends Component
 		end
 
 		return self:GetCenterLogicalRoom(graph)
+	end
+
+	method boolean IsBelowLogicalRoomBottom(any graph, any logicalRoom, Vector2 position)
+		-- Treats falling below a physical room floor as out of bounds even inside the overall map bounds.
+		if self.EnableRoomBottomOutOfBounds ~= true then
+			return false
+		end
+		if _BRRoomGraphGenerator == nil or graph == nil or logicalRoom == nil or position == nil then
+			return false
+		end
+
+		local bottomY = self:GetLogicalRoomBottomY(graph, logicalRoom)
+		if bottomY == nil then
+			return false
+		end
+		return position.y < bottomY - self:GetRoomBottomOutOfBoundsPadding()
+	end
+
+	method any GetLogicalRoomBottomY(any graph, any logicalRoom)
+		-- Resolves the bottom edge of a logical room's assigned physical room.
+		if _BRRoomGraphGenerator == nil or graph == nil or logicalRoom == nil then
+			return nil
+		end
+
+		local roomName = self:GetAssignedPhysicalRoomName(logicalRoom)
+		if roomName == "" then
+			return nil
+		end
+
+		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(graph.MapName)
+		local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(graph.MapName, root, roomName)
+		if center == nil then
+			return nil
+		end
+
+		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(graph.MapName)
+		if halfSize == nil then
+			return nil
+		end
+		return center.y - halfSize.y
 	end
 
 	method any GetLogicalRoomForPosition(any graph, Vector2 position)
@@ -2210,6 +2276,10 @@ script BRBattleLogic extends Component
 		return math.max(0.1, self:ReadNumber(self.OutOfBoundsDamageCooldownSeconds, 1))
 	end
 
+	method number GetRoomBottomOutOfBoundsPadding()
+		return math.max(0, self:ReadNumber(self.RoomBottomOutOfBoundsPadding, 0.1))
+	end
+
 	method number GetAliveBotCount()
 		self:EnsureServerRuntimeTables()
 		local count = 0
@@ -2393,7 +2463,7 @@ script BRBattleLogic extends Component
 	end
 
 	method number GetBattleGravity()
-		return math.max(0.1, self:ReadNumber(self.BattleGravity, 1))
+		return math.max(0.1, self:ReadNumber(self.BattleGravity, 1.8))
 	end
 
 	method number GetBattleWalkSpeed()

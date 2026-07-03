@@ -9,7 +9,7 @@ script BRCommonSkillSystem extends Logic
 
 	property number BlinkCooldownSeconds = 1.2
 
-	property number BlinkDistance = 2.8
+	property number BlinkDistance = 2.2
 
 	property string BlinkSkillKey = "Blink"
 
@@ -69,7 +69,7 @@ script BRCommonSkillSystem extends Logic
 
 	property number NimbusEffectLocalX = 0
 
-	property number NimbusEffectLocalY = -0.42
+	property number NimbusEffectLocalY = -0.72
 
 	property number NimbusEffectScale = 1.2
 
@@ -273,7 +273,7 @@ script BRCommonSkillSystem extends Logic
 		if nextActive == true then
 			self:CaptureNimbusBackup(localPlayer)
 			self:CaptureNimbusRideBounds(localPlayer)
-			self:ApplyNimbusMovement(localPlayer)
+			self:ApplyNimbusMovement(localPlayer, true)
 			self:PlayNimbusVisual(localPlayer, true)
 			self.localNimbusActive = true
 			self:SetNimbusActiveServer(true)
@@ -308,7 +308,7 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 
-		self:ApplyNimbusMovement(localPlayer)
+		self:ApplyNimbusMovement(localPlayer, false)
 		local dx = 0
 		local dy = 0
 		if _InputService:IsKeyPressed(KeyboardKey.RightArrow) == true then
@@ -337,26 +337,38 @@ script BRCommonSkillSystem extends Logic
 			end
 		end
 		local speed = self:GetNimbusMoveSpeed()
-		local velocity = Vector2(dx * speed, dy * speed)
 		local position = self:GetEntityPosition2(localPlayer)
-		local nextPosition = Vector2(position.x + velocity.x * self:ReadNumber(delta, 0), position.y + velocity.y * self:ReadNumber(delta, 0))
+		local deltaSeconds = math.min(0.05, math.max(0, self:ReadNumber(delta, 0)))
+		local nextPosition = Vector2(position.x + dx * speed * deltaSeconds, position.y + dy * speed * deltaSeconds)
 		local rideBounds = self:GetNimbusMovementBounds(localPlayer, position)
 		if rideBounds ~= nil and self:IsPositionInsideBounds(nextPosition, rideBounds, 0) ~= true then
-			local clampedPosition = self:ClampPositionToBounds(nextPosition, rideBounds)
-			localPlayer.RigidbodyComponent:SetWorldPosition(clampedPosition)
-			localPlayer.RigidbodyComponent:PositionReset()
-			if math.abs(clampedPosition.x - nextPosition.x) > 0.001 then
+			local oldDx = dx
+			local oldDy = dy
+			if nextPosition.x < self:ReadNumber(rideBounds.Left, nextPosition.x) or nextPosition.x > self:ReadNumber(rideBounds.Right, nextPosition.x) then
 				dx = 0
 			end
-			if math.abs(clampedPosition.y - nextPosition.y) > 0.001 then
+			if nextPosition.y < self:ReadNumber(rideBounds.Bottom, nextPosition.y) or nextPosition.y > self:ReadNumber(rideBounds.Top, nextPosition.y) then
 				dy = 0
 			end
-			velocity = Vector2(dx * speed, dy * speed)
+			if dx == 0 and oldDx ~= 0 and oldDy ~= 0 and dy ~= 0 then
+				if dy > 0 then
+					dy = 1
+				else
+					dy = -1
+				end
+			end
+			if dy == 0 and oldDy ~= 0 and oldDx ~= 0 and dx ~= 0 then
+				if dx > 0 then
+					dx = 1
+				else
+					dx = -1
+				end
+			end
 			if self.VerboseLog == true then
-				log("[BRCommonSkill] nimbus ride clamp bounds=" .. self:GetBoundsLabel(rideBounds) .. " pos=(" .. tostring(clampedPosition.x) .. "," .. tostring(clampedPosition.y) .. ")")
+				self:LogNimbusMoveBlocked(rideBounds, position, oldDx, oldDy, dx, dy)
 			end
 		end
-		localPlayer.RigidbodyComponent.MoveVelocity = velocity
+		self:DriveNimbusMovement(localPlayer, dx, dy, speed, deltaSeconds)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -414,7 +426,7 @@ script BRCommonSkillSystem extends Logic
 	end
 
 	@ExecSpace("ClientOnly")
-	method void ApplyNimbusMovement(Entity playerEntity)
+	method void ApplyNimbusMovement(Entity playerEntity, boolean resetVelocity)
 		if playerEntity == nil or playerEntity.RigidbodyComponent == nil then
 			return
 		end
@@ -425,12 +437,77 @@ script BRCommonSkillSystem extends Logic
 		playerEntity.RigidbodyComponent.Gravity = 0
 		playerEntity.RigidbodyComponent.IgnoreMoveBoundary = true
 		playerEntity.RigidbodyComponent.EnableKinematicMoveJump = false
-		playerEntity.RigidbodyComponent.KinematicMoveAcceleration = Vector2(10, 10)
-		playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
-		if playerEntity.MovementComponent ~= nil then
-			playerEntity.MovementComponent.InputSpeed = 0
-			playerEntity.MovementComponent:Stop()
+		local speed = self:GetNimbusMoveSpeed()
+		playerEntity.RigidbodyComponent.KinematicMoveAcceleration = Vector2(speed, speed)
+		if resetVelocity == true then
+			playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
 		end
+		if playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent.InputSpeed = speed
+			if resetVelocity == true then
+				playerEntity.MovementComponent:Stop()
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DriveNimbusMovement(Entity playerEntity, number dx, number dy, number speed, number deltaSeconds)
+		if playerEntity == nil or playerEntity.RigidbodyComponent == nil then
+			return
+		end
+		local moveX = self:ReadNumber(dx, 0)
+		local moveY = self:ReadNumber(dy, 0)
+		local safeSpeed = math.max(0.1, self:ReadNumber(speed, self.NimbusMoveSpeed))
+		if math.abs(moveX) <= 0.001 and math.abs(moveY) <= 0.001 then
+			playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			if playerEntity.MovementComponent ~= nil then
+				playerEntity.MovementComponent:Stop()
+			end
+			return
+		end
+
+		local safeDelta = math.min(0.05, math.max(0, self:ReadNumber(deltaSeconds, 0)))
+		local direction = Vector2(moveX, moveY)
+		local position = self:GetEntityPosition2(playerEntity)
+		local nextPosition = Vector2(position.x + moveX * safeSpeed * safeDelta, position.y + moveY * safeSpeed * safeDelta)
+		playerEntity.RigidbodyComponent.KinematicMoveAcceleration = Vector2(safeSpeed, safeSpeed)
+		if playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent.InputSpeed = safeSpeed
+			playerEntity.MovementComponent:SetWorldPosition(nextPosition)
+		else
+			playerEntity.RigidbodyComponent:SetWorldPosition(nextPosition)
+		end
+		playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+		playerEntity.RigidbodyComponent:PositionReset()
+		self:LogNimbusMoveSample(playerEntity, direction, safeSpeed)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void LogNimbusMoveSample(Entity playerEntity, Vector2 direction, number speed)
+		if self.VerboseLog ~= true then
+			return
+		end
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self:ReadNumber(self._T.nextNimbusMoveLogAt, 0) then
+			return
+		end
+		self._T.nextNimbusMoveLogAt = now + 1
+		local position = self:GetEntityPosition2(playerEntity)
+		log("[BRCommonSkill] nimbus ride move dir=(" .. tostring(direction.x) .. "," .. tostring(direction.y) .. ") speed=" .. tostring(speed) .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void LogNimbusMoveBlocked(any bounds, Vector2 position, number oldDx, number oldDy, number dx, number dy)
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self:ReadNumber(self._T.nextNimbusBlockedLogAt, 0) then
+			return
+		end
+		self._T.nextNimbusBlockedLogAt = now + 0.6
+		local safePosition = position
+		if safePosition == nil then
+			safePosition = Vector2(0, 0)
+		end
+		log("[BRCommonSkill] nimbus ride edge bounds=" .. self:GetBoundsLabel(bounds) .. " pos=(" .. tostring(safePosition.x) .. "," .. tostring(safePosition.y) .. ") input=(" .. tostring(oldDx) .. "," .. tostring(oldDy) .. ") applied=(" .. tostring(dx) .. "," .. tostring(dy) .. ")")
 	end
 
 	@ExecSpace("ClientOnly")
@@ -615,7 +692,7 @@ script BRCommonSkillSystem extends Logic
 		local serial = _EffectService:PlayEffectAttached(
 			ruid,
 			playerEntity,
-			Vector3(self:ReadNumber(self.NimbusEffectLocalX, 0), self:ReadNumber(self.NimbusEffectLocalY, -0.42), 0),
+			Vector3(self:ReadNumber(self.NimbusEffectLocalX, 0), self:ReadNumber(self.NimbusEffectLocalY, -0.72), 0),
 			0,
 			Vector3(scale, scale, 1),
 			true,
@@ -664,7 +741,7 @@ script BRCommonSkillSystem extends Logic
 		options["PlayRate"] = math.max(0.1, self:ReadNumber(self.NimbusEffectPlayRate, 1.0))
 		options["IgnoreMapLayerCheck"] = true
 		local localX = self:ReadNumber(self.NimbusEffectLocalX, 0)
-		local localY = self:ReadNumber(self.NimbusEffectLocalY, -0.42)
+		local localY = self:ReadNumber(self.NimbusEffectLocalY, -0.72)
 		local serial = _EffectService:PlayEffect(
 			ruid,
 			playerEntity,

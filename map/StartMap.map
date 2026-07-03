@@ -31,6 +31,7 @@
           "@components": [
             {
               "@type": "MOD.Core.MapComponent",
+              "Gravity": 1.8,
               "IsInstanceMap": false,
               "TileMapMode": 0,
               "Enable": true

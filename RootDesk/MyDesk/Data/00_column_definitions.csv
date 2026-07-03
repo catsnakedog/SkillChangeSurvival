@@ -21,7 +21,7 @@ skills.csv,스킬,9,cooldown,쿨타임,decimal,,N,,쿨타임,"p8,p29,p44"
 skills.csv,스킬,10,sound_ruid,사용 사운드 RUID,string,,N,,스킬 시전 사운드 RUID,p60
 skills.csv,스킬,11,disabled_icon_ruid,비활성 아이콘 RUID,string,,N,,쿨타임/비활성 상태 아이콘 RUID,p60
 skills.csv,스킬,12,mouseover_icon_ruid,마우스오버 아이콘 RUID,string,,N,,마우스오버 상태 아이콘 RUID,p60
-skills.csv,스킬,13,common_distance,공용 스킬 거리,decimal,2.8,N,,점멸 같은 공용 스킬 이동 거리,p60
+skills.csv,스킬,13,common_distance,공용 스킬 거리,decimal,2.2,N,,점멸 같은 공용 스킬 이동 거리,p60
 effects.csv,이펙트,1,effect_id,이펙트 id,string,,N,,스킬 데이터의 이펙트 id와 연결하기 위한 id,p22
 effects.csv,이펙트,2,effect_ruid,이펙트 RUID,string,,N,,이펙트 RUID,p22
 effects.csv,이펙트,3,is_loop,루프 여부,bool,,N,,루프 여부,p22

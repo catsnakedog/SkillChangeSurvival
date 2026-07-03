@@ -79240,7 +79240,7 @@
               "BattleGravity": 1.8,
               "BattleWalkSpeed": 1.8,
               "BattleWalkJump": 1.8,
-              "OverridePlayerPhysicsStats": false,
+              "OverridePlayerPhysicsStats": true,
               "ResetHpOnEnter": true,
               "VerboseBattleLog": false,
               "LogPhysicsStateOnRegister": false

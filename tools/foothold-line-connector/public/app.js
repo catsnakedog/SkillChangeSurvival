@@ -17,6 +17,8 @@ const els = {
   connect: document.querySelector("#connectButton"),
   originDryRun: document.querySelector("#originDryRunButton"),
   originMove: document.querySelector("#originMoveButton"),
+  boundsDryRun: document.querySelector("#boundsDryRunButton"),
+  boundsMove: document.querySelector("#boundsMoveButton"),
   symmetryDryRun: document.querySelector("#symmetryDryRunButton"),
   symmetryMove: document.querySelector("#symmetryMoveButton"),
 };
@@ -27,6 +29,8 @@ els.dryRun.addEventListener("click", () => runPlan(false));
 els.connect.addEventListener("click", () => runPlan(true));
 els.originDryRun.addEventListener("click", () => runOriginMove(false));
 els.originMove.addEventListener("click", () => runOriginMove(true));
+els.boundsDryRun.addEventListener("click", () => runBoundsMove(false));
+els.boundsMove.addEventListener("click", () => runBoundsMove(true));
 els.symmetryDryRun.addEventListener("click", () => runSymmetryMove(false));
 els.symmetryMove.addEventListener("click", () => runSymmetryMove(true));
 els.map.addEventListener("change", () => {
@@ -171,6 +175,27 @@ async function runOriginMove(apply) {
   }
 }
 
+async function runBoundsMove(apply) {
+  if (!state.map) return appendLog("Map is not selected");
+  if (!state.roomPath) return appendLog("Room is not selected");
+  if (!state.linePath) return appendLog("Line parent is not selected");
+
+  const endpoint = apply ? "/api/move-line-bounds-pivot" : "/api/move-line-bounds-pivot/dry-run";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ map: state.map, linePath: state.linePath }),
+    });
+    const plan = data.plan ?? data.result;
+    appendLog(apply ? "Bounds pivot move result" : "Bounds Pivot Dry Run result");
+    renderPlan(plan);
+    if (plan.message) appendLog(plan.message);
+    if (data.refresh) appendLog(`Maker refresh: ${JSON.stringify(data.refresh)}`);
+  } catch (error) {
+    appendLog(`Failed: ${error.message}`);
+  }
+}
+
 async function runSymmetryMove(apply) {
   if (!state.map) return appendLog("Map is not selected");
   if (!state.roomPath) return appendLog("Room is not selected");
@@ -203,6 +228,10 @@ function renderPlan(plan) {
     renderOriginPlan(plan);
     return;
   }
+  if (plan.action === "move-line-bounds-pivot") {
+    renderBoundsPivotPlan(plan);
+    return;
+  }
   if (plan.action === "symmetry") {
     renderSymmetryPlan(plan);
     return;
@@ -230,6 +259,19 @@ function renderOriginPlan(plan) {
   appendLog(`Affected footholds: ${plan.affectedFootholds.length}`);
   for (const foothold of plan.affectedFootholds) {
     appendLog(`- ${foothold.name}: first edge (${fmt(foothold.firstEdgeWorldBefore.x)}, ${fmt(foothold.firstEdgeWorldBefore.y)}) -> (${fmt(foothold.firstEdgeWorldAfter.x)}, ${fmt(foothold.firstEdgeWorldAfter.y)})`);
+  }
+}
+
+function renderBoundsPivotPlan(plan) {
+  appendLog(`Line: ${plan.lineName}`);
+  appendLog(`Parent pivot target: (${fmt(plan.targetPivotWorld.x)}, ${fmt(plan.targetPivotWorld.y)})`);
+  appendLog(`Bounds before: minX=${fmt(plan.boundsBefore.minX)}, maxX=${fmt(plan.boundsBefore.maxX)}, centerX=${fmt(plan.boundsBefore.centerX)}, maxY=${fmt(plan.boundsBefore.maxY)}`);
+  appendLog(`Bounds after: minX=${fmt(plan.boundsAfter.minX)}, maxX=${fmt(plan.boundsAfter.maxX)}, centerX=${fmt(plan.boundsAfter.centerX)}, maxY=${fmt(plan.boundsAfter.maxY)}`);
+  appendLog(`Move delta: (${fmt(plan.delta.x)}, ${fmt(plan.delta.y)})`);
+  appendLog(`Move target: ${plan.moveTarget.type}`);
+  appendLog(`Affected footholds: ${plan.affectedFootholds.length}`);
+  for (const foothold of plan.affectedFootholds) {
+    appendLog(`- ${foothold.name}: pos (${fmt(foothold.positionBefore.x)}, ${fmt(foothold.positionBefore.y)}, ${fmt(foothold.positionBefore.z)}) -> (${fmt(foothold.positionAfter.x)}, ${fmt(foothold.positionAfter.y)}, ${fmt(foothold.positionAfter.z)})`);
   }
 }
 

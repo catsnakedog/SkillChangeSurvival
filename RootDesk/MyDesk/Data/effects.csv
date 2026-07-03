@@ -1,4 +1,4 @@
-effect_id,effect_ruid,is_loop,total_length_frames
+﻿effect_id,effect_ruid,is_loop,total_length_frames
 Nimbus/repeat,263871f547a941c99ce0ab13c7b95aad,true,0
 Nimbus/end,6a743f785c1e4513ad9b3fd6954ef9d7,false,0
 Nimbus/effect/0,04ebd5e304fb4ba5b0606e239eef6b49,false,0
@@ -29,9 +29,13 @@ Nimbus/effect0/9,79d860af8e25481ca3389b36e3178a99,false,0
 Nimbus/effect0/10,05876b6d2bad4fb5b4fb9358512e26b3,false,0
 Nimbus/effect0/11,341a80c5959a4b15893c976456cb6105,false,0
 divineSwing/effect,0706dac96b694cd699b87e602ba74f42,false,8
-애로우 블로우/effect,2ed6be9152eb4bf0b22f4ca6e6fff9fe,,
-애로우 블로우/hit/0,84a473e004a34fdea67aa74a87dc75c6,,
+애로우 블로우/effect,2ed6be9152eb4bf0b22f4ca6e6fff9fe,false,9
+애로우 블로우/hit/0,84a473e004a34fdea67aa74a87dc75c6,false,4
 Blink/effect,8dc15776c4f349a0bfa155e911e4a7be,false,8
 Blink/effect0,df5bd4514ffb461fb8479ff0d88ec204,false,8
 Blink/effect1,c4755faee88149738692350b34aa5766,false,8
 Blink/special,ba3f9119b8634a1f80e85017adc426f7,false,8
+전사_보조_스킬_effect,eaa71284041b4c8390c32ade11286e16,false,10
+스피릿_블레이드_effect,e4d8f3edcb824141a989ad41b4c2351c,false,12
+샤프_슬래시_effect,ffaf507b148744f49715a8253477fec0,false,7
+슬래시_스톰_effect,74f8d58d6b2b4386bd20f7556c4898a1,false,6

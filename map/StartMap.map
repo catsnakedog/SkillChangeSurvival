@@ -7201,7 +7201,7 @@
             {
               "@type": "script.BRCharacterSwitchNPC",
               "Enable": true,
-              "InteractionKeyName": "C",
+              "InteractionKeyName": "V",
               "InteractionRange": 1.8,
               "VerboseLog": true
             }

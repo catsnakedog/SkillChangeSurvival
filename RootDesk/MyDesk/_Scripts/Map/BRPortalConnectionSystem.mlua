@@ -370,29 +370,44 @@ script BRPortalConnectionSystem extends Logic
 			return
 		end
 
+		local arrivalPortalKey = self:GetArrivalPortalKey(link)
 		local pairedLink = self:ResolvePairedPortalLink(graph, link)
-		local destinationPortal = self:GetPhysicalPortal(mapName, root, link.ToRoomName, link.ToDirection)
+		local arrivalRoomName = self:ReadString(link.ToRoomName, "")
+		local arrivalDirection = self:ReadString(link.ToDirection, "")
+		if pairedLink ~= nil then
+			arrivalRoomName = self:ReadString(pairedLink.FromRoomName, arrivalRoomName)
+			arrivalDirection = self:ReadString(pairedLink.FromDirection, arrivalDirection)
+			arrivalPortalKey = self:ReadString(pairedLink.FromPortalKey, self:BuildPortalKey(arrivalRoomName, arrivalDirection))
+		end
+		local destinationPortal = self:GetPhysicalPortal(mapName, root, arrivalRoomName, arrivalDirection)
 		if destinationPortal == nil then
-			self:Log("use skipped: destination missing map=" .. mapName .. " room=" .. self:ReadString(link.ToRoomName, "") .. " dir=" .. self:ReadString(link.ToDirection, ""))
+			destinationPortal = self:GetPhysicalPortal(mapName, root, link.ToRoomName, link.ToDirection)
+			arrivalRoomName = self:ReadString(link.ToRoomName, "")
+			arrivalDirection = self:ReadString(link.ToDirection, "")
+			arrivalPortalKey = self:GetArrivalPortalKey(link)
+		end
+		if destinationPortal == nil then
+			self:Log("use skipped: destination missing map=" .. mapName .. " arrival=" .. arrivalRoomName .. ":" .. arrivalDirection .. " pair=" .. arrivalPortalKey)
 			return
 		end
 
 		if pairedLink == nil then
-			self:Log("pair missing key=" .. self:ReadString(link.Key, "") .. " pair=" .. self:GetArrivalPortalKey(link))
+			self:Log("pair missing key=" .. self:ReadString(link.Key, "") .. " pair=" .. arrivalPortalKey)
 		end
 
-		local exitPosition = self:GetPortalExitPosition(destinationPortal, link.ToDirection)
+		local exitPosition = self:GetPortalExitPosition(destinationPortal, arrivalDirection)
 		local boundsWarning = self:BuildMapBoundsWarning(mapName, exitPosition)
 		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
 		self._T.cooldownUntil[userId] = self:Now() + self:GetReuseCooldownSeconds()
-		self._T.arrivalPortalKeyByUser[userId] = self:GetArrivalPortalKey(link)
+		self._T.arrivalPortalKeyByUser[userId] = arrivalPortalKey
 		self:SetPlayerWorldPosition(playerEntity, exitPosition)
 		self:ApplyLocalPortalPosition(exitPosition, "portal", userId)
 
 		self.LastPortalUseSummary = "user=" .. userId
 			.. " " .. self:ReadString(link.FromRoomName, "") .. ":" .. self:ReadString(link.FromDirection, "")
 			.. ">" .. self:ReadString(link.ToRoomName, "") .. ":" .. self:ReadString(link.ToDirection, "")
-			.. " pair=" .. self:GetArrivalPortalKey(link)
+			.. " arrival=" .. arrivalRoomName .. ":" .. arrivalDirection
+			.. " pair=" .. arrivalPortalKey
 			.. " pos=(" .. tostring(exitPosition.x) .. "," .. tostring(exitPosition.y) .. ")"
 			.. boundsWarning
 		self:Log("used " .. self.LastPortalUseSummary)

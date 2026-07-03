@@ -503,7 +503,8 @@ script BRSkillSystem extends Logic
 					EffectId = effectId,
 					RUID = self:GetDataCell(data, row, "effect_ruid", ""),
 					Loop = self:ReadDataBoolean(data, row, "is_loop", false),
-					TotalFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "total_length_frames", "1"), 1)))
+					TotalFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "total_length_frames", "1"), 1))),
+					Scale = math.max(0.05, self:ReadNumber(self:GetDataCell(data, row, "scale", "1"), 1))
 				}
 			end
 		end
@@ -1317,6 +1318,7 @@ script BRSkillSystem extends Logic
 			end
 		end
 
+		local pendingMesoCount = 0
 		for groupIndex, group in ipairs(groups) do
 			if consumedEndGroups[groupIndex] ~= true then
 				local part = group.Part
@@ -1346,8 +1348,15 @@ script BRSkillSystem extends Logic
 						step.EndTier = endTier
 						consumedEndGroups[groupIndex + 1] = true
 					end
+					if pendingMesoCount > 0 then
+						step.MesoFollowUpCount = pendingMesoCount
+						pendingMesoCount = 0
+					end
 					table.insert(result.Steps, step)
 				end
+			end
+			if self:ReadString(group.SkillKey, "") == self:GetMesoExplosionSkillKey() then
+				pendingMesoCount = self:CoinCountForTier(group.Tier)
 			end
 		end
 		result.Count = #result.Steps
@@ -1497,10 +1506,15 @@ script BRSkillSystem extends Logic
 			FrameTimer = 0,
 			FixedOriginX = fixedOriginX,
 			FixedOriginY = fixedOriginY,
+			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(step.MesoFollowUpCount, 0))),
+			MesoAttacker = casterEntity,
 			Completed = false,
 			Cancelled = false
 		}
 		table.insert(self._T.activeCasts, cast)
+		if cast.IsVirtualCaster ~= true and self:ReadString(cast.SkillKey, "") == self:GetMesoExplosionSkillKey() then
+			self:PlayCasterMesoEffect(casterEntity)
+		end
 		if cast.IsVirtualCaster ~= true then
 			local runtime = self:GetChainRuntime(cast.UserId)
 			runtime.ActiveCastCount = math.max(0, math.floor(self:ReadNumber(runtime.ActiveCastCount, 0))) + 1
@@ -1664,6 +1678,8 @@ script BRSkillSystem extends Logic
 			MaxTargets = math.max(0, math.floor(self:ReadNumber(eventDef.MaxTargets, 0))),
 			HitCount = 0,
 			SeenTargets = {},
+			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0))),
+			MesoAttacker = context.MesoAttacker,
 			TriggerFired = false
 		}
 		table.insert(self._T.activeAreas, area)
@@ -1709,6 +1725,9 @@ script BRSkillSystem extends Logic
 					area.HitCount = self:ReadNumber(area.HitCount, 0) + 1
 					local pos = self:GetEntityPosition2(targetEntity)
 					self:ExecuteActions(area, area.ActionIds, targetEntity, pos.x, pos.y, self:ReadString(area.EventId, "area"))
+					if self:ReadNumber(area.MesoFollowUpCount, 0) > 0 then
+						self:SpawnMesoCoins(targetEntity, area.MesoFollowUpCount, area.MesoAttacker)
+					end
 				end
 			end
 		end
@@ -2672,6 +2691,119 @@ script BRSkillSystem extends Logic
 		end
 	end
 
+	method string GetMesoExplosionSkillKey()
+		-- Returns the reserved skill key that arms meso follow-up coins.
+		return "메소 익스플로전"
+	end
+
+	method string GetMesoCoinModelId()
+		-- Returns the spawnable model id for a meso coin projectile.
+		return "mesocoin"
+	end
+
+	method number GetMesoCoinDamageCoefficient()
+		-- Returns coin damage as a percent of attack power.
+		return 50
+	end
+
+	method number CoinCountForTier(number tier)
+		-- Maps a folded meso tier to its coin count (1/3/5/7).
+		local order = self:ClampSkillTier(tier)
+		return math.max(0, 2 * order - 1)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SpawnMesoCoins(Entity target, number count, Entity attacker)
+		-- Spawns homing meso coins that chase the follow-up skill's hit target.
+		if target == nil or isvalid(target) ~= true then
+			return
+		end
+		local safeCount = math.max(0, math.floor(self:ReadNumber(count, 0)))
+		if safeCount <= 0 then
+			return
+		end
+		local parent = nil
+		if attacker ~= nil and isvalid(attacker) == true then
+			parent = attacker.CurrentMap
+		end
+		if parent == nil then
+			parent = target.CurrentMap
+		end
+		if parent == nil then
+			self:Log("meso coin spawn aborted reason=noMap target=" .. target.Name)
+			return
+		end
+		local basePos = target.TransformComponent.WorldPosition
+		local damage = math.max(1, math.floor(self:GetSkillAttackPower(attacker) * self:GetMesoCoinDamageCoefficient() / 100))
+		for coinIndex = 1, safeCount do
+			self._T.mesoCoinSerial = math.floor(self:ReadNumber(self._T.mesoCoinSerial, 0)) + 1
+			local coinName = "MesoCoin_" .. tostring(self._T.mesoCoinSerial)
+			local angle = _UtilLogic:RandomDouble() * 2 * math.pi
+			local coin = _SpawnService:SpawnByModelId(self:GetMesoCoinModelId(), coinName, basePos, parent)
+			if coin ~= nil then
+				---@type MesoCoinProjectile
+				local projectile = coin:GetComponent("script.MesoCoinProjectile")
+				if projectile ~= nil then
+					projectile:Fire(target, attacker, angle, damage)
+					self:Log("meso coin spawn index=" .. tostring(coinIndex) .. "/" .. tostring(safeCount) .. " target=" .. target.Name .. " dmg=" .. tostring(damage))
+				else
+					self:Log("meso coin spawn failed reason=noComponent index=" .. tostring(coinIndex))
+				end
+			else
+				self:Log("meso coin spawn failed reason=noEntity index=" .. tostring(coinIndex))
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyMesoCoinDamage(Entity target, Entity attacker, number damage)
+		-- Applies meso coin follow-up damage, reusing the standard target dispatch.
+		if target == nil or isvalid(target) ~= true then
+			return
+		end
+		local dmg = math.max(1, math.floor(self:ReadNumber(damage, 1)))
+		---@type BRTrainingDummy
+		local dummy = self:GetTrainingDummyComponent(target)
+		if dummy ~= nil then
+			dummy:ApplyTrainingDamage(attacker, dmg, "meso")
+			self:Log("meso coin damage dummy target=" .. target.Name .. " amount=" .. tostring(dmg))
+			return
+		end
+		local bot = self:GetBattleBotComponent(target)
+		if bot ~= nil then
+			bot:ApplyBotDamage(attacker, dmg, "meso")
+			self:Log("meso coin damage bot target=" .. self:ReadString(bot.BotId, target.Name) .. " amount=" .. tostring(dmg))
+			return
+		end
+		if target.PlayerComponent ~= nil then
+			local player = target.PlayerComponent
+			player.Hp = math.max(0, player.Hp - dmg)
+			self:Log("meso coin damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
+			if player.Hp <= 0 then
+				self:HandleSkillFatalDamage(attacker, target, "meso")
+			end
+		end
+	end
+
+	method void PlayCasterMesoEffect(Entity caster)
+		-- Broadcasts the meso arming body effect to clients viewing the caster.
+		if self.EnableSkillVisualEffects ~= true or caster == nil then
+			return
+		end
+		self:PlayCasterMesoEffectClient(caster)
+		self:Log("meso cast effect caster=" .. caster.Name)
+	end
+
+	@ExecSpace("Client")
+	method void PlayCasterMesoEffectClient(Entity caster)
+		-- Plays the meso-explosion arming animationclip twice on the caster body.
+		if caster == nil or isvalid(caster) ~= true then
+			return
+		end
+		_EffectService:PlayEffectAttached("61840689ea7b44f09f91960734232e34", caster, Vector3(0, 0, 0), 0, Vector3(1, 1, 1), false)
+		_EffectService:PlayEffectAttached("61840689ea7b44f09f91960734232e34", caster, Vector3(0, 0, 0), 0, Vector3(1, 1, 1), false)
+	end
+
 	method void HandleSkillFatalDamage(Entity attackerEntity, Entity targetEntity, string sourceId)
 		-- Reuses battle death handling when a skill reduces a player to zero HP.
 		if targetEntity == nil or targetEntity.PlayerComponent == nil then
@@ -2817,7 +2949,7 @@ script BRSkillSystem extends Logic
 			offsetX = 0
 			offsetY = 0.25
 		end
-		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, safeEventId), x + direction * offsetX, y + offsetY, direction, self:GetSkillEffectScaleRate(safeEventId), "event:" .. safeEventId)
+		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, safeEventId), x + direction * offsetX, y + offsetY, direction, self:GetSkillEffectScaleRate(safeEventId) * self:GetContextVisualScale(context, safeEventId), "event:" .. safeEventId)
 	end
 
 	method void PlaySkillHitVisual(any context, number x, number y, string sourceId, string overrideRUID)
@@ -2863,6 +2995,32 @@ script BRSkillSystem extends Logic
 
 	method number GetSkillEffectScaleRate(string eventId)
 		-- Scale is now data-agnostic; authored effect assets should carry their intended size.
+		return 1.0
+	end
+
+	method number GetContextVisualScale(any context, string eventId)
+		-- Returns the authored per-effect scale (effects.csv `scale`) for the effect GetContextVisualRUID resolves.
+		if context ~= nil then
+			if self:ReadString(context.VisualRUID, "") ~= "" then
+				return 1.0
+			end
+			if context.EffectIds ~= nil then
+				for index, effectId in ipairs(context.EffectIds) do
+					if self:GetSkillEffectRUID(effectId) ~= "" then
+						return self:GetSkillEffectScale(effectId)
+					end
+				end
+			end
+		end
+		return self:GetSkillEffectScale(eventId)
+	end
+
+	method number GetSkillEffectScale(string effectId)
+		-- Reads the authored per-effect visual scale multiplier (effects.csv `scale`); defaults to 1.0 when unset.
+		local safeEffectId = self:ReadString(effectId, "")
+		if self._T.skillEffectCatalog ~= nil and self._T.skillEffectCatalog[safeEffectId] ~= nil then
+			return math.max(0.05, self:ReadNumber(self._T.skillEffectCatalog[safeEffectId].Scale, 1))
+		end
 		return 1.0
 	end
 

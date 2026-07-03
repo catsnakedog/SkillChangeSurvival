@@ -1,0 +1,1692 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MSW Skill Hitbox Author</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --line: #d8dde6;
+      --text: #18202f;
+      --muted: #667085;
+      --accent: #2563eb;
+      --accent2: #16a34a;
+      --danger: #dc2626;
+      --warn: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, "Malgun Gothic", sans-serif;
+      font-size: 14px;
+    }
+    header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    h1 { font-size: 18px; margin: 0; }
+    main {
+      display: grid;
+      grid-template-columns: 360px minmax(520px, 1fr) 420px;
+      gap: 12px;
+      padding: 12px;
+      min-height: calc(100vh - 56px);
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      min-height: 42px;
+    }
+    .section-head h2 { margin: 0; font-size: 14px; }
+    .section-body { padding: 12px; }
+    textarea, input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      font: inherit;
+      color: var(--text);
+      background: #fff;
+    }
+    textarea { resize: vertical; min-height: 160px; }
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }
+    button.green {
+      border-color: var(--accent2);
+      background: var(--accent2);
+      color: white;
+    }
+    button.danger {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+    button:disabled {
+      opacity: .5;
+      cursor: default;
+    }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .row > * { flex: 1; }
+    .stack { display: grid; gap: 10px; }
+    .hint { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .skill-list {
+      display: grid;
+      gap: 8px;
+      max-height: 300px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .skill-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px;
+      cursor: pointer;
+      background: #fff;
+    }
+    .skill-item.active {
+      border-color: var(--accent);
+      outline: 2px solid rgba(37, 99, 235, .12);
+    }
+    .skill-title { font-weight: 700; margin-bottom: 4px; }
+    .warn { color: var(--warn); font-size: 12px; white-space: pre-wrap; }
+    .error { color: var(--danger); font-size: 12px; white-space: pre-wrap; }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+      background: #fafafa;
+    }
+    .tab.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .event-list {
+      display: grid;
+      gap: 8px;
+      max-height: 260px;
+      overflow: auto;
+    }
+    .event-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+    }
+    .event-item.active {
+      border-color: var(--accent2);
+      outline: 2px solid rgba(22, 163, 74, .12);
+    }
+    .mini-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      background: #fff;
+    }
+    .mini-panel.active {
+      border-color: var(--accent2);
+      background: #f0fdf4;
+    }
+    .mini-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-weight: 700;
+    }
+    .pill {
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: #eef2ff;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .box-tools {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .event-picker {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: end;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, .35);
+      z-index: 10;
+    }
+    .modal-backdrop[hidden] {
+      display: none !important;
+    }
+    .modal {
+      width: min(420px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 16px 48px rgba(15, 23, 42, .24);
+      overflow: hidden;
+    }
+    .modal-body {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .frame-list {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+    .frame-strip {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #fafafa;
+    }
+    .frame-chip {
+      flex: 0 0 auto;
+      min-width: 74px;
+      padding: 7px 8px;
+      font-size: 12px;
+    }
+    .frame-chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .editor-zoom {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .editor-zoom button {
+      min-width: 34px;
+      padding: 6px 8px;
+    }
+    .editor-zoom .pill {
+      min-width: 52px;
+      text-align: center;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .editor-stage {
+      min-height: 420px;
+      max-height: 62vh;
+      padding: 12px;
+      overflow: scroll;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+        linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+        linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    }
+    .editor-scroll-inner {
+      min-width: max-content;
+      min-height: max-content;
+      display: grid;
+      place-items: center;
+    }
+    canvas {
+      background: transparent;
+      border: 1px solid rgba(0,0,0,.18);
+      cursor: crosshair;
+      image-rendering: pixelated;
+    }
+    .editor-tools {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .output {
+      min-height: 260px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      white-space: pre;
+    }
+    .status {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    @media (max-width: 1100px) {
+      main { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MSW Skill Hitbox Author</h1>
+    <div class="status" id="status">Ready</div>
+  </header>
+  <main>
+    <section>
+      <div class="section-head">
+        <h2>Batch Import</h2>
+        <button id="sampleBtn">Sample</button>
+      </div>
+      <div class="section-body stack">
+        <div>
+          <label for="jsonInput">Resource pack JSON object or array</label>
+          <textarea id="jsonInput" spellcheck="false"></textarea>
+        </div>
+        <div class="row">
+          <button class="primary" id="parseBtn">Parse JSON</button>
+          <button class="green" id="generateBtn" disabled>Generate JSON</button>
+        </div>
+        <div id="parseError" class="error"></div>
+        <div class="hint">
+          Default events are created from hit animationclips. Empty frame and hitbox values can be filled in the editor.
+        </div>
+        <div class="skill-list" id="skillList"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Frame / Hitbox Editor</h2>
+        <div class="editor-zoom">
+          <button id="zoomOutBtn" title="Zoom out">-</button>
+          <span class="pill" id="zoomLabel">100%</span>
+          <button id="zoomInBtn" title="Zoom in">+</button>
+          <button id="zoomResetBtn" title="Reset zoom">100</button>
+        </div>
+        <span class="status" id="selectedName">No skill selected</span>
+      </div>
+      <div class="editor-stage">
+        <div class="editor-scroll-inner">
+          <canvas id="editorCanvas" width="1" height="1"></canvas>
+        </div>
+      </div>
+      <div class="frame-strip">
+        <div class="frame-list" id="frameList"></div>
+      </div>
+      <div class="editor-tools">
+        <div class="grid4">
+          <div>
+            <label>Width</label>
+            <input id="imageWidthInput" type="number" min="1" step="1" value="1" />
+          </div>
+          <div>
+            <label>Height</label>
+            <input id="imageHeightInput" type="number" min="1" step="1" value="1" />
+          </div>
+          <div>
+            <label>Pivot X</label>
+            <input id="pivotXInput" type="number" step="1" value="0" />
+          </div>
+          <div>
+            <label>Pivot Y</label>
+            <input id="pivotYInput" type="number" step="1" value="0" />
+          </div>
+        </div>
+        <div class="row">
+          <input id="imageUrlInput" placeholder="Frame image URL (optional)" />
+          <button id="loadImageBtn">Load URL</button>
+        </div>
+        <div class="row">
+          <input id="effectRuidInput" placeholder="Animationclip RUID" />
+          <button id="loadRuidBtn">Load RUID Frames</button>
+        </div>
+        <div>
+          <label for="fileInput">Or load local image</label>
+          <input id="fileInput" type="file" accept="image/*" />
+        </div>
+        <div class="hint" id="canvasInfo"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="tabs">
+        <button class="tab active" id="eventTab">Events</button>
+        <button class="tab" id="jsonTab">JSON</button>
+      </div>
+      <div class="section-body stack" id="eventPanel">
+        <div class="event-picker">
+          <div>
+            <label>Event</label>
+            <select id="eventSelect"></select>
+          </div>
+          <button id="editInfoBtn">Edit Info</button>
+        </div>
+        <div class="grid2">
+          <div>
+            <label>Start Frame</label>
+            <input id="startFrameInput" type="number" />
+          </div>
+          <div>
+            <label>End Frame</label>
+            <input id="endFrameInput" type="number" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="addEventBtn">Add Event</button>
+          <button class="danger" id="deleteEventBtn">Delete Event</button>
+        </div>
+        <div class="stack" id="eventForm">
+          <div class="mini-panel" id="boxPanel">
+            <div class="mini-head">
+              <span id="boxSummary">No box selected</span>
+              <span class="pill" id="boxCountPill">0 boxes</span>
+            </div>
+            <div class="box-tools">
+              <button class="green" id="addBoxBtn">Add Box</button>
+              <button class="danger" id="deleteBoxBtn">Delete Box</button>
+            </div>
+            <div class="grid4">
+              <div>
+                <label>Box ID</label>
+                <input id="boxIdInput" type="number" />
+              </div>
+              <div>
+                <label>Right X</label>
+                <input id="centerXInput" type="number" />
+              </div>
+              <div>
+                <label>Bottom Y</label>
+                <input id="centerYInput" type="number" />
+              </div>
+              <div>
+                <label>Width</label>
+                <input id="widthInput" type="number" />
+              </div>
+            </div>
+            <div>
+              <label>Height</label>
+              <input id="heightInput" type="number" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="section-body stack" id="jsonPanel" hidden>
+        <div class="row">
+          <button class="green" id="refreshJsonBtn">Refresh JSON</button>
+          <button id="copyJsonBtn">Copy</button>
+        </div>
+        <div id="jsonWarnings" class="warn"></div>
+        <textarea class="output" id="jsonOutput" spellcheck="false"></textarea>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="eventInfoModal" hidden aria-hidden="true">
+    <div class="modal">
+      <div class="section-head">
+        <h2>Event Info</h2>
+        <button id="closeInfoBtn">Close</button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <label>Event ID</label>
+          <input id="eventIdInput" />
+        </div>
+        <div class="grid2">
+          <div>
+            <label>Damage Rate</label>
+            <input id="damageRateInput" />
+          </div>
+          <div>
+            <label>Attack Info</label>
+            <input id="attackInfoInput" />
+          </div>
+        </div>
+        <div>
+          <label>Hit Effect RUID</label>
+          <input id="hitEffectInput" />
+        </div>
+        <div>
+          <label>Action Mode</label>
+          <select id="actionModeInput">
+            <option value="area_target">Area Target</option>
+            <option value="projectile">Projectile</option>
+          </select>
+        </div>
+        <div class="mini-panel" id="projectilePanel" hidden>
+          <div class="mini-head">
+            <span>Projectile</span>
+            <span class="pill" id="projectileHitboxSummary">0 boxes</span>
+          </div>
+          <div>
+            <label>Sprite RUID</label>
+            <input id="projectileSpriteRuidInput" />
+          </div>
+          <div class="grid2">
+            <div>
+              <label>Range</label>
+              <input id="projectileRangeInput" type="number" step="1" />
+            </div>
+            <div>
+              <label>Speed</label>
+              <input id="projectileSpeedInput" type="number" step="0.01" />
+            </div>
+          </div>
+          <div class="grid2">
+            <div>
+              <label>Front Direction</label>
+              <select id="projectileFrontDirectionInput">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </div>
+            <div>
+              <label>Pierce</label>
+              <input id="projectilePierceInput" />
+            </div>
+          </div>
+          <div class="grid2">
+            <div>
+              <label>Collision Damage Rate</label>
+              <input id="collisionDamageRateInput" />
+            </div>
+            <div>
+              <label>Collision Sound RUID</label>
+              <input id="collisionSoundInput" />
+            </div>
+          </div>
+          <div>
+            <label>Collision Hit Effect RUID</label>
+            <input id="collisionHitEffectInput" />
+          </div>
+          <div class="row">
+            <button id="loadProjectileSpriteBtn">Load Projectile Sprite</button>
+            <button class="green" id="editProjectileHitboxBtn">Edit Projectile Hitbox</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./core.js"></script>
+  <script>
+    const Core = window.SkillHitboxCore;
+    const state = {
+      packs: [],
+      selectedPack: -1,
+      selectedEvent: 0,
+      selectedBox: -1,
+      editorImage: null,
+      objectUrl: "",
+      frames: [],
+      selectedFrame: -1,
+      editorMode: "event_hitbox",
+      addBoxMode: false,
+      drawing: null,
+      interaction: null,
+      zoom: 1,
+      undoStack: [],
+      redoStack: [],
+    };
+
+    const $ = (id) => document.getElementById(id);
+    function closeEventInfo() {
+      $("eventInfoModal").hidden = true;
+      $("eventInfoModal").setAttribute("aria-hidden", "true");
+    }
+    function openEventInfo() {
+      if (!currentSkillEvent()) {
+        closeEventInfo();
+        return;
+      }
+      $("eventInfoModal").hidden = false;
+      $("eventInfoModal").setAttribute("aria-hidden", "false");
+    }
+    const editorCanvas = $("editorCanvas");
+    const editorCtx = editorCanvas.getContext("2d");
+    const sample = {
+      skillId: "brandish",
+      resource_pack: "????",
+      elements: [
+        { ruid: "6c06fe8ab27b469eb61f466ea7f7e182", action: "audio/Hit", type: "effect" },
+        { ruid: "f0c0c4016cf04d0d98886227cab56561", action: "audio/Use", type: "effect" },
+        { ruid: "8b26a0cdb63d455e82d1ca0fddf5e139", action: "effect", type: "animationclip" },
+        { ruid: "38e9351c34b843ddbcc191c762e7464c", action: "hit/0", type: "animationclip" },
+        { ruid: "fa71427649df4eeb8a3fd1ddf4cf9023", action: "hit/1", type: "animationclip" },
+        { ruid: "429228115d56462ab0f65e7294a51609", action: "icon", type: "sprite" }
+      ]
+    };
+
+    function currentPack() {
+      return state.packs[state.selectedPack] || null;
+    }
+    function currentSkillEvent() {
+      const pack = currentPack();
+      return pack && pack.events[state.selectedEvent] || null;
+    }
+    function parseBoolInput(value) {
+      return String(value).toLowerCase() !== "false";
+    }
+    function ensureProjectileFields(skillEvent) {
+      if (!skillEvent) return null;
+      if (skillEvent.actionMode !== "projectile" && skillEvent.actionMode !== "area_target") {
+        skillEvent.actionMode = "area_target";
+      }
+      skillEvent.projectileSpriteRuid = skillEvent.projectileSpriteRuid || "";
+      skillEvent.projectileRange = skillEvent.projectileRange == null ? "" : skillEvent.projectileRange;
+      skillEvent.projectileSpeed = skillEvent.projectileSpeed == null ? "" : skillEvent.projectileSpeed;
+      skillEvent.projectileFrontDirection =
+        skillEvent.projectileFrontDirection == null || skillEvent.projectileFrontDirection === ""
+          ? true
+          : parseBoolInput(skillEvent.projectileFrontDirection);
+      skillEvent.projectilePierce = skillEvent.projectilePierce == null ? "" : skillEvent.projectilePierce;
+      skillEvent.projectileHitbox =
+        skillEvent.projectileHitbox && typeof skillEvent.projectileHitbox === "object"
+          ? skillEvent.projectileHitbox
+          : null;
+      skillEvent.collisionDamageRate =
+        skillEvent.collisionDamageRate == null || skillEvent.collisionDamageRate === ""
+          ? "1"
+          : skillEvent.collisionDamageRate;
+      skillEvent.collisionHitEffectRuid = skillEvent.collisionHitEffectRuid || "";
+      skillEvent.collisionSoundRuid = skillEvent.collisionSoundRuid || "";
+      return skillEvent;
+    }
+    function isProjectileEditor() {
+      return state.editorMode === "projectile_hitbox";
+    }
+    function currentProjectileHitbox() {
+      const skillEvent = ensureProjectileFields(currentSkillEvent());
+      return skillEvent ? skillEvent.projectileHitbox : null;
+    }
+    function currentBox() {
+      if (isProjectileEditor()) return state.selectedBox === 0 ? currentProjectileHitbox() : null;
+      const skillEvent = visibleSkillEvent();
+      return skillEvent && skillEvent.hitboxes[state.selectedBox] || null;
+    }
+    function activeEditorEvent() {
+      const skillEvent = isProjectileEditor() ? currentSkillEvent() : visibleSkillEvent();
+      if (!isProjectileEditor() && skillEvent && skillEvent.actionMode === "projectile") return null;
+      return skillEvent;
+    }
+    function activeHitboxes() {
+      if (isProjectileEditor()) {
+        const box = currentProjectileHitbox();
+        return box ? [box] : [];
+      }
+      const skillEvent = visibleSkillEvent();
+      if (skillEvent && skillEvent.actionMode === "projectile") return [];
+      return skillEvent && Array.isArray(skillEvent.hitboxes) ? skillEvent.hitboxes : [];
+    }
+    function currentFrame() {
+      return state.selectedFrame >= 0 ? state.frames[state.selectedFrame] || null : null;
+    }
+    function clonePacks() {
+      return JSON.parse(JSON.stringify(state.packs));
+    }
+    function captureHistory() {
+      return {
+        packs: clonePacks(),
+        selectedPack: state.selectedPack,
+        selectedEvent: state.selectedEvent,
+        selectedBox: state.selectedBox,
+        editorMode: state.editorMode,
+        addBoxMode: state.addBoxMode,
+      };
+    }
+    function samePacks(snapshot) {
+      return snapshot && JSON.stringify(snapshot.packs) === JSON.stringify(state.packs);
+    }
+    function pushHistory(snapshot) {
+      if (!snapshot || samePacks(snapshot)) return;
+      state.undoStack.push(snapshot);
+      if (state.undoStack.length > 100) state.undoStack.shift();
+      state.redoStack = [];
+    }
+    function restoreHistory(snapshot) {
+      if (!snapshot) return;
+      state.packs = JSON.parse(JSON.stringify(snapshot.packs));
+      state.selectedPack = snapshot.selectedPack;
+      state.selectedEvent = snapshot.selectedEvent;
+      state.selectedBox = snapshot.selectedBox;
+      state.editorMode = snapshot.editorMode || "event_hitbox";
+      state.addBoxMode = snapshot.addBoxMode;
+      state.drawing = null;
+      state.interaction = null;
+      renderAll();
+    }
+    function undoHitboxEdit() {
+      const snapshot = state.undoStack.pop();
+      if (!snapshot) return;
+      state.redoStack.push(captureHistory());
+      restoreHistory(snapshot);
+      setStatus("Undo hitbox edit");
+    }
+    function redoHitboxEdit() {
+      const snapshot = state.redoStack.pop();
+      if (!snapshot) return;
+      state.undoStack.push(captureHistory());
+      restoreHistory(snapshot);
+      setStatus("Redo hitbox edit");
+    }
+    function setStatus(text) {
+      $("status").textContent = text;
+    }
+    function truncTowardZero(value) {
+      return value < 0 ? Math.ceil(value) : Math.floor(value);
+    }
+    function numberOrBlank(value) {
+      return value === "" || value == null ? "" : truncTowardZero(Number(value));
+    }
+    function formatNumber(value) {
+      if (value === "" || value == null || !Number.isFinite(Number(value))) return "";
+      return String(truncTowardZero(Number(value)));
+    }
+    function numberInput(id, fallback) {
+      const value = Number($(id).value);
+      return Number.isFinite(value) ? value : fallback;
+    }
+    function setZoom(nextZoom) {
+      state.zoom = Math.max(0.25, Math.min(4, nextZoom));
+      $("zoomLabel").textContent = `${Math.round(state.zoom * 100)}%`;
+      drawEditor();
+    }
+    function imageValues() {
+      const width = Math.max(1, Math.floor(numberInput("imageWidthInput", 1)));
+      const height = Math.max(1, Math.floor(numberInput("imageHeightInput", 1)));
+      const pivX = truncTowardZero(numberInput("pivotXInput", 0));
+      const pivY = truncTowardZero(numberInput("pivotYInput", 0));
+      return { width, height, pivX, pivY };
+    }
+    function canvasPoint(event) {
+      const rect = editorCanvas.getBoundingClientRect();
+      const scaleX = editorCanvas.width / rect.width;
+      const scaleY = editorCanvas.height / rect.height;
+      return {
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY,
+      };
+    }
+    function toCanvasBox(box) {
+      const width = Number(box.widthPx || 0);
+      const height = Number(box.heightPx || 0);
+      const rightX = box.rightXpx != null && box.rightXpx !== ""
+        ? Number(box.rightXpx)
+        : Number(box.centerXpx || 0) + width / 2;
+      const bottomY = box.bottomYpx != null && box.bottomYpx !== ""
+        ? Number(box.bottomYpx)
+        : Number(box.centerYpx || 0) - height / 2;
+      return {
+        x: 500 + rightX - width,
+        y: 500 - bottomY - height,
+        w: width,
+        h: height,
+      };
+    }
+    function boxRightValue(box) {
+      const width = Number(box.widthPx || 0);
+      if (box.rightXpx != null && box.rightXpx !== "") return Number(box.rightXpx);
+      if (box.centerXpx != null && box.centerXpx !== "") return Number(box.centerXpx) + width / 2;
+      return null;
+    }
+    function maxRightXValue(boxes) {
+      if (!Array.isArray(boxes) || !boxes.length) return "";
+      const values = boxes
+        .map(boxRightValue)
+        .filter((value) => Number.isFinite(value));
+      if (!values.length) return "";
+      return formatNumber(Math.max(...values));
+    }
+    function boxFromCanvasRect(rect) {
+      const x = Math.min(rect.x1, rect.x2);
+      const y = Math.min(rect.y1, rect.y2);
+      const w = Math.abs(rect.x2 - rect.x1);
+      const h = Math.abs(rect.y2 - rect.y1);
+      return { x, y, w, h };
+    }
+    function handlesForBox(box) {
+      const rect = toCanvasBox(box);
+      return [
+        { name: "nw", x: rect.x, y: rect.y },
+        { name: "ne", x: rect.x + rect.w, y: rect.y },
+        { name: "sw", x: rect.x, y: rect.y + rect.h },
+        { name: "se", x: rect.x + rect.w, y: rect.y + rect.h },
+        { name: "n", x: rect.x + rect.w / 2, y: rect.y },
+        { name: "s", x: rect.x + rect.w / 2, y: rect.y + rect.h },
+        { name: "w", x: rect.x, y: rect.y + rect.h / 2 },
+        { name: "e", x: rect.x + rect.w, y: rect.y + rect.h / 2 },
+      ];
+    }
+    function hitTest(point) {
+      const boxes = activeHitboxes();
+      if (!boxes.length) return null;
+      const handleRadius = 8;
+      for (let i = boxes.length - 1; i >= 0; i -= 1) {
+        const box = boxes[i];
+        for (const handle of handlesForBox(box)) {
+          if (Math.abs(point.x - handle.x) <= handleRadius && Math.abs(point.y - handle.y) <= handleRadius) {
+            return { type: "resize", boxIndex: i, handle: handle.name, rect: toCanvasBox(box) };
+          }
+        }
+      }
+      for (let i = boxes.length - 1; i >= 0; i -= 1) {
+        const rect = toCanvasBox(boxes[i]);
+        const withinX = point.x >= rect.x && point.x <= rect.x + rect.w;
+        const withinY = point.y >= rect.y && point.y <= rect.y + rect.h;
+        if (withinX && Math.abs(point.y - rect.y) <= handleRadius) {
+          return { type: "resize", boxIndex: i, handle: "n", rect };
+        }
+        if (withinX && Math.abs(point.y - (rect.y + rect.h)) <= handleRadius) {
+          return { type: "resize", boxIndex: i, handle: "s", rect };
+        }
+        if (withinY && Math.abs(point.x - rect.x) <= handleRadius) {
+          return { type: "resize", boxIndex: i, handle: "w", rect };
+        }
+        if (withinY && Math.abs(point.x - (rect.x + rect.w)) <= handleRadius) {
+          return { type: "resize", boxIndex: i, handle: "e", rect };
+        }
+      }
+      for (let i = boxes.length - 1; i >= 0; i -= 1) {
+        const rect = toCanvasBox(boxes[i]);
+        if (point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h) {
+            return { type: "move", boxIndex: i, rect };
+        }
+      }
+      return null;
+    }
+    function hitboxRectFromCanvas(rect) {
+      const x1 = Math.min(rect.x1, rect.x2);
+      const x2 = Math.max(rect.x1, rect.x2);
+      const y1 = Math.min(rect.y1, rect.y2);
+      const y2 = Math.max(rect.y1, rect.y2);
+      return {
+        x1: x1 - 500,
+        x2: x2 - 500,
+        y1: 500 - y1,
+        y2: 500 - y2,
+      };
+    }
+    function frameValues(frame) {
+      const pivot = framePivot(frame);
+      return {
+        width: Math.max(1, Math.floor(Number(frame && frame.width || 1))),
+        height: Math.max(1, Math.floor(Number(frame && frame.height || 1))),
+        pivX: truncTowardZero(pivot.x),
+        pivY: truncTowardZero(pivot.y),
+      };
+    }
+    function drawEditor() {
+      const { width, height, pivX, pivY } = imageValues();
+      const canvasWidth = 1000;
+      const canvasHeight = 1000;
+      const cameraX = 500;
+      const cameraY = 500;
+      editorCanvas.width = canvasWidth;
+      editorCanvas.height = canvasHeight;
+      editorCanvas.style.width = `${canvasWidth * state.zoom}px`;
+      editorCanvas.style.height = `${canvasHeight * state.zoom}px`;
+
+      editorCtx.setTransform(1, 0, 0, 1, 0, 0);
+      editorCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+      const drawX = cameraX - pivX;
+      const drawY = cameraY - height + pivY;
+      if (state.editorImage) {
+        editorCtx.drawImage(state.editorImage, drawX, drawY, width, height);
+      }
+
+      editorCtx.strokeStyle = "#2563eb";
+      editorCtx.lineWidth = 1;
+      editorCtx.beginPath();
+      editorCtx.moveTo(cameraX - 12, cameraY);
+      editorCtx.lineTo(cameraX + 12, cameraY);
+      editorCtx.moveTo(cameraX, cameraY - 12);
+      editorCtx.lineTo(cameraX, cameraY + 12);
+      editorCtx.stroke();
+      editorCtx.fillStyle = "#2563eb";
+      editorCtx.fillRect(cameraX - 2, cameraY - 2, 5, 5);
+      editorCtx.font = "12px Arial";
+      editorCtx.fillText("0,0", cameraX + 7, cameraY - 7);
+
+      const skillEvent = activeEditorEvent();
+      const boxes = activeHitboxes();
+      if (skillEvent) {
+        boxes.forEach((box, index) => {
+          const rect = toCanvasBox(box);
+          editorCtx.strokeStyle = index === state.selectedBox ? "#16a34a" : "#f97316";
+          editorCtx.fillStyle = index === state.selectedBox ? "rgba(22,163,74,.16)" : "rgba(249,115,22,.12)";
+          editorCtx.lineWidth = 2;
+          editorCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
+          editorCtx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+          editorCtx.fillStyle = "#111827";
+          editorCtx.font = "12px Arial";
+          editorCtx.fillText(String(box.boxId ?? index), rect.x + 4, rect.y + 14);
+          if (index === state.selectedBox) {
+            editorCtx.fillStyle = "#ffffff";
+            editorCtx.strokeStyle = "#16a34a";
+            handlesForBox(box).forEach((handle) => {
+              editorCtx.fillRect(handle.x - 4, handle.y - 4, 8, 8);
+              editorCtx.strokeRect(handle.x - 4, handle.y - 4, 8, 8);
+            });
+          }
+        });
+      }
+      if (state.drawing) {
+        const rect = boxFromCanvasRect(state.drawing);
+        editorCtx.strokeStyle = "#dc2626";
+        editorCtx.fillStyle = "rgba(220,38,38,.12)";
+        editorCtx.lineWidth = 2;
+        editorCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        editorCtx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        if (state.interaction && state.interaction.type === "resize") {
+          drawHandleCoordinateTooltip();
+        }
+      }
+
+      const modeLabel = isProjectileEditor() ? "projectile hitbox" : "event hitbox";
+      $("canvasInfo").textContent =
+        `mode ${modeLabel}; canvas ${canvasWidth}x${canvasHeight}; zoom ${Math.round(state.zoom * 100)}%; camera at (${cameraX}, ${cameraY}); image draw at (${drawX}, ${drawY})` +
+        (currentFrame() && !skillEvent && !isProjectileEditor() ? "; no event in this frame range" : "") +
+        (state.addBoxMode ? "; add box: drag to draw" : "");
+    }
+    function handlePointFromDrawing() {
+      if (!state.drawing || !state.interaction || state.interaction.type !== "resize") return null;
+      const handle = state.interaction.handle;
+      const x1 = state.drawing.x1;
+      const x2 = state.drawing.x2;
+      const y1 = state.drawing.y1;
+      const y2 = state.drawing.y2;
+      return {
+        x: handle.includes("w") ? x1 : handle.includes("e") ? x2 : (x1 + x2) / 2,
+        y: handle.includes("n") ? y1 : handle.includes("s") ? y2 : (y1 + y2) / 2,
+      };
+    }
+    function drawHandleCoordinateTooltip() {
+      const point = handlePointFromDrawing();
+      if (!point) return;
+      const label = `${formatNumber(point.x - 500)}, ${formatNumber(500 - point.y)}`;
+      editorCtx.save();
+      editorCtx.font = "12px Arial";
+      const paddingX = 6;
+      const paddingY = 4;
+      const width = Math.ceil(editorCtx.measureText(label).width) + paddingX * 2;
+      const height = 20;
+      let x = point.x + 10;
+      let y = point.y - 28;
+      x = Math.max(4, Math.min(1000 - width - 4, x));
+      y = Math.max(4, Math.min(1000 - height - 4, y));
+      editorCtx.fillStyle = "rgba(17,24,39,.9)";
+      editorCtx.fillRect(x, y, width, height);
+      editorCtx.strokeStyle = "rgba(255,255,255,.75)";
+      editorCtx.strokeRect(x + .5, y + .5, width - 1, height - 1);
+      editorCtx.fillStyle = "#ffffff";
+      editorCtx.fillText(label, x + paddingX, y + height - paddingY - 2);
+      editorCtx.restore();
+    }
+    function setEditorImage(image, label, options = {}) {
+      state.editorImage = image;
+      if (options.values) {
+        const valueWidth = Number(options.values.width);
+        const valueHeight = Number(options.values.height);
+        $("imageWidthInput").value = Number.isFinite(valueWidth) && valueWidth > 0 ? valueWidth : image.width;
+        $("imageHeightInput").value = Number.isFinite(valueHeight) && valueHeight > 0 ? valueHeight : image.height;
+        if (options.values.pivX != null) $("pivotXInput").value = options.values.pivX;
+        if (options.values.pivY != null) $("pivotYInput").value = options.values.pivY;
+      } else {
+        $("imageWidthInput").value = image.width;
+        $("imageHeightInput").value = image.height;
+      }
+      setStatus(`Loaded ${label || `image ${image.width}x${image.height}`}`);
+      drawEditor();
+    }
+    function loadEditorImageFromUrl(url, options = {}) {
+      const image = new Image();
+      image.onload = () => setEditorImage(image, options.label || `image ${image.width}x${image.height}`, options);
+      image.onerror = () => setStatus("Image load failed");
+      image.src = url;
+    }
+    function preferredEffectRuid(pack) {
+      return pack && pack.mainEffectRuid || "";
+    }
+    function framePivot(frame) {
+      const pivot = frame && frame.pivot;
+      if (pivot && Number.isFinite(Number(pivot.x)) && Number.isFinite(Number(pivot.y))) {
+        return { x: Number(pivot.x), y: Number(pivot.y) };
+      }
+      return { x: 0, y: 0 };
+    }
+    function renderFrameList() {
+      const list = $("frameList");
+      list.innerHTML = "";
+      state.frames.forEach((frame, index) => {
+        const button = document.createElement("button");
+        button.className = "frame-chip" + (index === state.selectedFrame ? " active" : "");
+        button.textContent = `#${frame.index} ${frame.width}x${frame.height}`;
+        button.title = frame.spriteRuid;
+        button.addEventListener("click", () => loadFrame(frame, index));
+        list.appendChild(button);
+      });
+      const active = list.querySelector(".frame-chip.active");
+      if (active) {
+        const scrollActiveFrame = () => {
+          active.scrollIntoView({ block: "nearest", inline: "center" });
+        };
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(scrollActiveFrame);
+        } else {
+          scrollActiveFrame();
+        }
+      }
+    }
+    function applyFrameValues(frame) {
+      const values = frameValues(frame);
+      $("imageWidthInput").value = values.width;
+      $("imageHeightInput").value = values.height;
+      $("pivotXInput").value = values.pivX;
+      $("pivotYInput").value = values.pivY;
+    }
+    function numberOrNull(value) {
+      if (value === "" || value == null) return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    }
+    function eventIndexForFrame(frame) {
+      const pack = currentPack();
+      if (!pack || !frame) return -1;
+      const frameIndex = Number(frame.index);
+      if (!Number.isFinite(frameIndex)) return -1;
+      return pack.events.findIndex((skillEvent) => {
+        const start = numberOrNull(skillEvent.startFrame);
+        const end = numberOrNull(skillEvent.endFrame);
+        if (start == null || end == null) return false;
+        return frameIndex >= Math.min(start, end) && frameIndex <= Math.max(start, end);
+      });
+    }
+    function visibleSkillEvent() {
+      const frame = currentFrame();
+      if (!frame) return currentSkillEvent();
+      const eventIndex = eventIndexForFrame(frame);
+      return eventIndex >= 0 ? currentPack().events[eventIndex] : null;
+    }
+    function selectEventForFrame(frame) {
+      const eventIndex = eventIndexForFrame(frame);
+      if (eventIndex < 0) {
+        state.selectedBox = -1;
+        state.addBoxMode = false;
+        state.drawing = null;
+        state.interaction = null;
+        return;
+      }
+      if (eventIndex === state.selectedEvent) return;
+      state.selectedEvent = eventIndex;
+      state.selectedBox = -1;
+      state.addBoxMode = false;
+      state.drawing = null;
+      state.interaction = null;
+    }
+    function stepFrame(delta) {
+      if (!state.frames.length) return;
+      const current = state.selectedFrame < 0 ? 0 : state.selectedFrame;
+      const next = Math.max(0, Math.min(state.frames.length - 1, current + delta));
+      if (next !== state.selectedFrame) {
+        loadFrame(state.frames[next], next);
+      }
+    }
+    function loadFrame(frame, index) {
+      if (!frame) return;
+      state.editorMode = "event_hitbox";
+      state.selectedFrame = index;
+      applyFrameValues(frame);
+      selectEventForFrame(frame);
+      renderFrameList();
+      populateForm();
+      syncJson();
+      if (frame.imageUrl) {
+        loadEditorImageFromUrl(frame.imageUrl, {
+          label: `frame #${frame.index} ${frame.width}x${frame.height}`,
+          values: frameValues(frame),
+        });
+      } else {
+        drawEditor();
+      }
+    }
+    async function loadFramesFromRuid() {
+      const ruid = $("effectRuidInput").value.trim();
+      if (!ruid) return;
+      try {
+        setStatus("Loading RUID frames...");
+        const result = await Core.fetchAnimationFrames(ruid);
+        state.frames = result.frames;
+        const pack = currentPack();
+        if (pack) pack.totalLengthFrames = state.frames.length;
+        state.selectedFrame = -1;
+        renderFrameList();
+        if (!state.frames.length) {
+          setStatus("No frames found for RUID");
+          return;
+        }
+        loadFrame(state.frames[0], 0);
+        setStatus(`Loaded ${state.frames.length} frame(s) from RUID`);
+      } catch (error) {
+        setStatus(`RUID load failed: ${error.message}`);
+      }
+    }
+    function projectileFrameValues(frame) {
+      const values = {
+        width: Number(frame && frame.width || 0),
+        height: Number(frame && frame.height || 0),
+      };
+      const pivot = frame && frame.pivot;
+      if (pivot && Number.isFinite(Number(pivot.x)) && Number.isFinite(Number(pivot.y))) {
+        values.pivX = truncTowardZero(Number(pivot.x));
+        values.pivY = truncTowardZero(Number(pivot.y));
+      }
+      return values;
+    }
+    async function loadProjectileSprite() {
+      const skillEvent = ensureProjectileFields(currentSkillEvent());
+      if (!skillEvent) return;
+      skillEvent.actionMode = "projectile";
+      const ruid = $("projectileSpriteRuidInput").value.trim() || skillEvent.projectileSpriteRuid;
+      skillEvent.projectileSpriteRuid = ruid;
+      state.editorMode = "projectile_hitbox";
+      state.addBoxMode = false;
+      state.selectedBox = skillEvent.projectileHitbox ? 0 : -1;
+      if (!ruid) {
+        setStatus("Enter a projectile sprite RUID, or load an image URL manually");
+        renderAll();
+        return;
+      }
+      try {
+        setStatus("Loading projectile sprite...");
+        const result = await Core.fetchSpriteFrame(ruid);
+        const frame = result.frame;
+        const imageUrl = frame.imageUrl || Core.spriteImageUrl(ruid);
+        $("imageUrlInput").value = imageUrl;
+        loadEditorImageFromUrl(imageUrl, {
+          label: `projectile sprite ${ruid}`,
+          values: projectileFrameValues(frame),
+        });
+        renderAll();
+      } catch (error) {
+        const imageUrl = Core.spriteImageUrl(ruid);
+        $("imageUrlInput").value = imageUrl;
+        loadEditorImageFromUrl(imageUrl);
+        setStatus(`Projectile sprite detail failed: ${error.message}. Loaded fallback image URL if available.`);
+        renderAll();
+      }
+    }
+    function editProjectileHitbox() {
+      const skillEvent = ensureProjectileFields(currentSkillEvent());
+      if (!skillEvent) return;
+      skillEvent.actionMode = "projectile";
+      state.editorMode = "projectile_hitbox";
+      state.selectedBox = skillEvent.projectileHitbox ? 0 : -1;
+      state.addBoxMode = false;
+      state.drawing = null;
+      state.interaction = null;
+      renderAll();
+      if (skillEvent.projectileSpriteRuid) {
+        loadProjectileSprite();
+      } else {
+        setStatus("Projectile hitbox mode. Load a sprite RUID or image URL, then draw one box.");
+      }
+    }
+    function syncJson() {
+      if (!state.packs.length) {
+        $("jsonOutput").value = "";
+        $("jsonWarnings").textContent = "";
+        return;
+      }
+      const result = Core.buildWanessSkillData(state.packs);
+      $("jsonOutput").value = JSON.stringify(result.data, null, 2);
+      $("jsonWarnings").textContent = result.warnings.length ? result.warnings.join("\n") : "";
+    }
+    function renderSkillList() {
+      const list = $("skillList");
+      list.innerHTML = "";
+      state.packs.forEach((pack, index) => {
+        const div = document.createElement("div");
+        div.className = "skill-item" + (index === state.selectedPack ? " active" : "");
+        const warnings = pack.warnings.length ? `<div class="warn">${pack.warnings.join(", ")}</div>` : "";
+        div.innerHTML = `
+          <div class="skill-title">${pack.skillId}</div>
+          <div class="hint">${pack.resourcePack || "(no resource pack name)"}</div>
+          <div class="hint">events: ${pack.events.length}</div>
+          ${warnings}
+        `;
+        div.addEventListener("click", () => {
+          state.selectedPack = index;
+          state.selectedEvent = 0;
+          state.selectedBox = -1;
+          state.editorMode = "event_hitbox";
+          state.addBoxMode = false;
+          $("effectRuidInput").value = preferredEffectRuid(state.packs[index]);
+          renderAll();
+          if ($("effectRuidInput").value) loadFramesFromRuid();
+        });
+        list.appendChild(div);
+      });
+    }
+    function renderEventList() {
+      const list = $("eventSelect");
+      const pack = currentPack();
+      list.innerHTML = "";
+      if (!pack) return;
+      pack.events.forEach((skillEvent, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        const start = skillEvent.startFrame === "" || skillEvent.startFrame == null ? "?" : skillEvent.startFrame;
+        const end = skillEvent.endFrame === "" || skillEvent.endFrame == null ? "?" : skillEvent.endFrame;
+        const isProjectile = skillEvent.actionMode === "projectile";
+        const boxCount = isProjectile
+          ? (skillEvent.projectileHitbox ? 1 : 0)
+          : (Array.isArray(skillEvent.hitboxes) ? skillEvent.hitboxes.length : 0);
+        const mode = isProjectile ? "projectile" : "area";
+        option.textContent = `${skillEvent.id} · ${mode} · frames ${start}-${end} · ${boxCount} box${boxCount === 1 ? "" : "es"}`;
+        list.appendChild(option);
+      });
+      list.value = String(state.selectedEvent);
+    }
+    function populateForm() {
+      const pack = currentPack();
+      const skillEvent = currentSkillEvent();
+      const projectile = ensureProjectileFields(skillEvent);
+      const boxEvent = activeEditorEvent();
+      const boxes = activeHitboxes();
+      const box = boxes[state.selectedBox] || null;
+      const boxCount = boxes.length;
+      const maxRightX = maxRightXValue(boxes);
+      const isProjectile = !!skillEvent && skillEvent.actionMode === "projectile";
+      const boxWidth = box ? Number(box.widthPx || 0) : 0;
+      const boxHeight = box ? Number(box.heightPx || 0) : 0;
+      const boxRightX = box && box.rightXpx !== "" && box.rightXpx != null
+        ? Number(box.rightXpx)
+        : box && box.centerXpx !== "" && box.centerXpx != null
+          ? Number(box.centerXpx) + boxWidth / 2
+          : "";
+      const boxBottomY = box && box.bottomYpx !== "" && box.bottomYpx != null
+        ? Number(box.bottomYpx)
+        : box && box.centerYpx !== "" && box.centerYpx != null
+          ? Number(box.centerYpx) - boxHeight / 2
+          : "";
+      $("selectedName").textContent = pack ? `${pack.skillId} / ${pack.resourcePack}` : "No skill selected";
+      $("eventIdInput").value = skillEvent ? skillEvent.id : "";
+      $("startFrameInput").value = skillEvent ? skillEvent.startFrame : "";
+      $("endFrameInput").value = skillEvent ? skillEvent.endFrame : "";
+      $("damageRateInput").value = skillEvent ? skillEvent.damageRate : "";
+      $("attackInfoInput").value = skillEvent ? skillEvent.attackInfo : "";
+      $("hitEffectInput").value = skillEvent ? skillEvent.hitEffectRuid : "";
+      $("actionModeInput").value = skillEvent ? skillEvent.actionMode || "area_target" : "area_target";
+      $("projectilePanel").hidden = !isProjectile;
+      $("projectileSpriteRuidInput").value = projectile ? projectile.projectileSpriteRuid : "";
+      $("projectileRangeInput").value = projectile ? projectile.projectileRange : "";
+      $("projectileSpeedInput").value = projectile ? projectile.projectileSpeed : "";
+      $("projectileFrontDirectionInput").value = projectile && projectile.projectileFrontDirection === false ? "false" : "true";
+      $("projectilePierceInput").value = projectile ? projectile.projectilePierce : "";
+      $("collisionDamageRateInput").value = projectile ? projectile.collisionDamageRate : "";
+      $("collisionHitEffectInput").value = projectile ? projectile.collisionHitEffectRuid : "";
+      $("collisionSoundInput").value = projectile ? projectile.collisionSoundRuid : "";
+      $("projectileHitboxSummary").textContent = projectile && projectile.projectileHitbox ? "1 box" : "0 boxes";
+      $("boxIdInput").value = box ? box.boxId : "";
+      $("centerXInput").value = box ? formatNumber(boxRightX) : "";
+      $("centerYInput").value = box ? formatNumber(boxBottomY) : "";
+      $("widthInput").value = box ? box.widthPx : "";
+      $("heightInput").value = box ? box.heightPx : "";
+      $("boxCountPill").textContent = `${boxCount} box${boxCount === 1 ? "" : "es"} · max right X: ${maxRightX === "" ? "-" : maxRightX}`;
+      $("boxSummary").textContent = box
+        ? `${isProjectileEditor() ? "Projectile box" : `Box ${box.boxId ?? state.selectedBox}`}: ${formatNumber(boxRightX)}, ${formatNumber(boxBottomY)} / ${formatNumber(boxWidth)}x${formatNumber(boxHeight)}`
+        : state.addBoxMode
+          ? "Drag on canvas to draw"
+          : "No box selected";
+      $("boxPanel").classList.toggle("active", !!box || state.addBoxMode);
+      ["boxIdInput", "centerXInput", "centerYInput", "widthInput", "heightInput", "deleteBoxBtn"]
+        .forEach((id) => {
+          $(id).disabled = !box;
+        });
+      ["startFrameInput", "endFrameInput"].forEach((id) => {
+          $(id).disabled = !skillEvent;
+        });
+      $("editInfoBtn").disabled = !skillEvent;
+      $("deleteEventBtn").disabled = !skillEvent;
+      if (!skillEvent) closeEventInfo();
+      if (pack && !$("effectRuidInput").value) {
+        $("effectRuidInput").value = preferredEffectRuid(pack);
+      }
+    }
+    function renderAll() {
+      renderSkillList();
+      renderEventList();
+      renderFrameList();
+      populateForm();
+      syncJson();
+      drawEditor();
+    }
+    function parseInput() {
+      $("parseError").textContent = "";
+      try {
+        const list = Core.parseJsonList($("jsonInput").value);
+        state.packs = Core.classifyPacks(list);
+        state.selectedPack = state.packs.length ? 0 : -1;
+        state.selectedEvent = 0;
+        state.selectedBox = -1;
+        state.editorMode = "event_hitbox";
+        state.addBoxMode = false;
+        state.frames = [];
+        state.selectedFrame = -1;
+        state.undoStack = [];
+        state.redoStack = [];
+        $("effectRuidInput").value = preferredEffectRuid(state.packs[0]);
+        $("generateBtn").disabled = !state.packs.length;
+        setStatus(`Parsed ${state.packs.length} skill(s)`);
+        renderAll();
+        if ($("effectRuidInput").value) loadFramesFromRuid();
+      } catch (error) {
+        $("parseError").textContent = error.message;
+        setStatus("Parse failed");
+      }
+    }
+    function mutateSkillEvent() {
+      const skillEvent = currentSkillEvent();
+      if (!skillEvent) return;
+      skillEvent.id = $("eventIdInput").value;
+      skillEvent.startFrame = $("startFrameInput").value;
+      skillEvent.endFrame = $("endFrameInput").value;
+      skillEvent.damageRate = $("damageRateInput").value;
+      skillEvent.attackInfo = $("attackInfoInput").value;
+      skillEvent.hitEffectRuid = $("hitEffectInput").value;
+      skillEvent.actionMode = $("actionModeInput").value;
+      ensureProjectileFields(skillEvent);
+      skillEvent.projectileSpriteRuid = $("projectileSpriteRuidInput").value.trim();
+      skillEvent.projectileRange = $("projectileRangeInput").value;
+      skillEvent.projectileSpeed = $("projectileSpeedInput").value;
+      skillEvent.projectileFrontDirection = $("projectileFrontDirectionInput").value === "true";
+      skillEvent.projectilePierce = $("projectilePierceInput").value;
+      skillEvent.collisionDamageRate = $("collisionDamageRateInput").value;
+      skillEvent.collisionHitEffectRuid = $("collisionHitEffectInput").value.trim();
+      skillEvent.collisionSoundRuid = $("collisionSoundInput").value.trim();
+      if (skillEvent.actionMode !== "projectile" && isProjectileEditor()) {
+        state.editorMode = "event_hitbox";
+        state.selectedBox = -1;
+        state.addBoxMode = false;
+      }
+      renderAll();
+    }
+    function mutateBox() {
+      const box = currentBox();
+      if (!box) return;
+      const before = captureHistory();
+      const rightX = numberOrBlank($("centerXInput").value);
+      const bottomY = numberOrBlank($("centerYInput").value);
+      const width = numberOrBlank($("widthInput").value);
+      const height = numberOrBlank($("heightInput").value);
+      box.boxId = numberOrBlank($("boxIdInput").value);
+      box.widthPx = width;
+      box.heightPx = height;
+      box.rightXpx = rightX;
+      box.bottomYpx = bottomY;
+      delete box.centerXpx;
+      delete box.centerYpx;
+      pushHistory(before);
+      renderAll();
+    }
+    function addSkillEvent() {
+      const pack = currentPack();
+      if (!pack) return;
+      const n = pack.events.length + 1;
+      pack.events.push({
+        id: `${pack.skillId}_event_${n}`,
+        startFrame: "",
+        endFrame: "",
+        damageRate: "1",
+        attackInfo: `${pack.skillId}.event${n}`,
+        hitEffectRuid: "",
+        hitboxes: [],
+        actionMode: "area_target",
+        projectileSpriteRuid: "",
+        projectileRange: "",
+        projectileSpeed: "",
+        projectileFrontDirection: true,
+        projectilePierce: "",
+        projectileHitbox: null,
+        collisionDamageRate: "1",
+        collisionHitEffectRuid: "",
+        collisionSoundRuid: "",
+      });
+      state.selectedEvent = pack.events.length - 1;
+      state.selectedBox = -1;
+      state.editorMode = "event_hitbox";
+      state.addBoxMode = false;
+      renderAll();
+    }
+    function deleteSkillEvent() {
+      const pack = currentPack();
+      if (!pack || !pack.events.length) return;
+      pack.events.splice(state.selectedEvent, 1);
+      state.selectedEvent = Math.max(0, Math.min(state.selectedEvent, pack.events.length - 1));
+      state.selectedBox = -1;
+      state.editorMode = "event_hitbox";
+      state.addBoxMode = false;
+      renderAll();
+    }
+    function addBox() {
+      const skillEvent = activeEditorEvent();
+      if (!skillEvent) {
+        const visible = visibleSkillEvent();
+        setStatus(visible && visible.actionMode === "projectile"
+          ? "Use Edit Projectile Hitbox for projectile events"
+          : "No event covers the current frame");
+        return;
+      }
+      state.selectedBox = -1;
+      state.addBoxMode = true;
+      state.drawing = null;
+      state.interaction = null;
+      setStatus("Drag on the canvas to draw a new hitbox");
+      renderAll();
+    }
+    function deleteBox() {
+      const skillEvent = currentSkillEvent();
+      if (!skillEvent || state.selectedBox < 0) return;
+      const before = captureHistory();
+      if (isProjectileEditor()) {
+        ensureProjectileFields(skillEvent).projectileHitbox = null;
+      } else {
+        const eventForEdit = visibleSkillEvent();
+        if (!eventForEdit || !eventForEdit.hitboxes.length) return;
+        eventForEdit.hitboxes.splice(state.selectedBox, 1);
+      }
+      state.selectedBox = -1;
+      state.addBoxMode = false;
+      pushHistory(before);
+      renderAll();
+    }
+
+    $("sampleBtn").addEventListener("click", () => {
+      $("jsonInput").value = JSON.stringify(sample, null, 2);
+    });
+    $("parseBtn").addEventListener("click", parseInput);
+    $("generateBtn").addEventListener("click", () => {
+      syncJson();
+      $("jsonTab").click();
+      setStatus("JSON generated");
+    });
+    $("refreshJsonBtn").addEventListener("click", syncJson);
+    $("copyJsonBtn").addEventListener("click", async () => {
+      await navigator.clipboard.writeText($("jsonOutput").value);
+      setStatus("JSON copied");
+    });
+    $("eventTab").addEventListener("click", () => {
+      $("eventPanel").hidden = false;
+      $("jsonPanel").hidden = true;
+      $("eventTab").classList.add("active");
+      $("jsonTab").classList.remove("active");
+    });
+    $("jsonTab").addEventListener("click", () => {
+      $("eventPanel").hidden = true;
+      $("jsonPanel").hidden = false;
+      $("eventTab").classList.remove("active");
+      $("jsonTab").classList.add("active");
+      syncJson();
+    });
+    $("eventSelect").addEventListener("change", () => {
+      state.selectedEvent = Number($("eventSelect").value);
+      state.selectedBox = -1;
+      state.editorMode = "event_hitbox";
+      state.addBoxMode = false;
+      renderAll();
+    });
+    $("editInfoBtn").addEventListener("click", () => {
+      openEventInfo();
+    });
+    $("closeInfoBtn").addEventListener("click", () => {
+      closeEventInfo();
+    });
+    $("eventInfoModal").addEventListener("click", (event) => {
+      if (event.target === $("eventInfoModal")) closeEventInfo();
+    });
+    [
+      "eventIdInput",
+      "startFrameInput",
+      "endFrameInput",
+      "damageRateInput",
+      "attackInfoInput",
+      "hitEffectInput",
+      "actionModeInput",
+      "projectileSpriteRuidInput",
+      "projectileRangeInput",
+      "projectileSpeedInput",
+      "projectileFrontDirectionInput",
+      "projectilePierceInput",
+      "collisionDamageRateInput",
+      "collisionHitEffectInput",
+      "collisionSoundInput",
+    ]
+      .forEach((id) => $(id).addEventListener("input", mutateSkillEvent));
+    $("actionModeInput").addEventListener("change", mutateSkillEvent);
+    $("projectileFrontDirectionInput").addEventListener("change", mutateSkillEvent);
+    ["boxIdInput", "centerXInput", "centerYInput", "widthInput", "heightInput"]
+      .forEach((id) => $(id).addEventListener("input", mutateBox));
+    ["imageWidthInput", "imageHeightInput", "pivotXInput", "pivotYInput"]
+      .forEach((id) => $(id).addEventListener("input", drawEditor));
+    $("loadImageBtn").addEventListener("click", () => {
+      const url = $("imageUrlInput").value.trim();
+      if (url) {
+        loadEditorImageFromUrl(url);
+      }
+    });
+    $("loadRuidBtn").addEventListener("click", loadFramesFromRuid);
+    $("loadProjectileSpriteBtn").addEventListener("click", loadProjectileSprite);
+    $("editProjectileHitboxBtn").addEventListener("click", editProjectileHitbox);
+    $("fileInput").addEventListener("change", (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
+      state.objectUrl = URL.createObjectURL(file);
+      loadEditorImageFromUrl(state.objectUrl);
+    });
+    $("addEventBtn").addEventListener("click", addSkillEvent);
+    $("deleteEventBtn").addEventListener("click", deleteSkillEvent);
+    $("addBoxBtn").addEventListener("click", addBox);
+    $("deleteBoxBtn").addEventListener("click", deleteBox);
+    $("zoomOutBtn").addEventListener("click", () => setZoom(state.zoom / 1.1));
+    $("zoomInBtn").addEventListener("click", () => setZoom(state.zoom * 1.1));
+    $("zoomResetBtn").addEventListener("click", () => setZoom(1));
+    editorCanvas.addEventListener("wheel", (event) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      setZoom(state.zoom * (event.deltaY < 0 ? 1.03 : 1 / 1.03));
+    }, { passive: false });
+    editorCanvas.addEventListener("pointerdown", (event) => {
+      const skillEvent = activeEditorEvent();
+      if (!skillEvent) return;
+      const point = canvasPoint(event);
+      const hit = hitTest(point);
+      if (state.addBoxMode) {
+        const before = captureHistory();
+        before.addBoxMode = false;
+        state.interaction = { type: "draw-new", before };
+        state.drawing = { x1: point.x, y1: point.y, x2: point.x, y2: point.y };
+      } else if (hit && hit.type === "resize") {
+        state.selectedBox = hit.boxIndex;
+        const rect = hit.rect;
+        state.interaction = {
+          type: "resize",
+          handle: hit.handle,
+          before: captureHistory(),
+          startRect: { x1: rect.x, y1: rect.y, x2: rect.x + rect.w, y2: rect.y + rect.h },
+        };
+        state.drawing = { ...state.interaction.startRect };
+      } else if (hit && hit.type === "select") {
+        state.selectedBox = hit.boxIndex;
+        state.interaction = { type: "select" };
+        state.drawing = null;
+      } else if (hit && hit.type === "move") {
+        state.selectedBox = hit.boxIndex;
+        state.interaction = {
+          type: "move",
+          before: captureHistory(),
+          startPoint: point,
+          startRect: { x1: hit.rect.x, y1: hit.rect.y, x2: hit.rect.x + hit.rect.w, y2: hit.rect.y + hit.rect.h },
+        };
+        state.drawing = { ...state.interaction.startRect };
+      } else {
+        state.selectedBox = -1;
+        state.interaction = { type: "deselect" };
+        state.drawing = null;
+      }
+      editorCanvas.setPointerCapture(event.pointerId);
+      renderAll();
+    });
+    editorCanvas.addEventListener("pointermove", (event) => {
+      if (!state.interaction) return;
+      const point = canvasPoint(event);
+      if (state.interaction.type === "resize") {
+        const next = { ...state.interaction.startRect };
+        if (state.interaction.handle.includes("w")) next.x1 = point.x;
+        if (state.interaction.handle.includes("e")) next.x2 = point.x;
+        if (state.interaction.handle.includes("n")) next.y1 = point.y;
+        if (state.interaction.handle.includes("s")) next.y2 = point.y;
+        state.drawing = next;
+      } else if (state.interaction.type === "move") {
+        const dx = point.x - state.interaction.startPoint.x;
+        const dy = point.y - state.interaction.startPoint.y;
+        const start = state.interaction.startRect;
+        state.drawing = {
+          x1: start.x1 + dx,
+          y1: start.y1 + dy,
+          x2: start.x2 + dx,
+          y2: start.y2 + dy,
+        };
+      } else if (state.interaction.type === "draw-new" && state.drawing) {
+        state.drawing.x2 = point.x;
+        state.drawing.y2 = point.y;
+      }
+      drawEditor();
+    });
+    editorCanvas.addEventListener("pointerup", () => {
+      if (!state.interaction) return;
+      const eventForEdit = activeEditorEvent();
+      const box = currentBox();
+      if (state.interaction.type === "draw-new" && state.drawing) {
+        const rect = boxFromCanvasRect(state.drawing);
+        if (rect.w > 0 && rect.h > 0) {
+          const skillEvent = activeEditorEvent();
+          if (skillEvent) {
+            const nextBox = {
+              boxId: isProjectileEditor() ? 0 : skillEvent.hitboxes.length,
+              shape: "box",
+              rightXpx: "",
+              bottomYpx: "",
+              widthPx: "",
+              heightPx: "",
+            };
+            if (Core.updateHitboxFromRect(nextBox, hitboxRectFromCanvas(state.drawing))) {
+              if (isProjectileEditor()) {
+                ensureProjectileFields(skillEvent).projectileHitbox = nextBox;
+                state.selectedBox = 0;
+              } else {
+                skillEvent.hitboxes.push(nextBox);
+                state.selectedBox = skillEvent.hitboxes.length - 1;
+              }
+              pushHistory(state.interaction.before);
+            }
+          }
+        }
+        state.addBoxMode = false;
+      } else if (box && state.drawing && (state.interaction.type === "resize" || state.interaction.type === "move")) {
+        if (Core.updateHitboxFromRect(box, hitboxRectFromCanvas(state.drawing))) {
+          pushHistory(state.interaction.before);
+        }
+      }
+      state.interaction = null;
+      state.drawing = null;
+      renderAll();
+    });
+    editorCanvas.addEventListener("pointercancel", () => {
+      state.interaction = null;
+      state.drawing = null;
+      drawEditor();
+    });
+    document.addEventListener("keydown", (event) => {
+      const tag = event.target && event.target.tagName;
+      if (event.key === "Escape" && !$("eventInfoModal").hidden) {
+        closeEventInfo();
+        return;
+      }
+      if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undoHitboxEdit();
+        return;
+      }
+      if (event.ctrlKey && (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"))) {
+        event.preventDefault();
+        redoHitboxEdit();
+        return;
+      }
+      if (event.ctrlKey && (event.key === "+" || event.key === "=")) {
+        event.preventDefault();
+        setZoom(state.zoom * 1.1);
+        return;
+      }
+      if (event.ctrlKey && event.key === "-") {
+        event.preventDefault();
+        setZoom(state.zoom / 1.1);
+        return;
+      }
+      if (event.ctrlKey && event.key === "0") {
+        event.preventDefault();
+        setZoom(1);
+        return;
+      }
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        event.preventDefault();
+        stepFrame(1);
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        event.preventDefault();
+        stepFrame(-1);
+      }
+    });
+
+    closeEventInfo();
+    populateForm();
+    setZoom(1);
+  </script>
+</body>
+</html>

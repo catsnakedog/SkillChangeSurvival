@@ -1,4 +1,4 @@
 ﻿effect_id,effect_ruid,is_loop,total_length_frames
 divineSwing/effect,0706dac96b694cd699b87e602ba74f42,false,8
-애로우 블로우/effect,2ed6be9152eb4bf0b22f4ca6e6fff9fe,,
-애로우 블로우/hit/0,84a473e004a34fdea67aa74a87dc75c6,,
+애로우 블로우/effect,2ed6be9152eb4bf0b22f4ca6e6fff9fe,false,9
+애로우 블로우/hit/0,84a473e004a34fdea67aa74a87dc75c6,false,

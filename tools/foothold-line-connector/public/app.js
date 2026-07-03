@@ -15,8 +15,14 @@ const els = {
   save: document.querySelector("#saveButton"),
   dryRun: document.querySelector("#dryRunButton"),
   connect: document.querySelector("#connectButton"),
+  roomDryRun: document.querySelector("#roomDryRunButton"),
+  roomConnect: document.querySelector("#roomConnectButton"),
   originDryRun: document.querySelector("#originDryRunButton"),
   originMove: document.querySelector("#originMoveButton"),
+  roomOriginDryRun: document.querySelector("#roomOriginDryRunButton"),
+  roomOriginMove: document.querySelector("#roomOriginMoveButton"),
+  boundsDryRun: document.querySelector("#boundsDryRunButton"),
+  boundsMove: document.querySelector("#boundsMoveButton"),
   symmetryDryRun: document.querySelector("#symmetryDryRunButton"),
   symmetryMove: document.querySelector("#symmetryMoveButton"),
 };
@@ -25,8 +31,14 @@ els.refresh.addEventListener("click", () => refreshAll());
 els.save.addEventListener("click", () => saveCurrentMap());
 els.dryRun.addEventListener("click", () => runPlan(false));
 els.connect.addEventListener("click", () => runPlan(true));
+els.roomDryRun.addEventListener("click", () => runRoomConnect(false));
+els.roomConnect.addEventListener("click", () => runRoomConnect(true));
 els.originDryRun.addEventListener("click", () => runOriginMove(false));
 els.originMove.addEventListener("click", () => runOriginMove(true));
+els.roomOriginDryRun.addEventListener("click", () => runRoomOriginMove(false));
+els.roomOriginMove.addEventListener("click", () => runRoomOriginMove(true));
+els.boundsDryRun.addEventListener("click", () => runBoundsMove(false));
+els.boundsMove.addEventListener("click", () => runBoundsMove(true));
 els.symmetryDryRun.addEventListener("click", () => runSymmetryMove(false));
 els.symmetryMove.addEventListener("click", () => runSymmetryMove(true));
 els.map.addEventListener("change", () => {
@@ -171,6 +183,67 @@ async function runOriginMove(apply) {
   }
 }
 
+async function runRoomConnect(apply) {
+  if (!state.map) return appendLog("Map is not selected");
+  if (!state.roomPath) return appendLog("Room is not selected");
+
+  const endpoint = apply ? "/api/room-connect" : "/api/room-connect/dry-run";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ map: state.map, roomPath: state.roomPath }),
+    });
+    const plan = data.plan ?? data.result;
+    appendLog(apply ? "Room edge connect result" : "Room Edge Dry Run result");
+    renderPlan(plan);
+    if (plan.message) appendLog(plan.message);
+    if (data.refresh) appendLog(`Maker refresh: ${JSON.stringify(data.refresh)}`);
+  } catch (error) {
+    appendLog(`Failed: ${error.message}`);
+  }
+}
+
+async function runRoomOriginMove(apply) {
+  if (!state.map) return appendLog("Map is not selected");
+  if (!state.roomPath) return appendLog("Room is not selected");
+
+  const endpoint = apply ? "/api/room-move-line-origin" : "/api/room-move-line-origin/dry-run";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ map: state.map, roomPath: state.roomPath }),
+    });
+    const plan = data.plan ?? data.result;
+    appendLog(apply ? "Room origin move result" : "Room Origin Dry Run result");
+    renderPlan(plan);
+    if (plan.message) appendLog(plan.message);
+    if (data.refresh) appendLog(`Maker refresh: ${JSON.stringify(data.refresh)}`);
+  } catch (error) {
+    appendLog(`Failed: ${error.message}`);
+  }
+}
+
+async function runBoundsMove(apply) {
+  if (!state.map) return appendLog("Map is not selected");
+  if (!state.roomPath) return appendLog("Room is not selected");
+  if (!state.linePath) return appendLog("Line parent is not selected");
+
+  const endpoint = apply ? "/api/move-line-bounds-pivot" : "/api/move-line-bounds-pivot/dry-run";
+  try {
+    const data = await api(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ map: state.map, linePath: state.linePath }),
+    });
+    const plan = data.plan ?? data.result;
+    appendLog(apply ? "Bounds pivot move result" : "Bounds Pivot Dry Run result");
+    renderPlan(plan);
+    if (plan.message) appendLog(plan.message);
+    if (data.refresh) appendLog(`Maker refresh: ${JSON.stringify(data.refresh)}`);
+  } catch (error) {
+    appendLog(`Failed: ${error.message}`);
+  }
+}
+
 async function runSymmetryMove(apply) {
   if (!state.map) return appendLog("Map is not selected");
   if (!state.roomPath) return appendLog("Room is not selected");
@@ -203,6 +276,14 @@ function renderPlan(plan) {
     renderOriginPlan(plan);
     return;
   }
+  if (plan.action === "room-connect" || plan.action === "room-move-line-origin") {
+    renderRoomBatchPlan(plan);
+    return;
+  }
+  if (plan.action === "move-line-bounds-pivot") {
+    renderBoundsPivotPlan(plan);
+    return;
+  }
   if (plan.action === "symmetry") {
     renderSymmetryPlan(plan);
     return;
@@ -220,6 +301,32 @@ function renderPlan(plan) {
   }
 }
 
+function renderRoomBatchPlan(plan) {
+  appendLog(`Room: ${plan.roomName}`);
+  appendLog(`Lines: total=${plan.lineCount}, ready=${plan.validLineCount}, skipped=${plan.skippedLineCount}`);
+
+  for (const line of plan.linePlans) {
+    appendLog(`- ${line.lineName}: ${line.status}, footholds=${line.footholdCount}, changes=${line.changeCount}`);
+
+    if (line.errors?.length) {
+      for (const error of line.errors) appendLog(`  Error: ${error}`);
+      continue;
+    }
+
+    if (plan.action === "room-connect") {
+      for (const change of line.changes) {
+        appendLog(`  ${change.toName}: move (${fmt(change.delta.x)}, ${fmt(change.delta.y)})`);
+      }
+      continue;
+    }
+
+    appendLog(`  start: ${line.startFoothold}`);
+    appendLog(`  target pivot: (${fmt(line.targetPivotWorld.x)}, ${fmt(line.targetPivotWorld.y)})`);
+    appendLog(`  delta: (${fmt(line.delta.x)}, ${fmt(line.delta.y)})`);
+    appendLog(`  start edge: (${fmt(line.startEdgeWorldBefore.x)}, ${fmt(line.startEdgeWorldBefore.y)}) -> (${fmt(line.startEdgeWorldAfter.x)}, ${fmt(line.startEdgeWorldAfter.y)})`);
+  }
+}
+
 function renderOriginPlan(plan) {
   appendLog(`Line: ${plan.lineName}`);
   appendLog(`Start foothold: ${plan.startFoothold}`);
@@ -230,6 +337,19 @@ function renderOriginPlan(plan) {
   appendLog(`Affected footholds: ${plan.affectedFootholds.length}`);
   for (const foothold of plan.affectedFootholds) {
     appendLog(`- ${foothold.name}: first edge (${fmt(foothold.firstEdgeWorldBefore.x)}, ${fmt(foothold.firstEdgeWorldBefore.y)}) -> (${fmt(foothold.firstEdgeWorldAfter.x)}, ${fmt(foothold.firstEdgeWorldAfter.y)})`);
+  }
+}
+
+function renderBoundsPivotPlan(plan) {
+  appendLog(`Line: ${plan.lineName}`);
+  appendLog(`Parent pivot target: (${fmt(plan.targetPivotWorld.x)}, ${fmt(plan.targetPivotWorld.y)})`);
+  appendLog(`Bounds before: minX=${fmt(plan.boundsBefore.minX)}, maxX=${fmt(plan.boundsBefore.maxX)}, centerX=${fmt(plan.boundsBefore.centerX)}, maxY=${fmt(plan.boundsBefore.maxY)}`);
+  appendLog(`Bounds after: minX=${fmt(plan.boundsAfter.minX)}, maxX=${fmt(plan.boundsAfter.maxX)}, centerX=${fmt(plan.boundsAfter.centerX)}, maxY=${fmt(plan.boundsAfter.maxY)}`);
+  appendLog(`Move delta: (${fmt(plan.delta.x)}, ${fmt(plan.delta.y)})`);
+  appendLog(`Move target: ${plan.moveTarget.type}`);
+  appendLog(`Affected footholds: ${plan.affectedFootholds.length}`);
+  for (const foothold of plan.affectedFootholds) {
+    appendLog(`- ${foothold.name}: pos (${fmt(foothold.positionBefore.x)}, ${fmt(foothold.positionBefore.y)}, ${fmt(foothold.positionBefore.z)}) -> (${fmt(foothold.positionAfter.x)}, ${fmt(foothold.positionAfter.y)}, ${fmt(foothold.positionAfter.z)})`);
   }
 }
 
@@ -250,7 +370,7 @@ function renderSymmetryPlan(plan) {
       appendEndpointLog("  before", operation.endpointsBefore);
       appendLog(`  after room: left=(${fmt(operation.endpointsAfter.left.x)}, ${fmt(operation.endpointsAfter.left.y)}), right=(${fmt(operation.endpointsAfter.right.x)}, ${fmt(operation.endpointsAfter.right.y)})`);
       appendLog(`  midpoint before: (${fmt(operation.midpointBefore.x)}, ${fmt(operation.midpointBefore.y)})`);
-      appendLog(`  residual midpoint: (${fmt(operation.residual.midpoint.x)}, ${fmt(operation.residual.midpoint.y)}), yDiff=${fmt(operation.residual.yDifference)}`);
+      appendLog(`  residual xMidpoint=${fmt(operation.residual.xMidpoint ?? operation.residual.midpoint.x)}, kept yMidpoint=${fmt(operation.residual.yMidpointUnchanged ?? operation.residual.midpoint.y)}, yDiff=${fmt(operation.residual.yDifference)}`);
     }
 
     if (operation.moveTarget) {

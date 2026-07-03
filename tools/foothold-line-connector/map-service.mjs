@@ -88,6 +88,21 @@ export function dryRunMoveLineToOrigin(mapName, linePath) {
   return buildLineOriginPlan(context);
 }
 
+export function dryRunConnectRoom(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  return buildRoomBatchPlan(loaded, mapName, roomPath, "connect");
+}
+
+export function dryRunMoveRoomLinesToOrigin(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  return buildRoomBatchPlan(loaded, mapName, roomPath, "move-line-origin");
+}
+
+export function dryRunMoveLineBoundsToPivot(mapName, linePath) {
+  const context = collectFootholds(mapName, linePath);
+  return buildLineBoundsPivotPlan(context);
+}
+
 export function dryRunSymmetry(mapName, roomPath) {
   const loaded = loadMap(mapName);
   return buildSymmetryPlan(loaded, mapName, roomPath);
@@ -100,20 +115,7 @@ export function applyConnect(mapName, linePath) {
     return { ...plan, applied: false };
   }
 
-  for (const item of plan.rawFinalOffsets) {
-    if (nearZero(item.offset.x) && nearZero(item.offset.y)) continue;
-
-    const position = item.foothold.transform.Position;
-    position.x = roundCoord((position.x ?? 0) + item.offset.x);
-    position.y = roundCoord((position.y ?? 0) + item.offset.y);
-
-    // FootholdsByLayer is a generated/runtime cache, but keeping it in sync
-    // prevents stale serialized StartPoint/EndPoint data after a file refresh.
-    for (const serialized of item.foothold.serialized) {
-      shiftPoint(serialized.StartPoint, item.offset);
-      shiftPoint(serialized.EndPoint, item.offset);
-    }
-  }
+  applyConnectionOffsets(plan);
 
   fs.writeFileSync(context.file, `${JSON.stringify(context.data, null, 2)}\n`, "utf8");
 
@@ -124,6 +126,26 @@ export function applyConnect(mapName, linePath) {
   };
 }
 
+export function applyConnectRoom(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  const plan = buildRoomBatchPlan(loaded, mapName, roomPath, "connect");
+  if (plan.errors.length > 0) {
+    return { ...plan, applied: false };
+  }
+
+  for (const item of plan.rawLinePlans) {
+    applyConnectionOffsets(item.plan);
+  }
+
+  fs.writeFileSync(loaded.file, `${JSON.stringify(loaded.data, null, 2)}\n`, "utf8");
+
+  return {
+    ...plan,
+    applied: true,
+    message: `Applied edge auto-connect to ${plan.validLineCount} line(s) in the selected Room.`,
+  };
+}
+
 export function applyMoveLineToOrigin(mapName, linePath) {
   const context = collectFootholds(mapName, linePath);
   const plan = buildLineOriginPlan(context);
@@ -131,18 +153,7 @@ export function applyMoveLineToOrigin(mapName, linePath) {
     return { ...plan, applied: false };
   }
 
-  for (const foothold of context.footholds) {
-    const position = foothold.transform.Position;
-    position.x = roundCoord((position.x ?? 0) + plan.delta.x);
-    position.y = roundCoord((position.y ?? 0) + plan.delta.y);
-  }
-
-  for (const foothold of context.footholds) {
-    for (const serialized of foothold.serialized) {
-      shiftPoint(serialized.StartPoint, plan.delta);
-      shiftPoint(serialized.EndPoint, plan.delta);
-    }
-  }
+  shiftFootholdChildren(context, plan.delta);
 
   fs.writeFileSync(context.file, `${JSON.stringify(context.data, null, 2)}\n`, "utf8");
 
@@ -150,6 +161,44 @@ export function applyMoveLineToOrigin(mapName, linePath) {
     ...plan,
     applied: true,
     message: "Moved child footholds so the selected line's first start edge point matches the line parent pivot.",
+  };
+}
+
+export function applyMoveRoomLinesToOrigin(mapName, roomPath) {
+  const loaded = loadMap(mapName);
+  const plan = buildRoomBatchPlan(loaded, mapName, roomPath, "move-line-origin");
+  if (plan.errors.length > 0) {
+    return { ...plan, applied: false };
+  }
+
+  for (const item of plan.rawLinePlans) {
+    shiftFootholdChildren(item.context, item.plan.delta);
+  }
+
+  fs.writeFileSync(loaded.file, `${JSON.stringify(loaded.data, null, 2)}\n`, "utf8");
+
+  return {
+    ...plan,
+    applied: true,
+    message: `Moved footholds for ${plan.validLineCount} line(s) so each line start edge matches its parent pivot.`,
+  };
+}
+
+export function applyMoveLineBoundsToPivot(mapName, linePath) {
+  const context = collectFootholds(mapName, linePath);
+  const plan = buildLineBoundsPivotPlan(context);
+  if (plan.errors.length > 0) {
+    return { ...plan, applied: false };
+  }
+
+  shiftFootholdChildren(context, plan.delta);
+
+  fs.writeFileSync(context.file, `${JSON.stringify(context.data, null, 2)}\n`, "utf8");
+
+  return {
+    ...plan,
+    applied: true,
+    message: "Moved child footholds so edge bounds center X and max Y match the line parent pivot.",
   };
 }
 
@@ -218,6 +267,82 @@ function collectFootholdsFromLoaded(loaded, mapName, linePath) {
     lineWorldPosition: getWorldPosition(line, entities),
     footholds,
   };
+}
+
+function buildRoomBatchPlan(loaded, mapName, roomPath, action) {
+  if (!roomPath) throw new Error("Room is not selected");
+
+  const { entities } = loaded;
+  const room = entities.find((entity) => entity.path === roomPath);
+  if (!room) throw new Error(`Selected Room not found: ${roomPath}`);
+
+  const lines = directChildren(entities, roomPath)
+    .filter((entity) => isLineParentName(entity.name))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+  if (lines.length === 0) {
+    return {
+      action: roomBatchActionName(action),
+      applied: false,
+      errors: ["Selected Room has no line parents"],
+      warnings: [],
+      roomName: room.name,
+      roomPath,
+      lineCount: 0,
+      validLineCount: 0,
+      skippedLineCount: 0,
+      linePlans: [],
+    };
+  }
+
+  const warnings = [];
+  const rawLinePlans = [];
+  const linePlans = [];
+
+  for (const line of lines) {
+    try {
+      const context = collectFootholdsFromLoaded(loaded, mapName, line.path);
+      const linePlan = action === "connect" ? buildConnectionPlan(context) : buildLineOriginPlan(context);
+      const lineOutput = summarizeRoomLinePlan(line, linePlan, action);
+
+      if (linePlan.errors.length > 0) {
+        warnings.push(`${line.name}: ${linePlan.errors.join("; ")}`);
+      } else {
+        rawLinePlans.push({ context, plan: linePlan });
+      }
+
+      linePlans.push(lineOutput);
+    } catch (error) {
+      warnings.push(`${line.name}: ${error.message}`);
+      linePlans.push({
+        lineName: line.name,
+        linePath: line.path,
+        status: "skipped",
+        errors: [error.message],
+        footholdCount: 0,
+        changeCount: 0,
+      });
+    }
+  }
+
+  const errors = rawLinePlans.length === 0 ? ["No valid line parents to process"] : [];
+  const output = {
+    action: roomBatchActionName(action),
+    applied: false,
+    errors,
+    warnings,
+    roomName: room.name,
+    roomPath,
+    lineCount: lines.length,
+    validLineCount: rawLinePlans.length,
+    skippedLineCount: lines.length - rawLinePlans.length,
+    linePlans,
+  };
+  Object.defineProperty(output, "rawLinePlans", {
+    value: rawLinePlans,
+    enumerable: false,
+  });
+  return output;
 }
 
 function buildSymmetryPlan(loaded, mapName, roomPath) {
@@ -315,6 +440,35 @@ function buildSymmetryPlan(loaded, mapName, roomPath) {
     enumerable: false,
   });
   return output;
+}
+
+function summarizeRoomLinePlan(line, plan, action) {
+  const output = {
+    lineName: line.name,
+    linePath: line.path,
+    status: plan.errors.length > 0 ? "skipped" : "ready",
+    errors: plan.errors,
+    footholdCount: plan.sorted?.length ?? 0,
+    changeCount: plan.changes?.length ?? 0,
+  };
+
+  if (action === "connect") {
+    output.sorted = plan.sorted;
+    output.changes = plan.changes;
+    return output;
+  }
+
+  output.startFoothold = plan.startFoothold;
+  output.startEdgeWorldBefore = plan.startEdgeWorldBefore;
+  output.startEdgeWorldAfter = plan.startEdgeWorldAfter;
+  output.targetPivotWorld = plan.targetPivotWorld;
+  output.delta = plan.delta;
+  output.affectedFootholds = plan.affectedFootholds;
+  return output;
+}
+
+function roomBatchActionName(action) {
+  return action === "connect" ? "room-connect" : "room-move-line-origin";
 }
 
 function buildConnectionPlan(context) {
@@ -415,6 +569,23 @@ function buildConnectionPlan(context) {
     enumerable: false,
   });
   return output;
+}
+
+function applyConnectionOffsets(plan) {
+  for (const item of plan.rawFinalOffsets) {
+    if (nearZero(item.offset.x) && nearZero(item.offset.y)) continue;
+
+    const position = item.foothold.transform.Position;
+    position.x = roundCoord((position.x ?? 0) + item.offset.x);
+    position.y = roundCoord((position.y ?? 0) + item.offset.y);
+
+    // FootholdsByLayer is a generated/runtime cache, but keeping it in sync
+    // prevents stale serialized StartPoint/EndPoint data after a file refresh.
+    for (const serialized of item.foothold.serialized) {
+      shiftPoint(serialized.StartPoint, item.offset);
+      shiftPoint(serialized.EndPoint, item.offset);
+    }
+  }
 }
 
 function buildLineOriginPlan(context) {
@@ -527,6 +698,105 @@ function buildLineOriginPlan(context) {
   return output;
 }
 
+function buildLineBoundsPivotPlan(context) {
+  const errors = [];
+  const sorted = sortFootholds(context.footholds);
+
+  for (const foothold of sorted) {
+    if (!foothold.transform?.Position) {
+      errors.push(`Cannot edit foothold TransformComponent.Position: ${foothold.name}`);
+    }
+    if (foothold.edgePoints.length === 0) {
+      errors.push(`Cannot read foothold edge points: ${foothold.name}`);
+    }
+  }
+
+  const bounds = getLineWorldBounds(sorted);
+  if (!bounds) {
+    errors.push("Cannot read line edge bounds");
+  }
+
+  if (errors.length > 0) {
+    return {
+      action: "move-line-bounds-pivot",
+      applied: false,
+      errors,
+      sorted: sorted.map(summarizeFoothold),
+      changes: [],
+    };
+  }
+
+  const targetWorld = {
+    x: roundCoord(context.lineWorldPosition.x),
+    y: roundCoord(context.lineWorldPosition.y),
+  };
+  const delta = {
+    x: roundCoord(targetWorld.x - bounds.centerX),
+    y: roundCoord(targetWorld.y - bounds.maxY),
+  };
+
+  const affectedFootholds = sorted.map((foothold) => {
+    const firstBefore = foothold.firstPoint ? pointWorld(foothold.firstPoint, foothold.worldPosition) : null;
+    const rearBefore = foothold.rearPoint ? pointWorld(foothold.rearPoint, foothold.worldPosition) : null;
+    return {
+      name: foothold.name,
+      path: foothold.path,
+      positionBefore: clonePoint3(foothold.transform.Position),
+      positionAfter: {
+        x: roundCoord((foothold.transform.Position.x ?? 0) + delta.x),
+        y: roundCoord((foothold.transform.Position.y ?? 0) + delta.y),
+        z: foothold.transform.Position.z ?? 0,
+      },
+      firstEdgeWorldBefore: firstBefore,
+      firstEdgeWorldAfter: firstBefore ? addPoint(firstBefore, delta) : null,
+      rearEdgeWorldBefore: rearBefore,
+      rearEdgeWorldAfter: rearBefore ? addPoint(rearBefore, delta) : null,
+    };
+  });
+
+  const output = {
+    action: "move-line-bounds-pivot",
+    applied: false,
+    errors,
+    lineName: context.line.name,
+    linePath: context.line.path,
+    sorted: sorted.map(summarizeFoothold),
+    boundsBefore: bounds,
+    boundsAfter: {
+      minX: roundCoord(bounds.minX + delta.x),
+      maxX: roundCoord(bounds.maxX + delta.x),
+      centerX: roundCoord(bounds.centerX + delta.x),
+      minY: roundCoord(bounds.minY + delta.y),
+      maxY: roundCoord(bounds.maxY + delta.y),
+    },
+    targetPivotWorld: targetWorld,
+    delta,
+    moveTarget: {
+      type: "foothold-children",
+      name: context.line.name,
+      path: context.line.path,
+      linePivotWorld: targetWorld,
+    },
+    affectedFootholds,
+    changes: [
+      {
+        lineName: context.line.name,
+        delta,
+        boundsBefore: bounds,
+        boundsAfter: {
+          minX: roundCoord(bounds.minX + delta.x),
+          maxX: roundCoord(bounds.maxX + delta.x),
+          centerX: roundCoord(bounds.centerX + delta.x),
+          minY: roundCoord(bounds.minY + delta.y),
+          maxY: roundCoord(bounds.maxY + delta.y),
+        },
+        targetPivotWorld: targetWorld,
+      },
+    ],
+  };
+  return output;
+}
+
 function buildPairSymmetryOperation(leftContext, rightContext, roomWorldPosition, group) {
   const errors = [];
   const leftBounds = getLineEndpointsInRoom(leftContext, roomWorldPosition);
@@ -613,7 +883,7 @@ function buildCenterSymmetryOperation(context, roomWorldPosition) {
   };
   const delta = {
     x: roundCoord(-midpoint.x),
-    y: roundCoord(-midpoint.y),
+    y: 0,
   };
   const leftAfter = addPoint(bounds.left.room, delta);
   const rightAfter = addPoint(bounds.right.room, delta);
@@ -622,6 +892,8 @@ function buildCenterSymmetryOperation(context, roomWorldPosition) {
       x: roundCoord((leftAfter.x + rightAfter.x) / 2),
       y: roundCoord((leftAfter.y + rightAfter.y) / 2),
     },
+    xMidpoint: roundCoord((leftAfter.x + rightAfter.x) / 2),
+    yMidpointUnchanged: midpoint.y,
     yDifference: roundCoord(leftAfter.y - rightAfter.y),
   };
 
@@ -678,6 +950,41 @@ function getLineEndpointsInRoom(context, roomWorldPosition) {
     left: endpoints[0] ?? null,
     right: endpoints[endpoints.length - 1] ?? null,
   };
+}
+
+function getLineWorldBounds(footholds) {
+  const points = [];
+  for (const foothold of footholds) {
+    for (const point of foothold.edgePoints) {
+      points.push(pointWorld(point, foothold.worldPosition));
+    }
+  }
+  if (points.length === 0) return null;
+
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return {
+    minX: roundCoord(minX),
+    maxX: roundCoord(maxX),
+    centerX: roundCoord((minX + maxX) / 2),
+    minY: roundCoord(minY),
+    maxY: roundCoord(maxY),
+  };
+}
+
+function shiftFootholdChildren(context, delta) {
+  for (const foothold of context.footholds) {
+    const position = foothold.transform.Position;
+    position.x = roundCoord((position.x ?? 0) + delta.x);
+    position.y = roundCoord((position.y ?? 0) + delta.y);
+
+    for (const serialized of foothold.serialized) {
+      shiftPoint(serialized.StartPoint, delta);
+      shiftPoint(serialized.EndPoint, delta);
+    }
+  }
 }
 
 function shiftLineParent(context, delta) {

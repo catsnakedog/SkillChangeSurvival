@@ -5,10 +5,16 @@ import { fileURLToPath } from "node:url";
 import { MakerMcpClient, getMakerStatus } from "./maker-mcp-client.mjs";
 import {
   applyConnect,
+  applyConnectRoom,
+  applyMoveLineBoundsToPivot,
   applyMoveLineToOrigin,
+  applyMoveRoomLinesToOrigin,
   applySymmetry,
   dryRunConnect,
+  dryRunConnectRoom,
+  dryRunMoveLineBoundsToPivot,
   dryRunMoveLineToOrigin,
+  dryRunMoveRoomLinesToOrigin,
   dryRunSymmetry,
   getFootholdSummary,
   getLineParents,
@@ -87,6 +93,24 @@ async function handleApi(request, response, url) {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/api/room-connect/dry-run") {
+    const body = await readJson(request);
+    sendJson(response, 200, { ok: true, plan: dryRunConnectRoom(body.map, body.roomPath) });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/room-move-line-origin/dry-run") {
+    const body = await readJson(request);
+    sendJson(response, 200, { ok: true, plan: dryRunMoveRoomLinesToOrigin(body.map, body.roomPath) });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/move-line-bounds-pivot/dry-run") {
+    const body = await readJson(request);
+    sendJson(response, 200, { ok: true, plan: dryRunMoveLineBoundsToPivot(body.map, body.linePath) });
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/api/symmetry/dry-run") {
     const body = await readJson(request);
     sendJson(response, 200, { ok: true, plan: dryRunSymmetry(body.map, body.roomPath) });
@@ -111,6 +135,51 @@ async function handleApi(request, response, url) {
   if (request.method === "POST" && url.pathname === "/api/move-line-origin") {
     const body = await readJson(request);
     const result = applyMoveLineToOrigin(body.map, body.linePath);
+    let refresh = null;
+    if (result.applied) {
+      try {
+        refresh = await new MakerMcpClient().callTool("maker_refresh_workspace", {}, 6000);
+      } catch (error) {
+        refresh = { warning: error.message };
+      }
+    }
+    sendJson(response, 200, { ok: true, result, refresh });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/room-connect") {
+    const body = await readJson(request);
+    const result = applyConnectRoom(body.map, body.roomPath);
+    let refresh = null;
+    if (result.applied) {
+      try {
+        refresh = await new MakerMcpClient().callTool("maker_refresh_workspace", {}, 6000);
+      } catch (error) {
+        refresh = { warning: error.message };
+      }
+    }
+    sendJson(response, 200, { ok: true, result, refresh });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/room-move-line-origin") {
+    const body = await readJson(request);
+    const result = applyMoveRoomLinesToOrigin(body.map, body.roomPath);
+    let refresh = null;
+    if (result.applied) {
+      try {
+        refresh = await new MakerMcpClient().callTool("maker_refresh_workspace", {}, 6000);
+      } catch (error) {
+        refresh = { warning: error.message };
+      }
+    }
+    sendJson(response, 200, { ok: true, result, refresh });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/move-line-bounds-pivot") {
+    const body = await readJson(request);
+    const result = applyMoveLineBoundsToPivot(body.map, body.linePath);
     let refresh = null;
     if (result.applied) {
       try {

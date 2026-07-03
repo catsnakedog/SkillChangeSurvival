@@ -694,11 +694,28 @@ script BRBattleBotController extends Component
 	end
 
 	method boolean IsAlive()
-		return self.EnableBattleBot == true and self.BotState == "ALIVE" and self.CurrentHp > 0
+		return self.EnableBattleBot == true and self.BotState == "ALIVE" and self.CurrentHp > 0 and self:IsBattleGameplayStarted() == true
 	end
 
 	method boolean IsContending()
 		return self.BotState ~= "OUT" and self.CurrentLives > 0
+	end
+
+	method boolean IsBattleGameplayStarted()
+		if _BRBattleLauncher == nil or self.Entity == nil then
+			return true
+		end
+		local mapName = self:ReadString(self.Entity.CurrentMapName, "")
+		if mapName == "" then
+			return true
+		end
+		if _BRBattleLauncher:IsActiveMatchForMap(mapName) ~= true then
+			return true
+		end
+		if _BRBattleTimerSystem == nil then
+			return true
+		end
+		return _BRBattleTimerSystem.TimerRunning == true and self:ReadString(_BRBattleTimerSystem.TimerMapName, "") == mapName
 	end
 
 	method boolean IsSkillTargetValid()

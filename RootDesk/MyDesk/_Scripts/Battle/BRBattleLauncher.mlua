@@ -39,6 +39,16 @@ script BRBattleLauncher extends Logic
 
 	property string MatchStartMessage = "START!"
 
+	property string BattleStartCountdownEffectRUID = "animationclip-1092315"
+
+	property string BattleStartEffectRUID = "animationclip-1092321"
+
+	property number BattleStartCountdownSeconds = 3
+
+	property number BattleStartEffectScale = 1.2
+
+	property number BattleStartEffectOrderInLayer = 120
+
 	property string MatchResultVictoryTitle = "VICTORY"
 
 	property string MatchResultDefeatTitle = "DEFEAT"
@@ -173,6 +183,7 @@ script BRBattleLauncher extends Logic
 			LoadingSeconds = self:ReadNumber(loadingSeconds, 0),
 			LoadingTimerId = 0,
 			RegisteredAt = _UtilLogic.ServerElapsedSeconds,
+			StartSequenceStarted = false,
 			Started = false,
 			Finished = false
 		}
@@ -236,6 +247,19 @@ script BRBattleLauncher extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
+	method boolean IsBattleGameplayStartedForMap(string targetMapName)
+		-- Returns true only after the countdown/start-effect gate has opened gameplay.
+		self:EnsureRuntimeTables()
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeMapName == "" then
+			return false
+		end
+
+		local entry = self._T.activeMatchesByMap[safeMapName]
+		return entry ~= nil and entry["Finished"] ~= true and entry["Started"] == true
+	end
+
+	@ExecSpace("ServerOnly")
 	method void ScheduleBattleSystems(string matchId, number loadingSeconds)
 		-- Defers timer and magnetic-zone start until the loading overlay has had time to show.
 		self:EnsureRuntimeTables()
@@ -257,7 +281,37 @@ script BRBattleLauncher extends Logic
 
 	@ExecSpace("ServerOnly")
 	method void StartRegisteredBattleSystems(string matchId)
-		-- Starts gameplay systems for a registered match after loading finishes.
+		-- Starts the battle-start presentation after loading, then opens gameplay.
+		self:EnsureRuntimeTables()
+		local safeMatchId = self:ReadString(matchId, "")
+		local entry = self._T.activeMatchesById[safeMatchId]
+		if entry == nil or entry["Finished"] == true then
+			return
+		end
+		if entry["Started"] == true then
+			return
+		end
+		if entry["StartSequenceStarted"] == true then
+			return
+		end
+
+		entry["LoadingTimerId"] = 0
+		entry["StartSequenceStarted"] = true
+		self:NotifyBattleStartCountdown(entry["MatchRoom"])
+
+		local delay = self:GetBattleStartCountdownSeconds(entry["Owner"])
+		if delay <= 0 then
+			self:CompleteBattleStartSequence(safeMatchId)
+			return
+		end
+
+		entry["LoadingTimerId"] = _TimerService:SetTimerOnce(function() self:CompleteBattleStartSequence(safeMatchId) end, delay)
+		log("[BRBattleLauncher] battle start sequence scheduled id=" .. safeMatchId .. " delay=" .. tostring(delay))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void CompleteBattleStartSequence(string matchId)
+		-- Opens gameplay after the 3-2-1 countdown and broadcasts the START effect.
 		self:EnsureRuntimeTables()
 		local safeMatchId = self:ReadString(matchId, "")
 		local entry = self._T.activeMatchesById[safeMatchId]
@@ -612,6 +666,7 @@ script BRBattleLauncher extends Logic
 		for index, player in ipairs(matchRoom.Players) do
 			local playerEntity = _UserService:GetUserEntityByUserId(player.UserId)
 			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+				self:PreparePlayerForLobbyReturn(playerEntity, Vector2(centerX, centerY), "return-lobby")
 				self:TeleportPlayerToMapPosition(playerEntity, lobbyMapName, Vector2(centerX, centerY), "return-lobby")
 				player.State = "Returned"
 				movedCount = movedCount + 1
@@ -627,6 +682,118 @@ script BRBattleLauncher extends Logic
 			self:UnregisterActiveMatch(self:ReadString(matchRoom.MatchId, ""), self:ReadString(matchRoom.TargetMapName, ""))
 		end
 		return movedCount
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean ReturnEliminatedPlayerToLobby(string targetMapName, string userId, string reason)
+		-- Returns one eliminated match participant to lobby without ending the whole match.
+		self:EnsureRuntimeTables()
+		local safeMapName = self:ReadString(targetMapName, "")
+		local safeUserId = self:ReadString(userId, "")
+		if safeMapName == "" or safeUserId == "" then
+			return false
+		end
+
+		local entry = self._T.activeMatchesByMap[safeMapName]
+		if entry == nil or entry["Finished"] == true then
+			log("[BRBattleLauncher] eliminate return skipped: match missing map=" .. safeMapName .. " user=" .. safeUserId)
+			return false
+		end
+
+		local playerRecord = self:FindMatchPlayerRecord(entry["MatchRoom"], safeUserId)
+		if playerRecord == nil then
+			log("[BRBattleLauncher] eliminate return skipped: player not in match user=" .. safeUserId .. " map=" .. safeMapName)
+			return false
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			log("[BRBattleLauncher] eliminate return skipped: player entity missing user=" .. safeUserId)
+			return false
+		end
+
+		local lobbyMapName = self:GetLobbyMapName(entry["Owner"])
+		local lobbyPosition = self:GetLobbyReturnPosition(entry["Owner"])
+		local elapsedSeconds = math.max(0, math.floor(_UtilLogic.ServerElapsedSeconds - self:ReadNumber(entry["RegisteredAt"], _UtilLogic.ServerElapsedSeconds)))
+		local title = self:ReadString(self.MatchResultDefeatTitle, "DEFEAT")
+		local body = self:BuildEliminatedResultBody(entry["MatchRoom"], safeUserId, self:ReadString(reason, "life-out"), elapsedSeconds)
+
+		playerRecord.State = "EliminatedReturned"
+		playerRecord.ResultShown = true
+		playerRecord.EliminatedAt = _UtilLogic.ServerElapsedSeconds
+		playerRecord.EliminatedReason = self:ReadString(reason, "life-out")
+
+		self:HideMatchLoading("", safeUserId)
+		self:PreparePlayerForLobbyReturn(playerEntity, lobbyPosition, "eliminated")
+		self:TeleportPlayerToMapPosition(playerEntity, lobbyMapName, lobbyPosition, "eliminated")
+		_TimerService:SetTimerOnce(function() self:ShowMatchResult(title, body, safeUserId) end, self:GetResultPopupDelaySeconds())
+		log("[BRBattleLauncher] eliminated player returned user=" .. safeUserId .. " map=" .. safeMapName .. " lobby=" .. lobbyMapName .. " reason=" .. self:ReadString(reason, ""))
+		return true
+	end
+
+	method any FindMatchPlayerRecord(any matchRoom, string userId)
+		-- Finds a mutable player record inside a match room table.
+		local safeUserId = self:ReadString(userId, "")
+		if matchRoom == nil or matchRoom.Players == nil or safeUserId == "" then
+			return nil
+		end
+		for index, player in ipairs(matchRoom.Players) do
+			if self:ReadString(player.UserId, "") == safeUserId then
+				return player
+			end
+		end
+		return nil
+	end
+
+	method string GetLobbyMapName(any owner)
+		-- Reads the configured lobby map name from the match owner.
+		local lobbyMapName = "StartMap"
+		if owner ~= nil then
+			lobbyMapName = self:ReadString(owner.LobbyMapName, lobbyMapName)
+		end
+		return lobbyMapName
+	end
+
+	method Vector2 GetLobbyReturnPosition(any owner)
+		-- Reads the configured lobby gather position from the match owner.
+		local centerX = 0
+		local centerY = 3
+		if owner ~= nil then
+			centerX = self:ReadNumber(owner.GatherCenterX, centerX)
+			centerY = self:ReadNumber(owner.GatherCenterY, centerY)
+		end
+		return Vector2(centerX, centerY)
+	end
+
+	method void PreparePlayerForLobbyReturn(Entity playerEntity, Vector2 lobbyPosition, string reason)
+		-- Clears battle death state before sending a player back to the lobby.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		local playerComponent = playerEntity.PlayerComponent
+		local userId = self:ReadString(playerComponent.UserId, "")
+		local deadBefore = playerComponent:IsDead() == true or playerComponent.Hp <= 0
+		local maxHp = math.max(1, math.floor(self:ReadNumber(playerComponent.MaxHp, 100)))
+
+		if playerEntity.MovementComponent ~= nil then
+			playerEntity.MovementComponent:Stop()
+		end
+		if playerEntity.RigidbodyComponent ~= nil then
+			playerEntity.RigidbodyComponent.MoveVelocity = Vector2(0, 0)
+			playerEntity.RigidbodyComponent:PositionReset()
+		end
+
+		playerComponent.PVPMode = false
+		playerComponent.RespawnDuration = 5
+		playerComponent.RespawnPosition = Vector3(lobbyPosition.x, lobbyPosition.y, 0)
+		playerComponent.Hp = maxHp
+		if deadBefore == true then
+			playerComponent:Respawn()
+			playerComponent.Hp = maxHp
+			playerComponent:ProcessRevive(userId)
+		end
+		log("[BRBattleLauncher] lobby return reset user=" .. userId .. " deadBefore=" .. tostring(deadBefore) .. " hp=" .. tostring(playerComponent.Hp) .. "/" .. tostring(maxHp) .. " reason=" .. self:ReadString(reason, ""))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -700,12 +867,34 @@ script BRBattleLauncher extends Logic
 		end
 
 		local message = self:ReadString(self.MatchStartMessage, "START!")
+		local startEffectRuid = self:GetBattleStartEffectRUID(nil)
+		local startScale = self:GetBattleStartEffectScale(nil)
 		for index, player in ipairs(matchRoom.Players) do
 			local userId = self:ReadString(player.UserId, "")
 			if userId ~= "" then
-				self:HideMatchLoading(message, userId)
+				self:ShowBattleStartEffect(startEffectRuid, startScale, message, userId)
 			end
 		end
+		log("[BRBattleLauncher] start effect notified match=" .. self:ReadString(matchRoom.MatchId, "") .. " ruid=" .. startEffectRuid)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void NotifyBattleStartCountdown(any matchRoom)
+		-- Closes the loading overlay, keeps input locked, and plays the 3-2-1 countdown.
+		if matchRoom == nil or matchRoom.Players == nil then
+			return
+		end
+
+		local countdownRuid = self:GetBattleStartCountdownEffectRUID(nil)
+		local countdownSeconds = self:GetBattleStartCountdownSeconds(nil)
+		local scale = self:GetBattleStartEffectScale(nil)
+		for index, player in ipairs(matchRoom.Players) do
+			local userId = self:ReadString(player.UserId, "")
+			if userId ~= "" then
+				self:ShowBattleStartCountdown(countdownRuid, countdownSeconds, scale, userId)
+			end
+		end
+		log("[BRBattleLauncher] countdown effect notified match=" .. self:ReadString(matchRoom.MatchId, "") .. " ruid=" .. countdownRuid .. " seconds=" .. tostring(countdownSeconds))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -733,7 +922,7 @@ script BRBattleLauncher extends Logic
 		local delay = self:GetResultPopupDelaySeconds()
 		for index, player in ipairs(matchRoom.Players) do
 			local userId = self:ReadString(player.UserId, "")
-			if userId ~= "" then
+			if userId ~= "" and player.ResultShown ~= true then
 				local title = self:GetResultTitle(userId, winnerUserId)
 				local body = self:BuildResultBody(matchRoom, userId, winnerUserId, reason, elapsedSeconds)
 				_TimerService:SetTimerOnce(function() self:ShowMatchResult(title, body, userId) end, delay)
@@ -765,6 +954,15 @@ script BRBattleLauncher extends Logic
 			.. "\nMATCH " .. self:GetShortMatchId(matchRoom)
 			.. "\nTIME " .. self:FormatSeconds(elapsedSeconds)
 			.. "\nREASON " .. self:ReadString(reason, "last-man")
+	end
+
+	method string BuildEliminatedResultBody(any matchRoom, string viewerUserId, string reason, number elapsedSeconds)
+		-- Builds the result text shown immediately when a player runs out of lives.
+		return "RANK OUT"
+			.. "\nWINNER PENDING"
+			.. "\nMATCH " .. self:GetShortMatchId(matchRoom)
+			.. "\nTIME " .. self:FormatSeconds(elapsedSeconds)
+			.. "\nREASON " .. self:ReadString(reason, "life-out")
 	end
 
 	method string GetPlayerDisplayName(string userId)
@@ -879,6 +1077,39 @@ script BRBattleLauncher extends Logic
 		return math.max(0, self:ReadNumber(value, 3))
 	end
 
+	method number GetBattleStartCountdownSeconds(any owner)
+		-- Reads the 3-2-1 countdown gate duration from owner override or launcher default.
+		local value = self.BattleStartCountdownSeconds
+		if owner ~= nil and owner.BattleStartCountdownSeconds ~= nil then
+			value = owner.BattleStartCountdownSeconds
+		end
+		return math.max(0, self:ReadNumber(value, 3))
+	end
+
+	method string GetBattleStartCountdownEffectRUID(any owner)
+		local value = self.BattleStartCountdownEffectRUID
+		if owner ~= nil and owner.BattleStartCountdownEffectRUID ~= nil then
+			value = owner.BattleStartCountdownEffectRUID
+		end
+		return self:ReadString(value, "animationclip-1092315")
+	end
+
+	method string GetBattleStartEffectRUID(any owner)
+		local value = self.BattleStartEffectRUID
+		if owner ~= nil and owner.BattleStartEffectRUID ~= nil then
+			value = owner.BattleStartEffectRUID
+		end
+		return self:ReadString(value, "animationclip-1092321")
+	end
+
+	method number GetBattleStartEffectScale(any owner)
+		local value = self.BattleStartEffectScale
+		if owner ~= nil and owner.BattleStartEffectScale ~= nil then
+			value = owner.BattleStartEffectScale
+		end
+		return math.max(0.05, self:ReadNumber(value, 1.2))
+	end
+
 	method number GetResultPopupDelaySeconds()
 		-- Returns the delay before result popups open after lobby return starts.
 		return math.max(0, self:ReadNumber(self.ResultPopupDelaySeconds, 0.75))
@@ -913,6 +1144,58 @@ script BRBattleLauncher extends Logic
 		local safeMessage = self:ReadString(message, "")
 		if safeMessage ~= "" and _UIToast ~= nil then
 			_UIToast:ShowMessage(safeMessage)
+		end
+	end
+
+	@ExecSpace("Client")
+	method void ShowBattleStartCountdown(string animationRuid, number seconds, number scale)
+		-- Shows the 3-2-1 effect while keeping local controls locked.
+		self:HideMatchLoading("")
+		self:SetLocalPlayerInputEnabled(false)
+		self:PlayBattleStartWorldEffect(animationRuid, scale, "countdown")
+		log("[BRBattleLauncher] local countdown effect ruid=" .. self:ReadString(animationRuid, "") .. " seconds=" .. tostring(seconds))
+	end
+
+	@ExecSpace("Client")
+	method void ShowBattleStartEffect(string animationRuid, number scale, string message)
+		-- Shows the START effect and releases local controls for actual gameplay.
+		self:HideMatchLoading("")
+		self:PlayBattleStartWorldEffect(animationRuid, scale, "start")
+		self:SetLocalPlayerInputEnabled(true)
+		local safeMessage = self:ReadString(message, "")
+		if safeMessage ~= "" and _UIToast ~= nil then
+			_UIToast:ShowMessage(safeMessage)
+		end
+		log("[BRBattleLauncher] local start effect ruid=" .. self:ReadString(animationRuid, ""))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayBattleStartWorldEffect(string animationRuid, number scale, string phase)
+		-- Plays a battle-start animationclip near the local camera center.
+		if _EffectService == nil then
+			return
+		end
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+		local safeRuid = self:ReadString(animationRuid, "")
+		if safeRuid == "" then
+			return
+		end
+
+		local position = self:GetEntityPosition2(localPlayer)
+		local safeScale = self:ReadNumber(scale, self:GetBattleStartEffectScale(nil))
+		local options = {}
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = math.floor(self:ReadNumber(self.BattleStartEffectOrderInLayer, 120))
+		options["Alpha"] = 1
+		options["PlayRate"] = 1
+		options["IgnoreMapLayerCheck"] = true
+
+		local serial = _EffectService:PlayEffect(safeRuid, localPlayer, Vector3(position.x, position.y + 0.25, 0), 0, Vector3(safeScale, safeScale, 1), false, options)
+		if math.floor(self:ReadNumber(serial, 0)) <= 0 then
+			log("[BRBattleLauncher] local " .. self:ReadString(phase, "start") .. " effect failed ruid=" .. safeRuid)
 		end
 	end
 
@@ -1337,6 +1620,15 @@ script BRBattleLauncher extends Logic
 			return self:ReadString(playerEntity.PlayerComponent.UserId, "")
 		end
 		return ""
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
 	end
 
 	method number ReadNumber(any value, number fallback)

@@ -1,0 +1,7 @@
+{
+  "tool_name": "PowerShell",
+  "tool_input_preview": "{\"command\":\"'{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"initialize\\\",\\\"params\\\":{\\\"protocolVersion\\\":\\\"2024-11-05\\\",\\\"capabilities\\\":{},\\\"clientInfo\\\":{\\\"name\\\":\\\"test\\\",\\\"version\\\":\\\"1.0\\\"}}}' | & cm...",
+  "error": "Exit code 1\n& : The term 'cmd.exe' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the\r\n spelling of the name, or if a path was included, verify that the path is correct and try again.\r\nAt line:1 char:159\r\n+ ... },\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}' | & cmd.exe /c call ...\r\n+                                                           ~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (cmd.exe:String) [], CommandNotFoundException\r\n    + ...",
+  "timestamp": "2026-07-03T15:40:15.851Z",
+  "retry_count": 1
+}

@@ -17,7 +17,7 @@ script BRSkillChainUI extends Component
 
 	property boolean AttachInventoryPanel = false
 
-	property boolean EnableChainEditing = false
+	property boolean EnableChainEditing = true
 
 	property boolean ShowSkillInventoryPanel = false
 
@@ -179,15 +179,18 @@ script BRSkillChainUI extends Component
 		self.inputTouchReleaseHandler = _InputService:ConnectEvent(ScreenTouchReleaseEvent, self.OnScreenTouchRelease)
 		self.inputMouseMoveHandler = _InputService:ConnectEvent(MouseMoveEvent, self.OnMouseMove)
 
+		local usingAuthoredHud = self:HasAuthoredBattleHudLayout()
 		for index = 1, self:GetChainSlotCount() do
 			local slotIndex = index
 			local touch = self:GetChainTouchEntity(slotIndex)
 			if touch ~= nil then
 				self:ConnectTouchEntity(touch, "CHAIN", slotIndex)
 			end
-			local slot = self:GetChainEntity("Panel/Chain/Slot_" .. tostring(slotIndex))
-			if slot ~= nil and slot ~= touch then
-				self:ConnectTouchEntity(slot, "CHAIN", slotIndex)
+			if usingAuthoredHud ~= true then
+				local slot = self:GetChainEntity("Panel/Chain/Slot_" .. tostring(slotIndex))
+				if slot ~= nil and slot ~= touch then
+					self:ConnectTouchEntity(slot, "CHAIN", slotIndex)
+				end
 			end
 		end
 
@@ -611,6 +614,17 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method number GetSlotIndexAtScreenPoint(Vector2 screenPoint)
+		local usingAuthoredHud = self:HasAuthoredBattleHudLayout()
+		if usingAuthoredHud == true then
+			for slotIndex = 1, self:GetChainSlotCount() do
+				local slot = self:GetAuthoredChainSlotEntity(slotIndex)
+				if self:IsScreenPointInsideEntity(screenPoint, slot) == true then
+					return slotIndex
+				end
+			end
+			return 0
+		end
+
 		for slotIndex = 1, self:GetChainSlotCount() do
 			local slot = self:GetChainEntity("Panel/Chain/Slot_" .. tostring(slotIndex))
 			if self:IsScreenPointInsideEntity(screenPoint, slot) == true then
@@ -1674,6 +1688,10 @@ script BRSkillChainUI extends Component
 
 	method Entity GetChainTouchEntity(number slotIndex)
 		local indexText = tostring(math.floor(self:ReadNumber(slotIndex, 0)))
+		local authored = self:GetAuthoredChainSlotEntity(slotIndex)
+		if authored ~= nil then
+			return authored
+		end
 		local touch = self:GetChainEntity("Panel/Chain/SlotTouch_" .. indexText)
 		if touch ~= nil then
 			return touch
@@ -1683,6 +1701,14 @@ script BRSkillChainUI extends Component
 			return touch
 		end
 		return self:GetChainEntity("Panel/Chain/Slot_" .. indexText)
+	end
+
+	method Entity GetAuthoredChainSlotEntity(number slotIndex)
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlotIndex <= 0 then
+			return nil
+		end
+		return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/ChainPart_" .. tostring(safeSlotIndex))
 	end
 
 	method Entity GetBagTouchEntity(number bagIndex)

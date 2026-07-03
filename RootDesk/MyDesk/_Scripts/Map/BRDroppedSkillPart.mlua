@@ -7,6 +7,8 @@ script BRDroppedSkillPart extends Component
 
 	property string ShortKey = "SK"
 
+	property string IconRUID = ""
+
 	property string SourceUserId = ""
 
 	property number SourceInstanceId = 0
@@ -89,23 +91,25 @@ script BRDroppedSkillPart extends Component
 	end
 
 	@ExecSpace("ServerOnly")
-	method void InitializeDrop(string partId, string displayName, string shortKey, string sourceUserId, number sourceInstanceId)
+	method void InitializeDrop(string partId, string displayName, string shortKey, string sourceUserId, number sourceInstanceId, string iconRuid)
 		-- Applies the exact skill part payload after runtime spawn.
 		self:ForcePickupKeyMode()
 		self.PartId = self:ReadString(partId, self.PartId)
 		self.DisplayName = self:ReadString(displayName, self.DisplayName)
 		self.ShortKey = self:ReadString(shortKey, self.ShortKey)
+		self.IconRUID = self:ReadString(iconRuid, self.IconRUID)
 		self.SourceUserId = self:ReadString(sourceUserId, "")
 		self.SourceInstanceId = self:ReadNumber(sourceInstanceId, 0)
 		self.spawnedAt = _UtilLogic.ElapsedSeconds
 		self.nextPickupAttemptAt = self.spawnedAt + self:GetOwnerPickupDelaySeconds()
 		self.active = true
 		self.initialized = true
+		self.floatBaseCaptured = false
 		self:ConfigureVisual()
 		if self.beginPlayed == true then
 			self:StartTimers()
 		end
-		self:Log("init part=" .. self:GetPartId() .. " sourceInstance=" .. tostring(self.SourceInstanceId))
+		self:Log("init part=" .. self:GetPartId() .. " sourceInstance=" .. tostring(self.SourceInstanceId) .. " icon=" .. self:GetIconRUID())
 	end
 
 	@ExecSpace("ServerOnly")
@@ -180,7 +184,7 @@ script BRDroppedSkillPart extends Component
 		if self:IsOwnerPickupBlocked(userId) == true then
 			return false
 		end
-		local part = _BRSkillSystem:GrantPart(userId, self:GetPartId(), _BRSkillSystem.AutoEquipDroppedParts, self.Entity.Id)
+		local part = _BRSkillSystem:GrantPart(userId, self:GetPartId(), false, self.Entity.Id)
 		if part == nil then
 			self.nextPickupAttemptAt = _UtilLogic.ElapsedSeconds + 0.5
 			self:ShowPickupLabel(playerEntity, "SKILL BAG FULL")
@@ -236,11 +240,26 @@ script BRDroppedSkillPart extends Component
 
 	@ExecSpace("ServerOnly")
 	method void ConfigureVisual()
-		-- Makes the cloned pickup look like a small dropped skill shard.
+		-- Applies the dropped skill's real icon, with the old color shard as fallback.
 		if self.Entity == nil then
 			return
 		end
 		self.Entity.Visible = true
+		local iconRuid = self:GetIconRUID()
+		if self.Entity.SpriteRendererComponent ~= nil and iconRuid ~= "" then
+			local spriteRenderer = self.Entity.SpriteRendererComponent
+			spriteRenderer.Enable = true
+			spriteRenderer.SpriteRUID = iconRuid
+			spriteRenderer.SortingLayer = "MapLayer0"
+			spriteRenderer.IgnoreMapLayerCheck = true
+			spriteRenderer.OrderInLayer = 90
+			spriteRenderer.Color = Color(1, 1, 1, 1)
+			spriteRenderer:SetAlpha(1)
+			if self.Entity.PolygonRendererComponent ~= nil then
+				self.Entity.PolygonRendererComponent.Enable = false
+			end
+			return
+		end
 		if self.Entity.PolygonRendererComponent ~= nil then
 			local renderer = self.Entity.PolygonRendererComponent
 			renderer.Enable = true
@@ -306,6 +325,11 @@ script BRDroppedSkillPart extends Component
 	method string GetDisplayName()
 		-- Returns a readable skill part name.
 		return self:ReadString(self.DisplayName, "Skill")
+	end
+
+	method string GetIconRUID()
+		-- Returns the world-drop icon RUID copied from the skill data.
+		return self:ReadString(self.IconRUID, "")
 	end
 
 	method string GetMapName()

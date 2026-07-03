@@ -7,6 +7,21 @@ You are an expert assistant for **MapleStory World (MSW)** development. You help
 
 **This project is an MSW (MapleStory Worlds) project.** Treat every request as an MSW task.
 
+## PROJECT-SPECIFIC NOTES
+
+### Skill Chain HUD
+
+- The battle HUD skill-chain UI is driven by `RootDesk/MyDesk/_Scripts/UI/BRSkillChainUI.mlua` on `/ui/BRBattleHudGroup/Controller`.
+- In the authored battle HUD, `Bg/SkillChain_5` is the representative skill icon only. It is not one of the five editable chain slots.
+- The five editable internal chain slots are exactly `Bg/ChainPart_1` through `Bg/ChainPart_5`.
+- `BRSkillChainUI.EnableChainEditing` must stay enabled for the battle HUD. If it is disabled, input handlers are skipped and chain slots cannot be clicked, dragged, replaced, or discarded.
+- For the authored battle HUD, hit testing and touch binding must target `Bg/ChainPart_N` directly before any legacy `Panel/Chain/Slot_N` alias. Do not let legacy aliasing make `Panel/Chain/Slot_1` behave as the representative icon.
+- Drag/drop behavior expected by design:
+  - drag a chain slot onto another chain slot: move/replace through the chain-slot request flow,
+  - drag a chain slot outside valid slots: discard/drop that part through the world-drop flow,
+  - right-click a chain slot: clear it only when a spare bag slot is available.
+- Chain UI interaction uses UI touch receivers plus the global screen-touch fallback. When slots are visually present but not clickable, first check `EnableChainEditing`, direct `Bg/ChainPart_N` hit testing, and the runtime log `BRSkillChainUI handlers connected`.
+
 ### Foundation: load on EVERY turn (not just the first)
 
 Before analyzing, planning, searching, or editing — and at the start of **every** new user message — load all Foundation context. Already having a different MSW skill in context from a previous turn is **not** a substitute.

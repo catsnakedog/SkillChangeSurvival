@@ -1,7 +1,7 @@
 @Logic
 script BRSkillSystem extends Logic
 
-	property boolean AutoEquipDroppedParts = true
+	property boolean AutoEquipDroppedParts = false
 
 	property boolean SeedDefaultChainOnBattleReset = true
 
@@ -49,15 +49,17 @@ script BRSkillSystem extends Logic
 
 	property number DefaultCriticalDamageRate = 2.0
 
-	property number SkillTargetPadding = 0.35
+	property number SkillTargetPadding = 0.12
 
 	property string TrainingDummyNameTokens = "BattleChainMonster,TrainingDummy,Monster"
 
 	property string PartBoxNameTokens = "SkillPartBox,LobbySkillPartBox,PartBox,SupplyBox,SupplyPoint"
 
-	property number DroppedPartSpawnYOffset = 0.35
+	property string DroppedPartModelId = "skillpartbox"
 
-	property number DroppedPartSpawnXOffset = 1.15
+	property number DroppedPartSpawnYOffset = 0
+
+	property number DroppedPartSpawnXOffset = 0
 
 	property boolean EnableSkillVisualEffects = true
 
@@ -66,6 +68,24 @@ script BRSkillSystem extends Logic
 	property number SkillEffectAlpha = 1.0
 
 	property integer SkillEffectOrderInLayer = 30
+
+	property string SummonObjectModelId = "brskillsummonobject"
+
+	property number SummonObjectYOffset = 0.15
+
+	property number SummonAttackVisualHoldSeconds = 0.28
+
+	property boolean EnableSkillHitboxDebug = true
+
+	property string HitboxDebugModelId = "brskillhitboxdebug"
+
+	property number HitboxDebugDurationSeconds = 0.12
+
+	property number HitboxDebugIntervalSeconds = 0.12
+
+	property number HitboxDebugAlpha = 0.22
+
+	property integer HitboxDebugOrderInLayer = 85
 
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
@@ -84,6 +104,7 @@ script BRSkillSystem extends Logic
 		self:TickActiveAreas(delta)
 		self:TickActiveProjectiles(delta)
 		self:TickActiveFields(delta)
+		self:TickActiveSummons(delta)
 		self:TickStatuses()
 		self:TickPlayerBoundsReturn(delta)
 	end
@@ -149,6 +170,12 @@ script BRSkillSystem extends Logic
 		end
 		if self._T.activeFields == nil then
 			self._T.activeFields = {}
+		end
+		if self._T.activeSummons == nil then
+			self._T.activeSummons = {}
+		end
+		if self._T.summonObjectSeq == nil then
+			self._T.summonObjectSeq = 0
 		end
 		if self._T.statusByEntityId == nil then
 			self._T.statusByEntityId = {}
@@ -226,6 +253,8 @@ script BRSkillSystem extends Logic
 			elseif actionType == "field" then
 				self:ValidateHitboxReferences(safeActionId, actionDef.HitboxIds, "field-hitbox")
 				self:ValidateActionReferences(safeActionId, actionDef.ActionIds, "field-action")
+			elseif actionType == "summon" then
+				self:ValidateHitboxReferences(safeActionId, actionDef.HitboxIds, "summon-hitbox")
 			end
 		end
 	end
@@ -280,7 +309,8 @@ script BRSkillSystem extends Logic
 				local category = self:GetDataCell(skills, row, "skill_category", "")
 				if skillId ~= "" and self:IsSkillPartCategory(category) == true then
 					local displayName = self:GetDataCell(skills, row, "name", skillId)
-					self:AddPartDefinition(catalog, skillId .. "_part", skillId, displayName, self:BuildShortKey(skillId, displayName))
+					local iconRuid = self:GetDataCell(skills, row, "icon_ruid", "")
+					self:AddPartDefinition(catalog, skillId .. "_part", skillId, displayName, self:BuildShortKey(skillId, displayName), iconRuid)
 				end
 			end
 		end
@@ -290,14 +320,15 @@ script BRSkillSystem extends Logic
 		return catalog
 	end
 
-	method void AddPartDefinition(any catalog, string partId, string skillKey, string displayName, string shortKey)
+	method void AddPartDefinition(any catalog, string partId, string skillKey, string displayName, string shortKey, string iconRuid)
 		-- Adds one first-order skill definition.
 		catalog[partId] = {
 			PartId = partId,
 			SlotKey = skillKey,
 			SkillKey = skillKey,
 			DisplayName = displayName,
-			ShortKey = shortKey
+			ShortKey = shortKey,
+			IconRUID = self:ReadString(iconRuid, "")
 		}
 	end
 
@@ -448,6 +479,7 @@ script BRSkillSystem extends Logic
 		self:ApplyDamageActionData(actions)
 		self:ApplyProjectileActionData(actions)
 		self:ApplyGroundAreaActionData(actions)
+		self:ApplySummonActionData(actions)
 		self:ApplyTriggerActionData(actions)
 		self:ApplyDashActionData(actions)
 		self:ApplyTeleportActionData(actions)
@@ -587,6 +619,24 @@ script BRSkillSystem extends Logic
 		return result
 	end
 
+	method any ParseOffsetList(string value)
+		-- Parses "x,y;x,y" pixel offsets into world-unit Vector2 values.
+		local offsets = {}
+		local pairsText = self:ParseDelimitedList(value, ";")
+		for index, pairText in ipairs(pairsText) do
+			local commaIndex, commaEndIndex = string.find(pairText, ",")
+			if commaIndex ~= nil then
+				local xText = self:TrimString(string.sub(pairText, 1, commaIndex - 1))
+				local yText = self:TrimString(string.sub(pairText, commaIndex + 1))
+				table.insert(offsets, Vector2(self:ReadNumber(xText, 0) / 100, self:ReadNumber(yText, 0) / 100))
+			end
+		end
+		if #offsets <= 0 then
+			table.insert(offsets, Vector2(0, 0))
+		end
+		return offsets
+	end
+
 	method any ParseFrameEventMap(string value)
 		-- Parses "4:eventA|eventB;8:eventC" into a frame-indexed event map.
 		local result = {}
@@ -628,6 +678,12 @@ script BRSkillSystem extends Logic
 	method boolean IsSkillPartCategory(string category)
 		-- Only skill-chain parts are rollable parts; basic skills are direct casts.
 		local safeCategory = self:ReadString(category, "")
+		if safeCategory == "기본 스킬" or safeCategory == "basic" or safeCategory == "basic_skill" then
+			return false
+		end
+		if safeCategory == "스킬 파츠" or safeCategory == "part" or safeCategory == "skill_part" then
+			return true
+		end
 		if safeCategory == "" then
 			return true
 		end
@@ -682,6 +738,12 @@ script BRSkillSystem extends Logic
 		end
 		if safeType == "field" or safeType == "ground_area" or safeType == "ground_area_spawn" then
 			return "field"
+		end
+		if safeType == "summon" or safeType == "summon_spawn" then
+			return "summon"
+		end
+		if safeType == "소환" or safeType == "소환수" or safeType == "소환수 생성" then
+			return "summon"
 		end
 		if safeType == "aftereffect" or safeType == "after_effect" then
 			return "aftereffect"
@@ -855,6 +917,38 @@ script BRSkillSystem extends Logic
 				actionDef.HitboxIds = self:ParseDelimitedList(self:GetDataCell(data, row, "hitbox_ids", ""), "|")
 				actionDef.TargetGroup = self:GetDataCell(data, row, "target", "")
 				actionDef.MaxTargets = math.max(0, math.floor(self:ReadNumber(self:GetDataCell(data, row, "max_targets", "0"), 0)))
+			end
+		end
+	end
+
+	method void ApplySummonActionData(any actions)
+		local data = self:GetDataTable("summon_actions")
+		if data == nil then
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local actionId = self:GetDataCell(data, row, "action_id", "")
+			local actionDef = actions[actionId]
+			if actionDef ~= nil then
+				actionDef.Type = "summon"
+				actionDef.DurationFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "duration_frames", "1"), 1)))
+				actionDef.AttackIntervalFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "attack_interval_frames", "20"), 20)))
+				actionDef.Offsets = self:ParseOffsetList(self:GetDataCell(data, row, "summon_offsets", "0,0"))
+				actionDef.StandEffectIds = self:ParseDelimitedList(self:GetDataCell(data, row, "stand_effect_ids", ""), "|")
+				actionDef.MoveEffectIds = self:ParseDelimitedList(self:GetDataCell(data, row, "move_effect_ids", ""), "|")
+				actionDef.AttackEffectIds = self:ParseDelimitedList(self:GetDataCell(data, row, "attack_effect_ids", ""), "|")
+				actionDef.SummonedEffectIds = self:ParseDelimitedList(self:GetDataCell(data, row, "summoned_effect_ids", ""), "|")
+				actionDef.DieEffectIds = self:ParseDelimitedList(self:GetDataCell(data, row, "die_effect_ids", ""), "|")
+				actionDef.HitEffectRUID = self:GetDataCell(data, row, "hit_effect_ruid", "")
+				actionDef.HitboxIds = self:ParseDelimitedList(self:GetDataCell(data, row, "hitbox_ids", ""), "|")
+				actionDef.TargetGroup = self:GetDataCell(data, row, "target", "")
+				actionDef.MaxTargets = math.max(0, math.floor(self:ReadNumber(self:GetDataCell(data, row, "max_targets", "0"), 0)))
+				actionDef.Coefficient = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "attack_power_coefficient_percent", "100"), 100))
+				actionDef.MoveEnabled = self:ReadDataBoolean(data, row, "move_enabled", false)
+				actionDef.FollowSpeed = self:PixelsToWorld(self:GetDataCell(data, row, "follow_speed", "360"), 360)
+				actionDef.VisualIntervalSeconds = math.max(0.05, self:ReadNumber(self:GetDataCell(data, row, "visual_interval_seconds", "0.45"), 0.45))
+				actionDef.ScaleRate = math.max(0.05, self:ReadNumber(self:GetDataCell(data, row, "scale_rate", "0.85"), 0.85))
 			end
 		end
 	end
@@ -1601,6 +1695,7 @@ script BRSkillSystem extends Logic
 
 	method void ProcessAreaFrame(any area)
 		-- Detects targets inside one active area and runs its actions once per target.
+		self:ShowHitboxesForContext(area, "area:" .. self:ReadString(area.EventId, "area"))
 		local targets = self:CollectTargetsForContext(area)
 		local maxTargets = math.max(0, math.floor(self:ReadNumber(area.MaxTargets, 0)))
 		for index, targetEntity in ipairs(targets) do
@@ -1696,6 +1791,7 @@ script BRSkillSystem extends Logic
 
 	method void ProcessProjectileContact(any projectile)
 		-- Applies projectile actions to newly contacted targets.
+		self:ShowHitboxesForContext(projectile, "projectile:" .. self:ReadString(projectile.EventId, "projectile"))
 		local targets = self:CollectTargetsForContext(projectile)
 		for index, targetEntity in ipairs(targets) do
 			if self:IsSkillTargetValid(projectile, targetEntity) == true and self:IsTargetInsideHitboxes(projectile, targetEntity) == true then
@@ -1784,6 +1880,309 @@ script BRSkillSystem extends Logic
 				end
 			end
 		end
+	end
+
+	method void StartSummonFromAction(any context, any actionDef, number triggerX, number triggerY, string sourceId)
+		-- Starts one or more logical summons that attack from their own runtime positions.
+		local origin = self:GetContextOrigin(context)
+		local direction = self:GetContextDirection(context)
+		local offsets = actionDef.Offsets
+		if offsets == nil or #offsets <= 0 then
+			offsets = { Vector2(0, 0) }
+		end
+		for index, offset in ipairs(offsets) do
+			local startX = origin.x + direction * self:ReadNumber(offset.x, 0)
+			local startY = origin.y + self:ReadNumber(offset.y, 0)
+			local summon = {
+				ActionId = self:ReadString(actionDef.ActionId, "summon"),
+				UserId = self:ReadString(context.UserId, ""),
+				CasterEntity = context.CasterEntity,
+				SourceEntity = context.SourceEntity,
+				SkillKey = self:ReadString(context.SkillKey, ""),
+				Tier = self:ClampSkillTier(context.Tier),
+				Direction = direction,
+				X = startX,
+				Y = startY,
+				HomeOffsetX = self:ReadNumber(offset.x, 0),
+				HomeOffsetY = self:ReadNumber(offset.y, 0),
+				RemainingFrames = math.max(1, math.floor(self:ReadNumber(actionDef.DurationFrames, 1))),
+				FrameTimer = 0,
+				AttackIntervalFrames = math.max(1, math.floor(self:ReadNumber(actionDef.AttackIntervalFrames, 20))),
+				AttackFrameCounter = 0,
+				AttackCycle = 0,
+				VisualTimer = 0,
+				VisualIntervalSeconds = math.max(0.05, self:ReadNumber(actionDef.VisualIntervalSeconds, 0.45)),
+				StandEffectIds = actionDef.StandEffectIds,
+				MoveEffectIds = actionDef.MoveEffectIds,
+				AttackEffectIds = actionDef.AttackEffectIds,
+				SummonedEffectIds = actionDef.SummonedEffectIds,
+				DieEffectIds = actionDef.DieEffectIds,
+				HitEffectRUID = self:ReadString(actionDef.HitEffectRUID, ""),
+				HitboxIds = actionDef.HitboxIds,
+				TargetGroup = self:ReadString(actionDef.TargetGroup, ""),
+				MaxTargets = math.max(0, math.floor(self:ReadNumber(actionDef.MaxTargets, 0))),
+				Coefficient = math.max(0, self:ReadNumber(actionDef.Coefficient, 100)),
+				MoveEnabled = actionDef.MoveEnabled == true,
+				FollowSpeed = math.max(0.1, self:ReadNumber(actionDef.FollowSpeed, 3.6)),
+				ScaleRate = math.max(0.05, self:ReadNumber(actionDef.ScaleRate, 0.85)),
+				SummonIndex = index,
+				Entity = nil,
+				IsMoving = false,
+				VisualState = "",
+				VisualRUID = "",
+				VisualHoldSeconds = 0
+			}
+			local clamped = self:ClampContextPositionToMapBounds(summon, Vector2(summon.X, summon.Y))
+			summon.X = clamped.x
+			summon.Y = clamped.y
+			table.insert(self._T.activeSummons, summon)
+			self:SpawnSummonObject(summon, index)
+			self:PlaySummonVisual(summon, summon.SummonedEffectIds, index, summon.X, summon.Y, "summoned:" .. summon.ActionId)
+			self:UpdateSummonIdleVisual(summon)
+		end
+		self:Log("summon action user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " count=" .. tostring(#offsets) .. " source=" .. self:ReadString(sourceId, ""))
+	end
+
+	method void TickActiveSummons(number delta)
+		-- Updates logical summons continuously while their attack cadence remains frame-based.
+		if self._T.activeSummons == nil then
+			return
+		end
+		local dt = math.max(0, self:ReadNumber(delta, 0))
+		for index = #self._T.activeSummons, 1, -1 do
+			local summon = self._T.activeSummons[index]
+			if summon == nil or summon.CasterEntity == nil or isvalid(summon.CasterEntity) == false then
+				self:DestroySummonObject(summon, 0)
+				table.remove(self._T.activeSummons, index)
+			else
+				self:UpdateSummonFollow(summon, dt)
+				self:UpdateSummonObjectTransform(summon)
+				summon.FrameTimer = self:ReadNumber(summon.FrameTimer, 0) + dt
+				summon.VisualHoldSeconds = math.max(0, self:ReadNumber(summon.VisualHoldSeconds, 0) - dt)
+				if self:ReadNumber(summon.VisualHoldSeconds, 0) <= 0 then
+					self:UpdateSummonIdleVisual(summon)
+				end
+				local frameSeconds = self:GetSkillFrameSeconds()
+				while summon.FrameTimer >= frameSeconds and summon.RemainingFrames > 0 do
+					summon.FrameTimer = summon.FrameTimer - frameSeconds
+					summon.RemainingFrames = summon.RemainingFrames - 1
+					summon.AttackFrameCounter = self:ReadNumber(summon.AttackFrameCounter, 0) + 1
+					if self:ReadNumber(summon.AttackFrameCounter, 0) >= self:ReadNumber(summon.AttackIntervalFrames, 20) then
+						summon.AttackFrameCounter = 0
+						self:ProcessSummonAttack(summon)
+					end
+				end
+				if summon.RemainingFrames <= 0 then
+					self:SetSummonObjectVisual(summon, summon.DieEffectIds, self:ReadNumber(summon.AttackCycle, 0) + 1, "die")
+					self:DestroySummonObject(summon, 0.35)
+					self:Log("summon end user=" .. self:ReadString(summon.UserId, "") .. " action=" .. self:ReadString(summon.ActionId, "summon"))
+					table.remove(self._T.activeSummons, index)
+				end
+			end
+		end
+	end
+
+	method void UpdateSummonFollow(any summon, number delta)
+		if summon == nil or summon.MoveEnabled ~= true then
+			return
+		end
+		local caster = summon.CasterEntity
+		if caster == nil or isvalid(caster) == false then
+			return
+		end
+		local casterPos = self:GetEntityPosition2(caster)
+		local direction = self:GetLookDirection(caster)
+		summon.Direction = direction
+		local targetX = casterPos.x + direction * self:ReadNumber(summon.HomeOffsetX, 0)
+		local targetY = casterPos.y + self:ReadNumber(summon.HomeOffsetY, 0)
+		local dx = targetX - self:ReadNumber(summon.X, 0)
+		local dy = targetY - self:ReadNumber(summon.Y, 0)
+		local distance = math.sqrt(dx * dx + dy * dy)
+		if distance <= 0.001 then
+			summon.IsMoving = false
+			return
+		end
+		local move = math.min(distance, math.max(0, self:ReadNumber(summon.FollowSpeed, 3.6)) * math.max(0, self:ReadNumber(delta, 0)))
+		summon.X = self:ReadNumber(summon.X, 0) + dx / distance * move
+		summon.Y = self:ReadNumber(summon.Y, 0) + dy / distance * move
+		summon.IsMoving = move > 0.001
+		local clamped = self:ClampContextPositionToMapBounds(summon, Vector2(summon.X, summon.Y))
+		summon.X = clamped.x
+		summon.Y = clamped.y
+	end
+
+	method void ProcessSummonAttack(any summon)
+		if summon == nil then
+			return
+		end
+		summon.AttackCycle = self:ReadNumber(summon.AttackCycle, 0) + 1
+		self:SetSummonObjectVisual(summon, summon.AttackEffectIds, self:ReadNumber(summon.SummonIndex, 1) + self:ReadNumber(summon.AttackCycle, 1) - 1, "attack")
+		self:ShowHitboxesForContext(summon, "summon:" .. self:ReadString(summon.ActionId, "summon"))
+		local targets = self:CollectTargetsForContext(summon)
+		local maxTargets = math.max(0, math.floor(self:ReadNumber(summon.MaxTargets, 0)))
+		local hitCount = 0
+		local damageAction = {
+			Coefficient = math.max(0, self:ReadNumber(summon.Coefficient, 100)),
+			HitEffectRUID = self:ReadString(summon.HitEffectRUID, "")
+		}
+		for index, targetEntity in ipairs(targets) do
+			if maxTargets > 0 and hitCount >= maxTargets then
+				return
+			end
+			if self:IsSkillTargetValid(summon, targetEntity) == true and self:IsTargetInsideHitboxes(summon, targetEntity) == true then
+				hitCount = hitCount + 1
+				local pos = self:GetEntityPosition2(targetEntity)
+				self:ApplySkillDamage(summon, targetEntity, damageAction, "summon:" .. self:ReadString(summon.ActionId, "summon"))
+				self:PlaySkillHitVisual(summon, pos.x, pos.y, "summon:" .. self:ReadString(summon.ActionId, "summon"), damageAction.HitEffectRUID)
+			end
+		end
+	end
+
+	method void SpawnSummonObject(any summon, number index)
+		if summon == nil then
+			return
+		end
+		local mapName = self:GetContextMapName(summon)
+		if mapName == "" then
+			self:Log("summon object spawn skipped: map empty action=" .. self:ReadString(summon.ActionId, "summon"))
+			return
+		end
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
+		if mapEntity == nil or isvalid(mapEntity) == false then
+			self:Log("summon object spawn skipped: map missing map=" .. mapName)
+			return
+		end
+		local modelId = self:ReadString(self.SummonObjectModelId, "")
+		if modelId == "" then
+			self:Log("summon object spawn skipped: model id empty")
+			return
+		end
+		if self._T.summonObjectSeq == nil then
+			self._T.summonObjectSeq = 0
+		end
+		self._T.summonObjectSeq = self._T.summonObjectSeq + 1
+		local name = "SkillSummon_" .. tostring(self._T.summonObjectSeq) .. "_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000))
+		local x = self:ReadNumber(summon.X, 0)
+		local y = self:ReadNumber(summon.Y, 0) + self:ReadNumber(self.SummonObjectYOffset, 0.15)
+		local entity = _SpawnService:SpawnByModelId(modelId, name, Vector3(x, y, 0), mapEntity)
+		if entity == nil then
+			self:Log("summon object spawn failed model=" .. modelId .. " action=" .. self:ReadString(summon.ActionId, "summon"))
+			return
+		end
+		summon.Entity = entity
+		self:ApplySummonObjectRenderer(entity, summon)
+		self:Log("summon object spawned action=" .. self:ReadString(summon.ActionId, "summon") .. " index=" .. tostring(index) .. " name=" .. self:ReadString(entity.Name, ""))
+	end
+
+	method void ApplySummonObjectRenderer(Entity entity, any summon)
+		if entity == nil or isvalid(entity) == false then
+			return
+		end
+		local scale = math.max(0.05, self:ReadNumber(summon.ScaleRate, 0.85))
+		if entity.TransformComponent ~= nil then
+			entity.TransformComponent.Scale = Vector3(scale, scale, 1)
+		end
+		if entity.SpriteRendererComponent ~= nil then
+			entity.SpriteRendererComponent.SortingLayer = "MapLayer0"
+			entity.SpriteRendererComponent.OrderInLayer = math.floor(self:ReadNumber(self.SkillEffectOrderInLayer, 30))
+			entity.SpriteRendererComponent.IgnoreMapLayerCheck = true
+			entity.SpriteRendererComponent.PlayRate = 1.0
+			entity.SpriteRendererComponent.FlipX = self:GetContextDirection(summon) > 0
+			entity.SpriteRendererComponent:SetAlpha(math.max(0, math.min(1, self:ReadNumber(self.SkillEffectAlpha, 1))))
+		end
+	end
+
+	method void UpdateSummonObjectTransform(any summon)
+		if summon == nil or summon.Entity == nil or isvalid(summon.Entity) == false then
+			return
+		end
+		local entity = summon.Entity
+		local scale = math.max(0.05, self:ReadNumber(summon.ScaleRate, 0.85))
+		if entity.TransformComponent ~= nil then
+			entity.TransformComponent.Position = Vector3(self:ReadNumber(summon.X, 0), self:ReadNumber(summon.Y, 0) + self:ReadNumber(self.SummonObjectYOffset, 0.15), 0)
+			entity.TransformComponent.Scale = Vector3(scale, scale, 1)
+		end
+		if entity.SpriteRendererComponent ~= nil then
+			entity.SpriteRendererComponent.FlipX = self:GetContextDirection(summon) > 0
+		end
+	end
+
+	method void UpdateSummonIdleVisual(any summon)
+		if summon == nil then
+			return
+		end
+		local idleEffectIds = summon.StandEffectIds
+		local idleState = "stand"
+		if summon.MoveEnabled == true and summon.IsMoving == true then
+			local moveEffectIds = summon.MoveEffectIds
+			if moveEffectIds ~= nil and #moveEffectIds > 0 then
+				idleEffectIds = moveEffectIds
+				idleState = "move"
+			end
+		end
+		self:SetSummonObjectVisual(summon, idleEffectIds, self:ReadNumber(summon.SummonIndex, 1), idleState)
+	end
+
+	method void SetSummonObjectVisual(any summon, any effectIds, number index, string stateName)
+		if summon == nil then
+			return
+		end
+		local effectId = self:GetListValue(effectIds, index)
+		local ruid = self:GetSkillEffectRUID(effectId)
+		if ruid == "" then
+			return
+		end
+		local safeState = self:ReadString(stateName, "stand")
+		local stateKey = safeState .. ":" .. effectId
+		if safeState ~= "attack" and safeState ~= "die" and self:ReadString(summon.VisualState, "") == stateKey and self:ReadString(summon.VisualRUID, "") == ruid then
+			return
+		end
+		summon.VisualState = stateKey
+		summon.VisualRUID = ruid
+		if safeState == "attack" then
+			summon.VisualHoldSeconds = math.max(0.05, self:ReadNumber(self.SummonAttackVisualHoldSeconds, 0.28))
+		elseif safeState == "die" then
+			summon.VisualHoldSeconds = 1
+		end
+		local entity = summon.Entity
+		if entity == nil or isvalid(entity) == false or entity.SpriteRendererComponent == nil then
+			if safeState == "attack" or safeState == "die" then
+				self:PlaySkillVisualAt(summon, ruid, self:ReadNumber(summon.X, 0), self:ReadNumber(summon.Y, 0) + self:ReadNumber(self.SummonObjectYOffset, 0.15), self:GetContextDirection(summon), self:ReadNumber(summon.ScaleRate, 0.85), "summon-object-fallback:" .. stateKey)
+			end
+			return
+		end
+		self:ApplySummonObjectRenderer(entity, summon)
+		entity.SpriteRendererComponent.SpriteRUID = ruid
+	end
+
+	method void DestroySummonObject(any summon, number delaySeconds)
+		if summon == nil or summon.Entity == nil then
+			return
+		end
+		local entity = summon.Entity
+		summon.Entity = nil
+		if entity ~= nil and isvalid(entity) == true then
+			entity:Destroy(math.max(0, self:ReadNumber(delaySeconds, 0)))
+		end
+	end
+
+	method void PlaySummonVisual(any summon, any effectIds, number index, number x, number y, string sourceId)
+		local effectId = self:GetListValue(effectIds, index)
+		local ruid = self:GetSkillEffectRUID(effectId)
+		if ruid == "" then
+			return
+		end
+		self:PlaySkillVisualAt(summon, ruid, x, y + 0.15, self:GetContextDirection(summon), self:ReadNumber(summon.ScaleRate, 0.85), sourceId)
+	end
+
+	method string GetListValue(any values, number index)
+		if values == nil or #values <= 0 then
+			return ""
+		end
+		local count = #values
+		local safeIndex = math.max(1, math.floor(self:ReadNumber(index, 1)))
+		local wrapped = ((safeIndex - 1) % count) + 1
+		return self:ReadString(values[wrapped], "")
 	end
 
 	method void ExecuteActions(any context, any actionIds, Entity targetEntity, number triggerX, number triggerY, string sourceId)
@@ -1916,6 +2315,8 @@ script BRSkillSystem extends Logic
 			self:StartProjectileFromAction(context, actionDef, triggerX, triggerY, sourceId)
 		elseif actionType == "field" then
 			self:StartFieldFromAction(context, actionDef, triggerX, triggerY, sourceId)
+		elseif actionType == "summon" then
+			self:StartSummonFromAction(context, actionDef, triggerX, triggerY, sourceId)
 		else
 			local origin = self:GetContextOrigin(context)
 			self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), origin.x, origin.y, self:GetContextDirection(context), 0.65, "aftereffect:" .. self:ReadString(actionDef.ActionId, "aftereffect"))
@@ -2693,6 +3094,109 @@ script BRSkillSystem extends Logic
 		return false
 	end
 
+	method void ShowHitboxesForContext(any context, string sourceId)
+		-- Spawns short-lived translucent polygons so authored skill hitboxes can be checked in play mode.
+		if self.EnableSkillHitboxDebug ~= true then
+			return
+		end
+		if context == nil or context.HitboxIds == nil then
+			return
+		end
+		local now = self:ReadNumber(_UtilLogic.ElapsedSeconds, 0)
+		local minInterval = math.max(0.03, self:ReadNumber(self.HitboxDebugIntervalSeconds, 0.12))
+		if context.LastHitboxDebugAt ~= nil and now - self:ReadNumber(context.LastHitboxDebugAt, 0) < minInterval then
+			return
+		end
+		context.LastHitboxDebugAt = now
+		local spawned = 0
+		for index, hitboxId in ipairs(context.HitboxIds) do
+			local safeHitboxId = self:ReadString(hitboxId, "")
+			local hitbox = self._T.skillHitboxCatalog[safeHitboxId]
+			if hitbox ~= nil then
+				local rect = self:GetHitboxDebugRect(context, hitbox)
+				if rect ~= nil then
+					self:SpawnHitboxDebugBox(context, rect.X, rect.Y, rect.W, rect.H, self:ReadString(sourceId, "skill") .. ":" .. safeHitboxId)
+					spawned = spawned + 1
+				end
+			end
+		end
+		if spawned > 0 then
+			self:Log("hitbox debug source=" .. self:ReadString(sourceId, "skill") .. " count=" .. tostring(spawned))
+		end
+	end
+
+	method any GetHitboxDebugRect(any context, any hitbox)
+		-- Returns the actual world-space test bounds, including target padding.
+		if context == nil or hitbox == nil then
+			return nil
+		end
+		local origin = self:GetContextOrigin(context)
+		local direction = self:GetContextDirection(context)
+		local padding = self:GetSkillTargetPadding()
+		local shape = self:ReadString(hitbox.Shape, "rect")
+		if shape == "circle" then
+			local rx = self:ReadNumber(hitbox.Rx, 0) / 100
+			local by = self:ReadNumber(hitbox.By, 0) / 100
+			local radius = math.max(0.01, self:ReadNumber(hitbox.Radius, 1) / 100) + padding
+			return {
+				X = origin.x + direction * rx,
+				Y = origin.y + by,
+				W = radius * 2,
+				H = radius * 2
+			}
+		end
+		local rx = self:ReadNumber(hitbox.Rx, 0) / 100
+		local by = self:ReadNumber(hitbox.By, 0) / 100
+		local width = math.max(0.01, self:ReadNumber(hitbox.W, 1) / 100)
+		local height = math.max(0.01, self:ReadNumber(hitbox.H, 1) / 100)
+		local halfWidth = width * 0.5 + padding
+		local halfHeight = height * 0.5 + padding
+		return {
+			X = origin.x + (-direction) * (rx - width * 0.5),
+			Y = origin.y + by + height * 0.5,
+			W = halfWidth * 2,
+			H = halfHeight * 2
+		}
+	end
+
+	method void SpawnHitboxDebugBox(any context, number centerX, number centerY, number width, number height, string sourceId)
+		if width <= 0 or height <= 0 then
+			return
+		end
+		local mapName = self:GetContextMapName(context)
+		if mapName == "" then
+			return
+		end
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
+		if mapEntity == nil or isvalid(mapEntity) == false then
+			return
+		end
+		local modelId = self:ReadString(self.HitboxDebugModelId, "")
+		if modelId == "" then
+			return
+		end
+		if self._T.hitboxDebugSeq == nil then
+			self._T.hitboxDebugSeq = 0
+		end
+		self._T.hitboxDebugSeq = self._T.hitboxDebugSeq + 1
+		local name = "SkillHitbox_" .. tostring(self._T.hitboxDebugSeq)
+		local entity = _SpawnService:SpawnByModelId(modelId, name, Vector3(self:ReadNumber(centerX, 0), self:ReadNumber(centerY, 0), 0), mapEntity)
+		if entity == nil then
+			self:Log("hitbox debug spawn failed model=" .. modelId .. " source=" .. self:ReadString(sourceId, "skill"))
+			return
+		end
+		if entity.TransformComponent ~= nil then
+			entity.TransformComponent.Scale = Vector3(math.max(0.01, self:ReadNumber(width, 0.01)), math.max(0.01, self:ReadNumber(height, 0.01)), 1)
+		end
+		if entity.PolygonRendererComponent ~= nil then
+			entity.PolygonRendererComponent.SortingLayer = "MapLayer0"
+			entity.PolygonRendererComponent.OrderInLayer = math.floor(self:ReadNumber(self.HitboxDebugOrderInLayer, 85))
+			entity.PolygonRendererComponent.IgnoreMapLayerCheck = true
+			entity.PolygonRendererComponent.Color = Color(1, 0.08, 0.02, math.max(0.03, math.min(1, self:ReadNumber(self.HitboxDebugAlpha, 0.22))))
+		end
+		entity:Destroy(math.max(0.03, self:ReadNumber(self.HitboxDebugDurationSeconds, 0.12)))
+	end
+
 	method boolean IsTargetInsideHitbox(any context, Entity targetEntity, any hitbox)
 		-- Converts pixel hitbox data into world units and tests the target position.
 		local origin = self:GetContextOrigin(context)
@@ -2928,7 +3432,7 @@ script BRSkillSystem extends Logic
 
 	method number GetSkillTargetPadding()
 		-- Returns target padding added to rectangle hitboxes.
-		return math.max(0, self:ReadNumber(self.SkillTargetPadding, 0.35))
+		return math.max(0, self:ReadNumber(self.SkillTargetPadding, 0.12))
 	end
 
 	method number Now()
@@ -2995,6 +3499,7 @@ script BRSkillSystem extends Logic
 		self:RemoveRuntimeRecordsForUser(self._T.activeSkillMoves, safeUserId)
 		self:RemoveRuntimeRecordsForUser(self._T.activeProjectiles, safeUserId)
 		self:RemoveRuntimeRecordsForUser(self._T.activeFields, safeUserId)
+		self:DestroySummonsForUser(safeUserId)
 		self:RemoveStatusesForUser(safeUserId)
 
 		if self._T.casterLocks ~= nil then
@@ -3012,6 +3517,19 @@ script BRSkillSystem extends Logic
 		end
 		if self._T.lastSafeFootholdByUser ~= nil then
 			self._T.lastSafeFootholdByUser[safeUserId] = nil
+		end
+	end
+
+	method void DestroySummonsForUser(string userId)
+		if self._T.activeSummons == nil then
+			return
+		end
+		for index = #self._T.activeSummons, 1, -1 do
+			local summon = self._T.activeSummons[index]
+			if summon == nil or self:ReadString(summon.UserId, "") == userId then
+				self:DestroySummonObject(summon, 0)
+				table.remove(self._T.activeSummons, index)
+			end
 		end
 	end
 
@@ -3330,6 +3848,7 @@ script BRSkillSystem extends Logic
 			SkillKey = definition.SkillKey,
 			DisplayName = definition.DisplayName,
 			ShortKey = definition.ShortKey,
+			IconRUID = self:ReadString(definition.IconRUID, ""),
 			SourceId = self:ReadString(sourceId, "")
 		}
 	end
@@ -3504,14 +4023,23 @@ script BRSkillSystem extends Logic
 			self:Log("world drop failed user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " reason=spawnFailed")
 			return false
 		end
+		local playerPosition = self:GetEntityPosition2(playerEntity)
+		local dropPosition = self:GetEntityPosition2(dropEntity)
+		local iconRuid = self:GetPartIconRUID(part)
 		self:RemovePartFromOwned(state, safeInstanceId)
 		self:NotifyUserChanged(userId)
-		self:Log("world drop user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " part=" .. part.PartId .. " entity=" .. dropEntity.Name)
+		self:Log("world drop user=" .. userId
+			.. " instance=" .. tostring(safeInstanceId)
+			.. " part=" .. part.PartId
+			.. " entity=" .. dropEntity.Name
+			.. " playerPos=" .. tostring(playerPosition.x) .. "," .. tostring(playerPosition.y)
+			.. " dropPos=" .. tostring(dropPosition.x) .. "," .. tostring(dropPosition.y)
+			.. " icon=" .. iconRuid)
 		return true
 	end
 
 	method Entity SpawnDroppedPart(Entity playerEntity, any part)
-		-- Spawns a pickup clone from the nearest skill box template on the current map.
+		-- Spawns a Maple-style dropped skill part entity near the player.
 		if playerEntity == nil or part == nil then
 			return nil
 		end
@@ -3519,18 +4047,10 @@ script BRSkillSystem extends Logic
 		if mapEntity == nil then
 			return nil
 		end
-		local template = self:FindDropTemplateEntity(mapEntity)
-		if template == nil then
-			return nil
-		end
 		local playerPosition = self:GetEntityPosition2(playerEntity)
-		local spawnPosition = Vector3(
-			playerPosition.x + self:GetPlayerDropDirection(playerEntity) * self:GetDroppedPartSpawnXOffset(),
-			playerPosition.y + self:GetDroppedPartSpawnYOffset(),
-			0
-		)
+		local spawnPosition = Vector3(playerPosition.x, playerPosition.y, 0)
 		local name = "DroppedSkillPart_" .. tostring(math.floor(self:ReadNumber(part.InstanceId, 0))) .. "_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000))
-		local dropEntity = _SpawnService:SpawnByEntity(template, name, spawnPosition, mapEntity, false)
+		local dropEntity = self:SpawnDroppedPartEntity(name, spawnPosition, mapEntity)
 		if dropEntity == nil then
 			return nil
 		end
@@ -3550,10 +4070,30 @@ script BRSkillSystem extends Logic
 				self:GetSkillName(part),
 				self:GetPartShortText(part),
 				self:GetUserIdFromPlayer(playerEntity),
-				self:ReadNumber(part.InstanceId, 0)
+				self:ReadNumber(part.InstanceId, 0),
+				self:GetPartIconRUID(part)
 			)
 		end
 		return dropEntity
+	end
+
+	method Entity SpawnDroppedPartEntity(string name, Vector3 spawnPosition, Entity mapEntity)
+		-- Prefers the reusable model so drops work on maps without placed part boxes.
+		local modelId = self:ReadString(self.DroppedPartModelId, "")
+		if modelId ~= "" then
+			local entity = _SpawnService:SpawnByModelId(modelId, name, spawnPosition, mapEntity)
+			if entity ~= nil then
+				return entity
+			end
+			self:Log("world drop model spawn failed modelId=" .. modelId)
+		end
+
+		local template = self:FindDropTemplateEntity(mapEntity)
+		if template == nil then
+			self:Log("world drop template missing map=" .. self:ReadString(mapEntity.Name, ""))
+			return nil
+		end
+		return _SpawnService:SpawnByEntity(template, name, spawnPosition, mapEntity, false)
 	end
 
 	method Entity FindDropTemplateEntity(Entity mapEntity)
@@ -3748,6 +4288,37 @@ script BRSkillSystem extends Logic
 			return skillKey
 		end
 		return self:ReadString(part.PartId, "Skill")
+	end
+
+	method string GetPartIconRUID(any part)
+		-- Returns the CSV/UI icon RUID carried by a skill part.
+		if part == nil then
+			return ""
+		end
+		local iconRuid = self:ReadString(part.IconRUID, "")
+		if iconRuid ~= "" then
+			return iconRuid
+		end
+		local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, ""))
+		if skillKey ~= "" then
+			self:EnsureRuntime()
+			if self._T.skillRuntimeCatalog ~= nil then
+				local skillDef = self._T.skillRuntimeCatalog[skillKey]
+				if skillDef ~= nil then
+					iconRuid = self:ReadString(skillDef.IconRUID, "")
+					if iconRuid ~= "" then
+						return iconRuid
+					end
+				end
+			end
+			if _BRSkillUIDatabase ~= nil then
+				iconRuid = _BRSkillUIDatabase:GetSlotIconRUID(skillKey, 1, false)
+				if self:ReadString(iconRuid, "") ~= "" then
+					return iconRuid
+				end
+			end
+		end
+		return ""
 	end
 
 	method string GetSkillTierText(any part, number tier)
@@ -4224,12 +4795,12 @@ script BRSkillSystem extends Logic
 
 	method number GetDroppedPartSpawnYOffset()
 		-- Returns the vertical offset used for player-foot dropped parts.
-		return self:ReadNumber(self.DroppedPartSpawnYOffset, 0.35)
+		return self:ReadNumber(self.DroppedPartSpawnYOffset, 0)
 	end
 
 	method number GetDroppedPartSpawnXOffset()
 		-- Returns the horizontal offset used to place dropped parts in front of the player.
-		return math.max(0, self:ReadNumber(self.DroppedPartSpawnXOffset, 1.15))
+		return math.max(0, self:ReadNumber(self.DroppedPartSpawnXOffset, 0))
 	end
 
 	method number GetPlayerDropDirection(Entity playerEntity)

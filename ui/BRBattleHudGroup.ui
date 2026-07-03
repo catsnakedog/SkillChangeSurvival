@@ -3191,7 +3191,7 @@
                 "a": 1.0
               },
               "OutlineWidth": 3.0,
-              "RaycastTarget": false,
+              "RaycastTarget": true,
               "Type": 0,
               "Enable": true
             }
@@ -4065,7 +4065,7 @@
                 "a": 1.0
               },
               "OutlineWidth": 3.0,
-              "RaycastTarget": false,
+              "RaycastTarget": true,
               "Type": 0,
               "Enable": true
             }
@@ -4939,7 +4939,7 @@
                 "a": 1.0
               },
               "OutlineWidth": 3.0,
-              "RaycastTarget": false,
+              "RaycastTarget": true,
               "Type": 0,
               "Enable": true
             }
@@ -5668,7 +5668,7 @@
                 "a": 1.0
               },
               "OutlineWidth": 3.0,
-              "RaycastTarget": false,
+              "RaycastTarget": true,
               "Type": 0,
               "Enable": true
             }
@@ -6252,7 +6252,7 @@
                 "a": 1.0
               },
               "OutlineWidth": 3.0,
-              "RaycastTarget": false,
+              "RaycastTarget": true,
               "Type": 0,
               "Enable": true
             }

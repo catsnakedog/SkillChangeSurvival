@@ -22,3 +22,7 @@ Blink,버스트 스텝,기본 스킬,e510bb0b57d54643892bb7109f6d6714,방향키 
 슬럼버,슬럼버,기본 스킬,thumbnail://e7eea60b381848aeb5ed4466a5e7f160,슬로우 패시브 상태,슬럼버/effect,20,5:슬럼버/버프,0.18,,,,,,
 럭키 다이스,럭키 다이스,기본 스킬,thumbnail://43abf6af338346a98f1b592049af5556,랜덤 버프 상태,럭키 다이스/effect,20,5:럭키 다이스/버프,0.18,,,,,,
 반격의 슈터,반격의 슈터,기본 스킬,thumbnail://1cef91ed9a304f7cb677f0c6b61519b3,반격 패시브 상태,반격의 슈터/effect,20,5:반격의 슈터/버프,0.18,,,,,,
+PirateMonkeySummon,서포트 몽키 트윈스,스킬 파츠,7eccbe7a08c7461fb8bff927369d55d5,고정형 원숭이 한 마리를 소환한다,,8,0:PirateMonkeySummon/summon,0.18,e4595d5747a84f4d9de397cb82117408,912dbe2c0dfc4866b69cd00248d9ccd7,b7f5c14d8d4a4002878e20ed3c909dfe,,,
+PirateMonkeySummon2,서포트 몽키 트윈스-인핸스,기본 스킬,c39efca7b20e4a009ad7fee611d394d1,광화된 고정형 원숭이를 소환한다,,8,0:PirateMonkeySummon2/summon,0.18,,bd4d02e24598439e9638ecf1ee90bd7c,56e391b8b3a247bb820004c5a42993c4,,,
+PirateMonkeySummon3,스페셜 몽키 에스코트,기본 스킬,a1ea28f4c1e347cb82589427248daee6,고정형 원숭이 3마리를 좁은 간격으로 소환한다,,8,0:PirateMonkeySummon3/summon,0.18,dba6979e4ebf4971a20670af2883238e,d7f87d11c9524615b326c5b4e250e77d,c474f2961692487b8ca4f34e6143c1e8,,,
+PirateMonkeySummon4,배틀쉽 봄버,기본 스킬,6b5fc4c1887c4044a92c4f9f1ab5772a,전방을 포격하는 배틀쉽 봄버를 소환한다,,8,0:PirateMonkeySummon4/summon,0.18,0084f979e1794d1c984b431056fc39ce,953346e14c0b4e9ebff9fe9276e0faca,ebdd648edcbb4ab9b42951ecfce51737,,,

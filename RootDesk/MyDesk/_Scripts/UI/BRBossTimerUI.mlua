@@ -3,13 +3,19 @@ script BRBossTimerUI extends Component
 
 	property Entity timerPanel = "eb210fb0-3a90-4160-9b46-6e6a58803ffe"
 
-	property TextComponent timeText = "659b5b3c-87f1-4eb5-9eb5-688d42b45e6e"
+	property SpriteGUIRendererComponent digitMin10 = "3e657a9c-cd3c-49ca-a05f-39175b1d84f4"
 
-	property TextComponent labelText = "ec79dbd8-cb4e-4c11-8447-12af4a9ea564"
+	property SpriteGUIRendererComponent digitMin1 = "8411cc87-cefd-4271-8d22-8ef9be285807"
 
-	property SpriteGUIRendererComponent warningBar = "5823c591-44a7-44e4-b088-90d28e133308"
+	property SpriteGUIRendererComponent colonSprite = "fe45445e-a072-4e0d-9324-d2aa5f791dcc"
+
+	property SpriteGUIRendererComponent digitSec10 = "2e5e2b4f-929f-401d-b7de-a8117c497717"
+
+	property SpriteGUIRendererComponent digitSec1 = "88b5a4b7-c727-4827-80e7-8ef13a5fed10"
 
 	property number RefreshSeconds = 0.1
+
+	property number LowTimeWarnSeconds = 60
 
 	property boolean VerboseLog = true
 
@@ -21,11 +27,12 @@ script BRBossTimerUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
-		-- Starts the local UI refresh loop.
+		-- Starts the local UI refresh loop and prepares the digit sprite lookup.
+		self:BuildDigitRuidTable()
 		self:SetRootRaycastBlocked(false)
 		self:SetPanelActive(false)
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshTimer() end, self:GetRefreshSeconds())
-		self:Log("ready")
+		self:Log("ready imageDigits")
 	end
 
 	@ExecSpace("ClientOnly")
@@ -38,8 +45,25 @@ script BRBossTimerUI extends Component
 	end
 
 	@ExecSpace("ClientOnly")
+	method void BuildDigitRuidTable()
+		-- Maps each digit 0-9 to its purple damage-skin sprite RUID.
+		self._T.digitRuids = {
+			[0] = "54ca1051a63444a094649166572c0fde",
+			[1] = "8d3d3865e1f348d7a22a20c929881fdf",
+			[2] = "814f191c63494491bca01f2fdf2faf81",
+			[3] = "b78101c573f54bbf945872f942fee866",
+			[4] = "99f833a1f45149b7812c3044e98dfaae",
+			[5] = "59f3fffa973049cda0abf8674d9dd49e",
+			[6] = "cb6a451486894e748094e0c9e03c05a2",
+			[7] = "83b35b48e06e41e99dfed2a487e1a135",
+			[8] = "e47a6e1ec66f4eaea3206d41ea5d7e9f",
+			[9] = "db0d7c90e7214ed4857588a35ccefdef"
+		}
+	end
+
+	@ExecSpace("ClientOnly")
 	method void RefreshTimer()
-		-- Pulls the synchronized timer state and updates the HUD.
+		-- Pulls the synchronized timer state and updates the digit images.
 		local visible = self:ShouldShowTimer()
 		self:SetPanelActive(visible)
 		if visible ~= true then
@@ -49,8 +73,7 @@ script BRBossTimerUI extends Component
 		local remaining = math.max(0, math.ceil(self:ReadNumber(_BRBattleTimerSystem.RemainingSeconds, 0)))
 		if remaining ~= self.lastDisplaySeconds then
 			self.lastDisplaySeconds = remaining
-			self:ApplyTimerText(remaining)
-			self:ApplyTimerStyle(remaining, self:ReadNumber(_BRBattleTimerSystem.DurationSeconds, 0))
+			self:ApplyTimerImages(remaining)
 		end
 	end
 
@@ -75,41 +98,61 @@ script BRBossTimerUI extends Component
 		return self:ReadString(localPlayer.CurrentMapName, "") == timerMapName
 	end
 
-	method void ApplyTimerText(number remaining)
-		-- Writes label and formatted time text.
-		if self.timeText ~= nil then
-			self.timeText.Text = self:FormatSeconds(remaining)
+	@ExecSpace("ClientOnly")
+	method void ApplyTimerImages(number remaining)
+		-- Renders the remaining time as MM:SS purple digit sprites.
+		local total = math.max(0, math.floor(self:ReadNumber(remaining, 0)))
+		local minutes = math.min(99, math.floor(total / 60))
+		local seconds = total - math.floor(total / 60) * 60
+
+		self:SetDigitSprite(self.digitMin10, math.floor(minutes / 10))
+		self:SetDigitSprite(self.digitMin1, minutes % 10)
+		self:SetDigitSprite(self.digitSec10, math.floor(seconds / 10))
+		self:SetDigitSprite(self.digitSec1, seconds % 10)
+		self:ApplyLowTimeTint(total)
+		self:Log("digits " .. tostring(minutes) .. ":" .. tostring(seconds) .. " remaining=" .. tostring(total))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetDigitSprite(SpriteGUIRendererComponent digitSprite, number digitValue)
+		-- Writes one digit sprite RUID onto a digit slot renderer.
+		if digitSprite == nil then
+			return
 		end
-		if self.labelText ~= nil then
-			self.labelText.Text = self:ReadString(_BRBattleTimerSystem.TimerLabel, "BOSS")
+
+		local safeDigit = math.max(0, math.min(9, math.floor(self:ReadNumber(digitValue, 0))))
+		local ruid = self._T.digitRuids[safeDigit]
+		if ruid == nil or ruid == "" then
+			return
+		end
+		if digitSprite.ImageRUID ~= ruid then
+			digitSprite.ImageRUID = ruid
 		end
 	end
 
-	method void ApplyTimerStyle(number remaining, number duration)
-		-- Applies Maple-style warning colors as the countdown gets low.
+	@ExecSpace("ClientOnly")
+	method void ApplyLowTimeTint(number total)
+		-- Tints the digit row toward warning red when the countdown gets low.
+		local warnSeconds = math.max(1, self:ReadNumber(self.LowTimeWarnSeconds, 60))
 		local color = Color(1, 1, 1, 1)
-		local warningColor = Color(0.85, 0.2, 0.16, 1)
-		local showWarningBar = false
-
-		if remaining <= 60 then
-			color = Color(1, 0.22, 0.18, 1)
-			warningColor = Color(1, 0.06, 0.02, 1)
-			showWarningBar = true
-		elseif remaining <= 300 then
-			color = Color(1, 0.82, 0.28, 1)
-			warningColor = Color(1, 0.58, 0.18, 1)
-			showWarningBar = true
+		if self:ReadNumber(total, 0) <= warnSeconds then
+			color = Color(1, 0.45, 0.55, 1)
 		end
 
-		if self.timeText ~= nil then
-			self.timeText.FontColor = color
+		self:SetSpriteColor(self.digitMin10, color)
+		self:SetSpriteColor(self.digitMin1, color)
+		self:SetSpriteColor(self.colonSprite, color)
+		self:SetSpriteColor(self.digitSec10, color)
+		self:SetSpriteColor(self.digitSec1, color)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetSpriteColor(SpriteGUIRendererComponent targetSprite, Color color)
+		-- Applies a tint color to one digit slot renderer.
+		if targetSprite == nil or color == nil then
+			return
 		end
-		if self.warningBar ~= nil then
-			self.warningBar.Color = warningColor
-			if self.warningBar.Entity ~= nil then
-				self.warningBar.Entity.Enable = showWarningBar
-			end
-		end
+		targetSprite.Color = color
 	end
 
 	method void SetPanelActive(boolean visible)
@@ -131,14 +174,6 @@ script BRBossTimerUI extends Component
 			root.CanvasGroupComponent.BlocksRaycasts = blocked == true
 			root.CanvasGroupComponent.Interactable = blocked == true
 		end
-	end
-
-	method string FormatSeconds(number remaining)
-		-- Formats seconds as MM:SS.
-		local total = math.max(0, math.ceil(self:ReadNumber(remaining, 0)))
-		local minutes = math.floor(total / 60)
-		local seconds = total - minutes * 60
-		return string.format("%02d:%02d", minutes, seconds)
 	end
 
 	method number GetRefreshSeconds()

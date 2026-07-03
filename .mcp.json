@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "msw-maker-mcp": {
+      "command": "cmd.exe",
+      "args": [
+        "/c",
+        "call",
+        "C:\\Users\\wjdgj\\AppData\\Local\\Nexon\\MapleStory Worlds\\MakerMCP\\msw-maker-mcp.bat"
+      ]
+    },
+    "msw-mcp": {
+      "type": "http",
+      "url": "https://msw-mcp.nexon.com/mcp",
+      "headers": {
+        "Authorization": "Bearer febf7985b9bb4edda7e1a3ec81ab1f72"
+      }
+    }
+  }
+}

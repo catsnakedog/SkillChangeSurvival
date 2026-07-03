@@ -471,7 +471,8 @@ script BRSkillSystem extends Logic
 					EffectId = effectId,
 					RUID = self:GetDataCell(data, row, "effect_ruid", ""),
 					Loop = self:ReadDataBoolean(data, row, "is_loop", false),
-					TotalFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "total_length_frames", "1"), 1)))
+					TotalFrames = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "total_length_frames", "1"), 1))),
+					Scale = math.max(0.05, self:ReadNumber(self:GetDataCell(data, row, "scale", "1"), 1))
 				}
 			end
 		end
@@ -2416,7 +2417,7 @@ script BRSkillSystem extends Logic
 			offsetX = 0
 			offsetY = 0.25
 		end
-		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, safeEventId), x + direction * offsetX, y + offsetY, direction, self:GetSkillEffectScaleRate(safeEventId), "event:" .. safeEventId)
+		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, safeEventId), x + direction * offsetX, y + offsetY, direction, self:GetSkillEffectScaleRate(safeEventId) * self:GetContextVisualScale(context, safeEventId), "event:" .. safeEventId)
 	end
 
 	method void PlaySkillHitVisual(any context, number x, number y, string sourceId, string overrideRUID)
@@ -2462,6 +2463,32 @@ script BRSkillSystem extends Logic
 
 	method number GetSkillEffectScaleRate(string eventId)
 		-- Scale is now data-agnostic; authored effect assets should carry their intended size.
+		return 1.0
+	end
+
+	method number GetContextVisualScale(any context, string eventId)
+		-- Returns the authored per-effect scale (effects.csv `scale`) for the effect GetContextVisualRUID resolves.
+		if context ~= nil then
+			if self:ReadString(context.VisualRUID, "") ~= "" then
+				return 1.0
+			end
+			if context.EffectIds ~= nil then
+				for index, effectId in ipairs(context.EffectIds) do
+					if self:GetSkillEffectRUID(effectId) ~= "" then
+						return self:GetSkillEffectScale(effectId)
+					end
+				end
+			end
+		end
+		return self:GetSkillEffectScale(eventId)
+	end
+
+	method number GetSkillEffectScale(string effectId)
+		-- Reads the authored per-effect visual scale multiplier (effects.csv `scale`); defaults to 1.0 when unset.
+		local safeEffectId = self:ReadString(effectId, "")
+		if self._T.skillEffectCatalog ~= nil and self._T.skillEffectCatalog[safeEffectId] ~= nil then
+			return math.max(0.05, self:ReadNumber(self._T.skillEffectCatalog[safeEffectId].Scale, 1))
+		end
 		return 1.0
 	end
 

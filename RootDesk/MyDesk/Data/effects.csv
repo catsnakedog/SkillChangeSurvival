@@ -1,4 +1,4 @@
-﻿effect_id,effect_ruid,is_loop,total_length_frames
+﻿effect_id,effect_ruid,is_loop,total_length_frames,scale
 Nimbus/repeat,263871f547a941c99ce0ab13c7b95aad,true,0
 Nimbus/end,6a743f785c1e4513ad9b3fd6954ef9d7,false,0
 Nimbus/effect/0,04ebd5e304fb4ba5b0606e239eef6b49,false,0
@@ -53,4 +53,7 @@ Blink/special,ba3f9119b8634a1f80e85017adc426f7,false,8
 슬럼버/effect,e7eea60b381848aeb5ed4466a5e7f160,false,20
 럭키 다이스/effect,43abf6af338346a98f1b592049af5556,false,20
 반격의 슈터/effect,1cef91ed9a304f7cb677f0c6b61519b3,false,20
-브랜디쉬/effect,8b26a0cdb63d455e82d1ca0fddf5e139,false,12
+브랜디쉬/effect,8b26a0cdb63d455e82d1ca0fddf5e139,false,12,0.5
+브랜디쉬2/effect,dee33ecfc0d14dffaedf161434d1ee8e,false,12,0.5
+브랜디쉬3/effect,5308ef85369c4f31843d6e8cde4b1012,false,12,0.5
+브랜디쉬4/effect,1b87f0fb57534d84aa3e0e596f5c473d,false,12,0.5

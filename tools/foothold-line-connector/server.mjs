@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 import { MakerMcpClient, getMakerStatus } from "./maker-mcp-client.mjs";
 import {
   applyConnect,
+  applyMoveLineToOrigin,
+  applySymmetry,
   dryRunConnect,
+  dryRunMoveLineToOrigin,
+  dryRunSymmetry,
   getFootholdSummary,
   getLineParents,
   getRooms,
@@ -77,9 +81,51 @@ async function handleApi(request, response, url) {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/api/move-line-origin/dry-run") {
+    const body = await readJson(request);
+    sendJson(response, 200, { ok: true, plan: dryRunMoveLineToOrigin(body.map, body.linePath) });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/symmetry/dry-run") {
+    const body = await readJson(request);
+    sendJson(response, 200, { ok: true, plan: dryRunSymmetry(body.map, body.roomPath) });
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/api/connect") {
     const body = await readJson(request);
     const result = applyConnect(body.map, body.linePath);
+    let refresh = null;
+    if (result.applied) {
+      try {
+        refresh = await new MakerMcpClient().callTool("maker_refresh_workspace", {}, 6000);
+      } catch (error) {
+        refresh = { warning: error.message };
+      }
+    }
+    sendJson(response, 200, { ok: true, result, refresh });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/move-line-origin") {
+    const body = await readJson(request);
+    const result = applyMoveLineToOrigin(body.map, body.linePath);
+    let refresh = null;
+    if (result.applied) {
+      try {
+        refresh = await new MakerMcpClient().callTool("maker_refresh_workspace", {}, 6000);
+      } catch (error) {
+        refresh = { warning: error.message };
+      }
+    }
+    sendJson(response, 200, { ok: true, result, refresh });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/symmetry") {
+    const body = await readJson(request);
+    const result = applySymmetry(body.map, body.roomPath);
     let refresh = null;
     if (result.applied) {
       try {

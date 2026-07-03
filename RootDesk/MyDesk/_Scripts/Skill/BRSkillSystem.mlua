@@ -1418,6 +1418,13 @@ script BRSkillSystem extends Logic
 			return
 		end
 
+		local bot = self:GetBattleBotComponent(targetEntity)
+		if bot ~= nil then
+			bot:ApplyBotDamage(attackerEntity, damage, self:ReadString(sourceId, "skill"))
+			self:Log("damage bot user=" .. self:ReadString(context.UserId, "") .. " target=" .. self:ReadString(bot.BotId, targetEntity.Name) .. " amount=" .. tostring(damage) .. " critical=" .. tostring(critical))
+			return
+		end
+
 		if targetEntity.PlayerComponent ~= nil then
 			local player = targetEntity.PlayerComponent
 			player.Hp = math.max(0, player.Hp - damage)
@@ -1717,6 +1724,14 @@ script BRSkillSystem extends Logic
 					end
 				end
 			end
+			local botComponents = mapEntity:GetChildComponentsByTypeName("script.BRBattleBotController", true)
+			if botComponents ~= nil then
+				for index, bot in ipairs(botComponents) do
+					if bot ~= nil and bot.Entity ~= nil then
+						self:AddSkillTarget(targets, seenTargets, bot.Entity)
+					end
+				end
+			end
 		end
 		return targets
 	end
@@ -1773,6 +1788,10 @@ script BRSkillSystem extends Logic
 			end
 			return true
 		end
+		local bot = self:GetBattleBotComponent(targetEntity)
+		if bot ~= nil then
+			return bot:IsSkillTargetValid() == true
+		end
 		return self:GetTrainingDummyComponent(targetEntity) ~= nil
 	end
 
@@ -1784,6 +1803,18 @@ script BRSkillSystem extends Logic
 		local component = entity:GetComponent("script.BRTrainingDummy")
 		if component == nil then
 			component = entity:GetComponent("BRTrainingDummy")
+		end
+		return component
+	end
+
+	method any GetBattleBotComponent(Entity entity)
+		-- Returns the battle AI component when the target is a spawned competitor bot.
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRBattleBotController")
+		if component == nil then
+			component = entity:GetComponent("BRBattleBotController")
 		end
 		return component
 	end

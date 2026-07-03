@@ -17,6 +17,14 @@ script BRLobbyMatchmaker extends Component
 
 	property number MatchRoomTtlSeconds = 600
 
+	property boolean EnableBotMatch = true
+
+	property boolean EnableDelayedBotFill = true
+
+	property number BotFillWaitSeconds = 10
+
+	property number MinPlayersToStartWithBots = 1
+
 	property string MatchMode = "SoloBattleRoyale"
 
 	property boolean UseGlobalMatchQueue = true
@@ -315,6 +323,55 @@ script BRLobbyMatchmaker extends Component
 	end
 
 	@ExecSpace("Server")
+	method void RequestStartBotMatch(string userId)
+		-- Starts an immediate match with this user as the only human and bots filling the rest.
+		self:EnsureRuntimeStarted()
+		if self.EnableLobbyMatchmaker == false or self.EnableBotMatch ~= true then
+			log("[BRLobby] bot match ignored: disabled user=" .. tostring(userId))
+			return
+		end
+		if userId == nil or userId == "" then
+			log("[BRLobby] bot match ignored: empty user")
+			return
+		end
+		
+		local playerEntity = _UserService:GetUserEntityByUserId(userId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			log("[BRLobby] bot match ignored: missing player user=" .. tostring(userId))
+			return
+		end
+		if self.RequireUserOnLobbyMapForQueue == true and self:IsUserInLobbyMap(userId) == false then
+			log("[BRLobby] bot match ignored: user not in lobby user=" .. tostring(userId))
+			return
+		end
+		if self:CanCreateMoreMatches() == false then
+			self.MatchmakingPhase = "Match capacity full " .. tostring(self.ActiveMatchCount) .. "/" .. tostring(self.MaxActiveMatches)
+			log("[BRLobby] bot match ignored: capacity full user=" .. tostring(userId))
+			return
+		end
+		
+		local requiredBots = math.max(0, self:GetTargetCount() - 1)
+		if self:CanFillWithBattleBots(requiredBots) == false then
+			self.MatchmakingPhase = "BotFillUnavailable"
+			self.LastError = "Not enough battle bots"
+			log("[BRLobby] bot match ignored: bot fill unavailable user=" .. tostring(userId) .. " requiredBots=" .. tostring(requiredBots) .. " maxBots=" .. tostring(self:GetBattleBotMaxFillCount()))
+			return
+		end
+		
+		self:RemoveUserFromQueueSilently(userId)
+		local now = self:Now()
+		local ticket = _BRMatchQueue:CreateTicket(userId, playerEntity.PlayerComponent.ProfileCode, self:GetCurrentWorldInstanceId(), now, self:GetTicketTtlSeconds())
+		ticket.BotMatch = true
+		self._T.localTickets[userId] = ticket.TicketId
+		self.MatchmakingPhase = "BotMatch"
+		self.LastError = ""
+		self:SetLobbyName(userId, 1)
+		self:ShowToast("Bot match starting.")
+		log("[BRLobby] bot match start user=" .. tostring(userId) .. " target=" .. tostring(self:GetTargetCount()) .. " bots=" .. tostring(requiredBots))
+		self:GatherTickets({ ticket })
+	end
+
+	@ExecSpace("Server")
 	method void RequestCancelQueue(string userId)
 		self:EnsureRuntimeStarted()
 		if self.EnableLobbyMatchmaker == false then
@@ -369,6 +426,37 @@ script BRLobbyMatchmaker extends Component
 		
 		log("[BRLobby] failed to cancel queue: " .. userId)
 		return false
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RemoveUserFromQueueSilently(string userId)
+		-- Removes any queued ticket for the user without changing UI text to canceled.
+		self:EnsureRuntimeStarted()
+		if userId == nil or userId == "" then
+			return
+		end
+		
+		for attempt = 1, self.MaxQueueUpdateRetries do
+			local snapshot = self:ReadQueueSnapshot()
+			if snapshot == nil then
+				return
+			end
+		
+			local queue = snapshot.State
+			_BRMatchQueue:NormalizeQueue(queue)
+			local removed = _BRMatchQueue:RemoveTicket(queue, userId, "")
+			self._T.localTickets[userId] = nil
+			if removed == false then
+				self:UpdateQueueCounts(queue)
+				return
+			end
+		
+			queue.UpdatedAt = self:Now()
+			if self:CommitQueueAndUpdate(snapshot, queue) == true then
+				log("[BRLobby] queue ticket cleared for bot match user=" .. tostring(userId))
+				return
+			end
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -454,9 +542,14 @@ script BRLobbyMatchmaker extends Component
 				return false
 			end
 		
-			local selectedTickets = _BRMatchQueue:TakeLocalTickets(queue, self:GetTargetCount(), self:GetCurrentWorldInstanceId())
+			local oldestWaitSeconds = self:GetOldestLocalTicketWaitSeconds(queue)
+			local ticketTakeCount = self:GetTicketTakeCountForMatch(queue)
+			local selectedTickets = _BRMatchQueue:TakeLocalTickets(queue, ticketTakeCount, self:GetCurrentWorldInstanceId())
 			if #selectedTickets == 0 then
 				return false
+			end
+			if #selectedTickets < self:GetTargetCount() then
+				log("[BRLobby] delayed bot fill match start humans=" .. tostring(#selectedTickets) .. "/" .. tostring(self:GetTargetCount()) .. " wait=" .. tostring(math.floor(oldestWaitSeconds)) .. "s threshold=" .. tostring(self:GetBotFillWaitSeconds()))
 			end
 		
 			queue.UpdatedAt = self:Now()
@@ -470,13 +563,77 @@ script BRLobbyMatchmaker extends Component
 	end
 
 	method boolean CanStartWithQueue(any queue)
+		-- Returns true when enough humans are queued, or when the bot-fill wait timeout has elapsed.
 		local queuedCount = _BRMatchQueue:GetLocalTicketCount(queue, self:GetCurrentWorldInstanceId())
-		return queuedCount >= self:GetTargetCount()
+		local targetCount = self:GetTargetCount()
+		if queuedCount >= targetCount then
+			return true
+		end
+		return self:CanStartWithDelayedBotFill(queue, queuedCount, targetCount)
+	end
+
+	method number GetTicketTakeCountForMatch(any queue)
+		-- Chooses how many human tickets to consume for the next match.
+		local queuedCount = _BRMatchQueue:GetLocalTicketCount(queue, self:GetCurrentWorldInstanceId())
+		local targetCount = self:GetTargetCount()
+		if queuedCount >= targetCount then
+			return targetCount
+		end
+		if self:CanStartWithDelayedBotFill(queue, queuedCount, targetCount) == true then
+			return math.max(1, queuedCount)
+		end
+		return targetCount
+	end
+
+	method boolean CanStartWithDelayedBotFill(any queue, number queuedCount, number targetCount)
+		-- Allows a partial match after waiting long enough so battle bots can fill empty slots.
+		if self.EnableDelayedBotFill ~= true then
+			return false
+		end
+		local safeQueuedCount = math.max(0, math.floor(self:ReadNumber(queuedCount, 0)))
+		local safeTargetCount = math.max(1, math.floor(self:ReadNumber(targetCount, self:GetTargetCount())))
+		if safeQueuedCount >= safeTargetCount then
+			return true
+		end
+		if safeQueuedCount < self:GetMinPlayersToStartWithBots() then
+			return false
+		end
+		if self:CanFillWithBattleBots(safeTargetCount - safeQueuedCount) == false then
+			return false
+		end
+		return self:GetOldestLocalTicketWaitSeconds(queue) >= self:GetBotFillWaitSeconds()
+	end
+
+	method number GetOldestLocalTicketWaitSeconds(any queue)
+		-- Reads how long the oldest local queued ticket has waited.
+		local now = self:Now()
+		local oldestEnqueuedAt = 999999999
+		if queue == nil or queue.Tickets == nil then
+			return 0
+		end
+		for index, ticket in ipairs(queue.Tickets) do
+			if _BRMatchQueue:IsLocalTicket(ticket, self:GetCurrentWorldInstanceId()) == true then
+				local enqueuedAt = self:ReadNumber(ticket.EnqueuedAt, now)
+				if enqueuedAt < oldestEnqueuedAt then
+					oldestEnqueuedAt = enqueuedAt
+				end
+			end
+		end
+		if oldestEnqueuedAt == 999999999 then
+			return 0
+		end
+		return math.max(0, now - oldestEnqueuedAt)
 	end
 
 	method void UpdateWaitingPhase(any queue)
+		-- Updates the synchronized lobby waiting text with bot-fill countdown details.
 		local queuedCount = _BRMatchQueue:GetLocalTicketCount(queue, self:GetCurrentWorldInstanceId())
-		self.MatchmakingPhase = "Waiting local " .. tostring(queuedCount) .. "/" .. tostring(self:GetTargetCount()) .. " total " .. tostring(_BRMatchQueue:GetTotalTicketCount(queue))
+		local phase = "Waiting local " .. tostring(queuedCount) .. "/" .. tostring(self:GetTargetCount()) .. " total " .. tostring(_BRMatchQueue:GetTotalTicketCount(queue))
+		if self.EnableDelayedBotFill == true and queuedCount >= self:GetMinPlayersToStartWithBots() and queuedCount < self:GetTargetCount() then
+			local remaining = math.max(0, math.ceil(self:GetBotFillWaitSeconds() - self:GetOldestLocalTicketWaitSeconds(queue)))
+			phase = phase .. " botFill " .. tostring(remaining) .. "s"
+		end
+		self.MatchmakingPhase = phase
 	end
 
 	@ExecSpace("ServerOnly")
@@ -487,9 +644,13 @@ script BRLobbyMatchmaker extends Component
 	@ExecSpace("ServerOnly")
 	method void StartMatchFromTickets(any tickets)
 		local players = self:TakeTicketUsers(tickets)
+		local humanCount = #players
+		local shouldRestoreTickets = self:ShouldRestoreTickets(tickets)
 		if self:AreAllPlayersInThisServer(players) == false then
 			self.MatchmakingPhase = "UsersMissing"
-			self:RestoreTickets(tickets)
+			if shouldRestoreTickets == true then
+				self:RestoreTickets(tickets)
+			end
 			log("[BRLobby] gather canceled because selected users are not in this server.")
 			return
 		end
@@ -499,7 +660,9 @@ script BRLobbyMatchmaker extends Component
 		local matchRoom = _BRMatchRoomQueue:CreateMatchRoom(tickets, self.MatchMode, self.GatherMapName, "", self:GetCurrentWorldInstanceId(), self:GetTargetCount(), now, self:GetMatchRoomTtlSeconds())
 		if _BRMatchRoomQueue:AddRoom(self._T.roomQueue, matchRoom) == false then
 			self.MatchmakingPhase = "RoomAddFailed"
-			self:RestoreTickets(tickets)
+			if shouldRestoreTickets == true then
+				self:RestoreTickets(tickets)
+			end
 			log("[BRLobby] match room add failed: " .. tostring(matchRoom.MatchId))
 			return
 		end
@@ -513,7 +676,7 @@ script BRLobbyMatchmaker extends Component
 		end
 		
 		_BRMatchRoomQueue:SetRoomTargetMap(self._T.roomQueue, matchRoom.MatchId, launchResult.TargetMapName)
-		if launchResult.MovedCount < self:GetTargetCount() then
+		if launchResult.MovedCount < humanCount then
 			_BRBattleLauncher:ReturnPlayersToLobby(matchRoom, self)
 			self:FailMatchRoom(matchRoom, tickets, launchResult, "MoveFailed")
 			return
@@ -523,18 +686,20 @@ script BRLobbyMatchmaker extends Component
 		self:SaveActiveMatch(matchRoom.MatchId, launchResult.TargetMapName, players)
 		self.LastGatherId = matchRoom.MatchId
 		self.LastTargetMapName = launchResult.TargetMapName
-		self.GatheredCount = launchResult.MovedCount
+		self.GatheredCount = launchResult.MovedCount + self:ReadNumber(launchResult.BotCount, 0)
 		self.MatchmakingPhase = "Gathered"
 		self:UpdateActiveMatchCount()
-		self:ShowToast("Gathered " .. tostring(self.GatheredCount) .. " players.")
-		log("[BRLobby] gathered " .. matchRoom.MatchId .. " map=" .. launchResult.TargetMapName .. " players=" .. tostring(self.GatheredCount) .. " activeMatches=" .. tostring(self.ActiveMatchCount))
+		self:ShowToast("Gathered " .. tostring(launchResult.MovedCount) .. " player + " .. tostring(self:ReadNumber(launchResult.BotCount, 0)) .. " bots.")
+		log("[BRLobby] gathered " .. matchRoom.MatchId .. " map=" .. launchResult.TargetMapName .. " humans=" .. tostring(launchResult.MovedCount) .. " bots=" .. tostring(self:ReadNumber(launchResult.BotCount, 0)) .. " total=" .. tostring(self.GatheredCount) .. " activeMatches=" .. tostring(self.ActiveMatchCount))
 	end
 
 	@ExecSpace("ServerOnly")
 	method void FailMatchRoom(any matchRoom, any tickets, any launchResult, string phase)
 		local errorMessage = self:ReadString(launchResult.Error, phase)
 		_BRMatchRoomQueue:UpdateRoomState(self._T.roomQueue, matchRoom.MatchId, "Failed", self:Now())
-		self:RestoreTickets(tickets)
+		if self:ShouldRestoreTickets(tickets) == true then
+			self:RestoreTickets(tickets)
+		end
 		self:UpdateActiveMatchCount()
 		self.MatchmakingPhase = phase
 		self.LastError = errorMessage
@@ -548,6 +713,19 @@ script BRLobbyMatchmaker extends Component
 			self._T.localTickets[ticket.UserId] = nil
 		end
 		return players
+	end
+
+	method boolean ShouldRestoreTickets(any tickets)
+		-- Bot-match tickets are one-shot and should not become normal queue tickets on failure.
+		if tickets == nil then
+			return false
+		end
+		for index, ticket in ipairs(tickets) do
+			if ticket ~= nil and ticket.BotMatch == true then
+				return false
+			end
+		end
+		return true
 	end
 
 	method void SaveActiveMatch(string gatherId, string mapName, any players)
@@ -850,22 +1028,57 @@ script BRLobbyMatchmaker extends Component
 	end
 
 	method number GetTargetCount()
+		-- Returns the desired total contender count for one match.
 		return math.max(1, math.floor(self:ReadNumber(self.TargetPlayerCount, 8)))
 	end
 
+	method number GetBotFillWaitSeconds()
+		-- Returns the partial-match wait time before filling empty slots with bots.
+		return math.max(0, self:ReadNumber(self.BotFillWaitSeconds, 10))
+	end
+
+	method number GetMinPlayersToStartWithBots()
+		-- Returns the minimum human ticket count required before bot-fill can start a match.
+		return math.max(1, math.floor(self:ReadNumber(self.MinPlayersToStartWithBots, 1)))
+	end
+
+	method boolean CanFillWithBattleBots(number requiredBotCount)
+		-- Returns true when the launcher can fill this many empty slots with AI competitors.
+		local requiredCount = math.max(0, math.floor(self:ReadNumber(requiredBotCount, 0)))
+		if requiredCount <= 0 then
+			return true
+		end
+		if _BRBattleLauncher == nil or _BRBattleLauncher.EnableBattleBots ~= true then
+			return false
+		end
+		return self:GetBattleBotMaxFillCount() >= requiredCount
+	end
+
+	method number GetBattleBotMaxFillCount()
+		-- Mirrors the launcher bot-fill cap so matchmaking does not start an unfillable partial match.
+		if _BRBattleLauncher == nil then
+			return 0
+		end
+		return _BRBattleLauncher:GetBattleBotMaxFillCount(self)
+	end
+
 	method number GetTicketTtlSeconds()
+		-- Returns how long a queue ticket stays alive without heartbeat refresh.
 		return math.max(30, self:ReadNumber(self.TicketTtlSeconds, 45))
 	end
 
 	method number GetHeartbeatSeconds()
+		-- Returns the heartbeat period used to keep local queue tickets fresh.
 		return math.max(1, math.min(self:GetTicketTtlSeconds() * 0.5, self:ReadNumber(self.HeartbeatSeconds, 10)))
 	end
 
 	method number GetMatchRoomTtlSeconds()
+		-- Returns how long an active match room may exist before cleanup.
 		return math.max(30, self:ReadNumber(self.MatchRoomTtlSeconds, 600))
 	end
 
 	method number Now()
+		-- Returns the server-side monotonic time used by matchmaking.
 		return _UtilLogic.ServerElapsedSeconds
 	end
 

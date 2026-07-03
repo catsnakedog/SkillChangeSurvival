@@ -9,11 +9,17 @@ script BRMiniMapUI extends Component
 
 	property TextComponent summaryText = "ca197f9a-0be0-4b8b-892f-88b3016e2181"
 
-	property number MaxRows = 3
+	property number MaxRows = 5
 
-	property number MaxColumns = 3
+	property number MaxColumns = 5
 
 	property number RefreshSeconds = 0.2
+
+	property boolean ShowMyPosition = true
+
+	property number myRow = 0
+
+	property number myColumn = 0
 
 	property boolean ShowPlayerCounts = true
 
@@ -59,9 +65,10 @@ script BRMiniMapUI extends Component
 			return
 		end
 
+		self:UpdateMyCell()
 		local version = self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapVersion, 0)
 		local playerVersion = self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapPlayerVersion, 0)
-		local zoneStateKey = self:GetZoneStateKey() .. ":players:" .. tostring(playerVersion)
+		local zoneStateKey = self:GetZoneStateKey() .. ":players:" .. tostring(playerVersion) .. ":me:" .. tostring(self.myRow) .. ":" .. tostring(self.myColumn)
 		if version ~= self.lastVersion or zoneStateKey ~= self.lastZoneStateKey then
 			self.lastVersion = version
 			self.lastZoneStateKey = zoneStateKey
@@ -120,6 +127,9 @@ script BRMiniMapUI extends Component
 						zoneState = self:GetCellZoneState(row, column, assignments, rows, columns)
 					end
 					self:SetSpriteColor(child, active, false, zoneState)
+					if active == true and zoneState <= 0 and self:IsMyCell(row, column) == true and child.SpriteGUIRendererComponent ~= nil then
+						child.SpriteGUIRendererComponent.Color = Color(0.3, 1, 0.45, 0.95)
+					end
 				end
 				self:SetCellPlayerCount(row, column, active, self:ReadNumber(playerCounts[self:GetRoomKey(row, column)], 0))
 			end
@@ -387,7 +397,13 @@ script BRMiniMapUI extends Component
 		end
 
 		local safeCount = math.max(0, math.floor(self:ReadNumber(count, 0)))
-		if active ~= true or (self.HideZeroPlayerCounts == true and safeCount <= 0) then
+		local mine = self:IsMyCell(row, column)
+		local othersCount = safeCount
+		if mine == true and self:IsLocalPlayerCounted() == true then
+			othersCount = math.max(0, safeCount - 1)
+		end
+
+		if active ~= true or (mine ~= true and self.HideZeroPlayerCounts == true and othersCount <= 0) then
 			label.Enable = false
 			if label.TextComponent ~= nil then
 				label.TextComponent.Text = ""
@@ -397,11 +413,20 @@ script BRMiniMapUI extends Component
 
 		label.Enable = true
 		if label.TextComponent ~= nil then
-			label.TextComponent.Text = tostring(safeCount)
-			if safeCount >= 2 then
-				label.TextComponent.FontColor = Color(1, 0.86, 0.36, 1)
+			if mine == true then
+				if othersCount > 0 then
+					label.TextComponent.Text = "나+" .. tostring(othersCount)
+				else
+					label.TextComponent.Text = "나"
+				end
+				label.TextComponent.FontColor = Color(0.35, 1, 0.5, 1)
 			else
-				label.TextComponent.FontColor = Color(1, 1, 1, 1)
+				label.TextComponent.Text = tostring(othersCount)
+				if othersCount >= 2 then
+					label.TextComponent.FontColor = Color(1, 0.86, 0.36, 1)
+				else
+					label.TextComponent.FontColor = Color(1, 1, 1, 1)
+				end
 			end
 		end
 	end
@@ -795,12 +820,134 @@ script BRMiniMapUI extends Component
 
 	method number GetMaxRows()
 		-- Returns the maximum static minimap rows supported by this UI.
-		return math.max(1, math.floor(self:ReadNumber(self.MaxRows, 3)))
+		return math.max(1, math.floor(self:ReadNumber(self.MaxRows, 5)))
 	end
 
 	method number GetMaxColumns()
 		-- Returns the maximum static minimap columns supported by this UI.
-		return math.max(1, math.floor(self:ReadNumber(self.MaxColumns, 3)))
+		return math.max(1, math.floor(self:ReadNumber(self.MaxColumns, 5)))
+	end
+
+	method void UpdateMyCell()
+		-- Recomputes which logical cell contains the local player.
+		local newRow = 0
+		local newColumn = 0
+		if self.ShowMyPosition == true then
+			local localPlayer = _UserService.LocalPlayer
+			if localPlayer ~= nil and localPlayer.TransformComponent ~= nil then
+				local position = localPlayer.TransformComponent.WorldPosition
+				local cell = self:FindLogicalCellForPosition(Vector2(position.x, position.y))
+				if cell ~= nil then
+					newRow = math.floor(self:ReadNumber(cell.Row, 0))
+					newColumn = math.floor(self:ReadNumber(cell.Column, 0))
+				end
+			end
+		end
+
+		if newRow ~= self.myRow or newColumn ~= self.myColumn then
+			self.myRow = newRow
+			self.myColumn = newColumn
+			self:Log("my cell=" .. tostring(newRow) .. ":" .. tostring(newColumn))
+		end
+	end
+
+	method any FindLogicalCellForPosition(Vector2 point)
+		-- Finds the logical cell whose assigned physical room contains a world position.
+		if point == nil then
+			return nil
+		end
+
+		local rects = self:GetCellRects()
+		for index, rect in ipairs(rects) do
+			if self:IsPointInsideRoomRect(point, rect.Center, rect.HalfSize) == true then
+				return rect
+			end
+		end
+		return nil
+	end
+
+	method any GetCellRects()
+		-- Caches assigned room rectangles per minimap version for local-position lookup.
+		if self._T == nil then
+			self._T = {}
+		end
+		if self._T.cellRects == nil then
+			self._T.cellRects = {}
+			self._T.cellRectsVersion = -1
+		end
+
+		local version = self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapVersion, 0)
+		if self._T.cellRectsVersion == version then
+			return self._T.cellRects
+		end
+
+		local rects = {}
+		local mapName = self:ReadString(_BRRoomGraphGenerator.LastMiniMapMapName, "")
+		if mapName ~= "" then
+			local assignments = self:ParseAssignments(self:ReadString(_BRRoomGraphGenerator.LastMiniMapAssignments, ""))
+			local halfSize = self:GetMiniMapRoomHalfSize(mapName)
+			for key, roomName in pairs(assignments) do
+				local center = self:GetAssignedRoomCenter(mapName, roomName)
+				if center ~= nil then
+					local rowText, columnText = string.match(self:ReadString(key, ""), "^(%d+):(%d+)$")
+					local row = math.floor(self:ReadNumber(rowText, 0))
+					local column = math.floor(self:ReadNumber(columnText, 0))
+					if row > 0 and column > 0 then
+						table.insert(rects, { Row = row, Column = column, Center = center, HalfSize = halfSize })
+					end
+				end
+			end
+		end
+
+		self._T.cellRects = rects
+		self._T.cellRectsVersion = version
+		return rects
+	end
+
+	method Vector2 GetMiniMapRoomHalfSize(string mapName)
+		-- Reads room half extents used by the cell containment test.
+		local width = 10
+		local height = 10
+		local gridTool = self:GetGridMapEditorTool(mapName)
+		if gridTool ~= nil then
+			width = gridTool:GetRoomWidth()
+			height = gridTool:GetRoomHeight()
+		end
+		return Vector2(math.max(0.5, width * 0.5), math.max(0.5, height * 0.5))
+	end
+
+	method boolean IsPointInsideRoomRect(Vector2 point, Vector2 center, Vector2 halfSize)
+		-- Checks whether a world point falls inside one physical room rectangle.
+		if point == nil or center == nil or halfSize == nil then
+			return false
+		end
+
+		local margin = 0.05
+		return point.x >= center.x - halfSize.x - margin
+			and point.x <= center.x + halfSize.x + margin
+			and point.y >= center.y - halfSize.y - margin
+			and point.y <= center.y + halfSize.y + margin
+	end
+
+	method boolean IsMyCell(number row, number column)
+		-- Checks whether a minimap cell is the local player's current cell.
+		if self.ShowMyPosition ~= true or self.myRow <= 0 or self.myColumn <= 0 then
+			return false
+		end
+		return math.floor(self:ReadNumber(row, 0)) == self.myRow
+			and math.floor(self:ReadNumber(column, 0)) == self.myColumn
+	end
+
+	method boolean IsLocalPlayerCounted()
+		-- Mirrors the server-side alive filter so my own dot is removed from my cell's count.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return false
+		end
+		if localPlayer.PlayerComponent:IsDead() == true or localPlayer.PlayerComponent.Hp <= 0 then
+			return false
+		end
+		return true
 	end
 
 	method string ReadString(any value, string fallback)

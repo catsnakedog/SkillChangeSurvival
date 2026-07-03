@@ -29,8 +29,8 @@ Nimbus/effect0/9,79d860af8e25481ca3389b36e3178a99,false,0
 Nimbus/effect0/10,05876b6d2bad4fb5b4fb9358512e26b3,false,0
 Nimbus/effect0/11,341a80c5959a4b15893c976456cb6105,false,0
 divineSwing/effect,0706dac96b694cd699b87e602ba74f42,false,8
-애로우 블로우/effect,2ed6be9152eb4bf0b22f4ca6e6fff9fe,,
-애로우 블로우/hit/0,84a473e004a34fdea67aa74a87dc75c6,,
+애로우 블로우/effect,2ed6be9152eb4bf0b22f4ca6e6fff9fe,false,9
+애로우 블로우/hit/0,84a473e004a34fdea67aa74a87dc75c6,false,4
 Blink/effect,8dc15776c4f349a0bfa155e911e4a7be,false,8
 Blink/effect0,df5bd4514ffb461fb8479ff0d88ec204,false,8
 Blink/effect1,c4755faee88149738692350b34aa5766,false,8

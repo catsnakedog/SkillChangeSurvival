@@ -43,11 +43,11 @@ script BRLobbyMatchmaker extends Component
 
 	property string GatherMapName = "RoomTestMap"
 
-	property number RoomGraphColumns = 3
+	property number RoomGraphColumns = 5
 
-	property number RoomGraphRows = 3
+	property number RoomGraphRows = 5
 
-	property number RoomGraphMapPartCount = 9
+	property number RoomGraphMapPartCount = 40
 
 	property number RoomGraphExtraConnectionChancePercent = 0
 

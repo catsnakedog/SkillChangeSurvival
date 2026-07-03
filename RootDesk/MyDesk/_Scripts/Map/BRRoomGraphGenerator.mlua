@@ -1,11 +1,11 @@
 @Logic
 script BRRoomGraphGenerator extends Logic
 
-	property number Columns = 3
+	property number Columns = 5
 
-	property number Rows = 3
+	property number Rows = 5
 
-	property number MapPartCount = 9
+	property number MapPartCount = 40
 
 	property number NumberStart = 1
 

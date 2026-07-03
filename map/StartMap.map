@@ -47,9 +47,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -78,9 +78,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -109,9 +109,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -140,9 +140,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -171,9 +171,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -202,9 +202,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -233,9 +233,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -264,9 +264,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -295,9 +295,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -314,8 +314,8 @@
                       "y": -0.62
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -326,9 +326,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -357,9 +357,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -376,8 +376,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -388,9 +388,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -407,8 +407,8 @@
                       "y": -0.61
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -419,9 +419,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -438,8 +438,8 @@
                       "y": -0.74
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -450,9 +450,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -469,8 +469,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -481,9 +481,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -512,9 +512,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -543,9 +543,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -574,9 +574,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -605,9 +605,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -624,8 +624,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -636,9 +636,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -655,8 +655,8 @@
                       "y": 0.64
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -667,9 +667,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -686,8 +686,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -698,9 +698,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -717,8 +717,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -729,9 +729,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -748,8 +748,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -760,9 +760,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -779,8 +779,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -791,9 +791,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -810,8 +810,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -822,9 +822,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -841,8 +841,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -853,9 +853,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -884,9 +884,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -915,9 +915,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -946,9 +946,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -977,9 +977,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -996,8 +996,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1008,9 +1008,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1027,8 +1027,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1039,9 +1039,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1058,8 +1058,8 @@
                       "y": 0.19
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1070,9 +1070,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1089,8 +1089,8 @@
                       "y": 0.99
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1101,9 +1101,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1120,8 +1120,8 @@
                       "y": 0.64
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1132,9 +1132,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1151,8 +1151,8 @@
                       "y": 0.64
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1163,9 +1163,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1182,8 +1182,8 @@
                       "y": 0.64
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1194,9 +1194,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1213,8 +1213,8 @@
                       "y": 0.64
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1225,9 +1225,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1244,8 +1244,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1256,9 +1256,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1275,8 +1275,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1287,9 +1287,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1306,8 +1306,8 @@
                       "y": 0.99
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1318,9 +1318,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1337,8 +1337,8 @@
                       "y": 0.99
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1349,9 +1349,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1368,8 +1368,8 @@
                       "y": 0.99
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1380,9 +1380,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1399,8 +1399,8 @@
                       "y": 0.19
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1411,9 +1411,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1430,8 +1430,8 @@
                       "y": 0.1891
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1442,9 +1442,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1461,8 +1461,8 @@
                       "y": 2.37
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1473,9 +1473,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1492,8 +1492,8 @@
                       "y": 2.37
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1504,9 +1504,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1523,8 +1523,8 @@
                       "y": 0.19
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1535,9 +1535,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1554,8 +1554,8 @@
                       "y": 0.64
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1566,9 +1566,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1585,8 +1585,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1597,9 +1597,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1616,8 +1616,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1628,9 +1628,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1647,8 +1647,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1659,9 +1659,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1670,7 +1670,7 @@
                     "OwnerId": "46ba9b95-974f-49a8-94a9-6b57cc200b6b",
                     "Id": 53,
                     "StartPoint": {
-                      "x": 17.0,
+                      "x": 17,
                       "y": -1.08
                     },
                     "EndPoint": {
@@ -1678,8 +1678,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1690,9 +1690,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1709,8 +1709,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1721,9 +1721,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1740,8 +1740,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1752,9 +1752,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1771,8 +1771,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1783,9 +1783,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1802,8 +1802,8 @@
                       "y": -1.08
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1814,9 +1814,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1845,9 +1845,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1876,9 +1876,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1907,9 +1907,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1938,9 +1938,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -1957,8 +1957,8 @@
                       "y": -0.7878
                     },
                     "Variance": {
-                      "x": 1.0,
-                      "y": 0.0
+                      "x": 1,
+                      "y": 0
                     }
                   },
                   {
@@ -1969,9 +1969,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2000,9 +2000,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2031,9 +2031,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2062,9 +2062,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2093,9 +2093,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2124,9 +2124,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2155,9 +2155,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2186,9 +2186,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2217,9 +2217,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2248,9 +2248,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2279,9 +2279,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2310,9 +2310,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2341,9 +2341,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2372,9 +2372,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2403,9 +2403,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2434,9 +2434,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2465,9 +2465,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2496,9 +2496,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2527,9 +2527,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2558,9 +2558,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2589,9 +2589,9 @@
                     "layer": 1,
                     "sortingLayerName": "MapLayer0",
                     "attribute": {
-                      "walk": 1.0,
-                      "force": 0.0,
-                      "drag": 1.0,
+                      "walk": 1,
+                      "force": 0,
+                      "drag": 1,
                       "isBlockVertical": false,
                       "isDynamic": false,
                       "isCustomFoothold": true,
@@ -2619,8 +2619,8 @@
             {
               "@type": "MOD.Core.PhysicsSimulatorComponent",
               "Gravity": {
-                "x": 0.0,
-                "y": -10.0
+                "x": 0,
+                "y": -10
               },
               "NativePositionIteration": 3,
               "NativeVelocityIteration": 8,
@@ -2629,8 +2629,8 @@
               "ServerSimulation": false,
               "VelocityIteration": 8,
               "WorldBounds": {
-                "x": 10000.0,
-                "y": 10000.0
+                "x": 10000,
+                "y": 10000
               },
               "Enable": true
             }
@@ -2728,13 +2728,13 @@
               "Position": {
                 "x": -0.225,
                 "y": -0.15,
-                "z": 1000.0
+                "z": 1000
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -2784,23 +2784,23 @@
                 "z": 999.999
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
             {
               "@type": "script.BRLobbyMatchmaker",
               "Enable": true,
-              "TargetPlayerCount": 2.0,
+              "TargetPlayerCount": 2,
               "LobbyMapName": "StartMap",
               "GatherMapName": "RoomTestMap",
-              "RoomGraphColumns": 3.0,
-              "RoomGraphRows": 3.0,
-              "RoomGraphMapPartCount": 9.0,
-              "RoomGraphExtraConnectionChancePercent": 0.0
+              "RoomGraphColumns": 5,
+              "RoomGraphRows": 5,
+              "RoomGraphMapPartCount": 40,
+              "RoomGraphExtraConnectionChancePercent": 0
             }
           ],
           "@version": 1
@@ -2825,22 +2825,22 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Rotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
+                "x": 0,
+                "y": 0,
+                "z": 0
               },
               "Position": {
-                "x": 0.0,
-                "y": 0.0,
+                "x": 0,
+                "y": 0,
                 "z": 999.999
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
-              "ZRotation": 0.0,
+              "ZRotation": 0,
               "Enable": true
             },
             {
@@ -2850,7 +2850,7 @@
               "AttackActionName": "Attack",
               "DummyEntityName": "TrainingDummy",
               "PlayerScanSeconds": 0.15,
-              "BasicAttackDamage": 20.0,
+              "BasicAttackDamage": 20,
               "AttackCooldownSeconds": 0.45,
               "AttackBoxWidth": 1.8,
               "AttackBoxHeight": 1.15,
@@ -2861,7 +2861,7 @@
               "DummyHitRadiusY": 1.1,
               "GrantStarterPartsOnEnter": true,
               "ResetSkillOnEnter": false,
-              "StarterPartCount": 5.0,
+              "StarterPartCount": 5,
               "AutoEquipStarterParts": true,
               "ApplySkillStatsInLobby": true,
               "VerboseLog": true
@@ -2896,20 +2896,20 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": -8.0,
+                "x": -8,
                 "y": 0.55,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3056,18 +3056,18 @@
               "Position": {
                 "x": 2.6,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3128,20 +3128,20 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 0.0,
+                "x": 0,
                 "y": 0.85,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3220,18 +3220,18 @@
               "Position": {
                 "x": -12.9600105,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3271,7 +3271,7 @@
                     "y": 0.41
                   },
                   {
-                    "x": 1.0,
+                    "x": 1,
                     "y": 0.22
                   },
                   {
@@ -3314,18 +3314,18 @@
               "Position": {
                 "x": 6.79999828,
                 "y": 0.5,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3388,18 +3388,18 @@
               "Position": {
                 "x": 15.7317944,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3460,20 +3460,20 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 0.0,
+                "x": 0,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3536,18 +3536,18 @@
               "Position": {
                 "x": -2.6,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3610,18 +3610,18 @@
               "Position": {
                 "x": -15.6400194,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3684,26 +3684,26 @@
               "Position": {
                 "x": 6.191869,
                 "y": -0.364150941,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
             {
               "@type": "MOD.Core.ClimbableSpriteRendererComponent",
               "BodySpriteFlipInfo": {
-                "x": 1.0,
-                "y": 1.0
+                "x": 1,
+                "y": 1
               },
               "BodySpriteLocalPos": {
                 "x": -0.18,
@@ -3712,8 +3712,8 @@
               "NeedGizmo": true,
               "OrderInLayer": 3,
               "OriginOffset": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "OriginRectSize": {
                 "x": 0.36,
@@ -3725,15 +3725,15 @@
               "SpriteRUIDHead": "",
               "SpriteRUIDTail": "",
               "TiledSize": {
-                "x": 1.0,
-                "y": 3.0
+                "x": 1,
+                "y": 3
               },
               "Enable": true
             },
             {
               "@type": "MOD.Core.ClimbableComponent",
               "BoxOffset": {
-                "x": 0.0,
+                "x": 0,
                 "y": 0.32
               },
               "BoxSize": {
@@ -3765,33 +3765,33 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Rotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
+                "x": 0,
+                "y": 0,
+                "z": 0
               },
               "Position": {
-                "x": 0.0,
+                "x": 0,
                 "y": 0.89,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
-              "ZRotation": 0.0,
+              "ZRotation": 0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.ClimbableSpriteRendererComponent",
               "BodySpriteFlipInfo": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "BodySpriteLocalPos": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "NeedGizmo": false,
               "OrderInLayer": 3,
@@ -3833,38 +3833,38 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Rotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
+                "x": 0,
+                "y": 0,
+                "z": 0
               },
               "Position": {
-                "x": 0.0,
+                "x": 0,
                 "y": -0.32,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
-              "ZRotation": 0.0,
+              "ZRotation": 0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.ClimbableSpriteRendererComponent",
               "BodySpriteFlipInfo": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "BodySpriteLocalPos": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "NeedGizmo": false,
               "OrderInLayer": 3,
               "OriginOffset": {
-                "x": 0.0,
+                "x": 0,
                 "y": 0.065
               },
               "OriginRectSize": {
@@ -3908,20 +3908,20 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 0.0,
+                "x": 0,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -3968,18 +3968,18 @@
               "Position": {
                 "x": 0.2060728,
                 "y": -1.27734351,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4023,20 +4023,20 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 5.0,
+                "x": 5,
                 "y": -0.71,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4083,18 +4083,18 @@
               "Position": {
                 "x": -7.015626,
                 "y": -1.00876486,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4139,15 +4139,15 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 19.999996199999998,
+                "x": 19.9999962,
                 "y": -2.2,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -4194,18 +4194,18 @@
               "Position": {
                 "x": 10.4000044,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4268,18 +4268,18 @@
               "Position": {
                 "x": 13.0750742,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4319,7 +4319,7 @@
                     "y": 0.41
                   },
                   {
-                    "x": 1.0,
+                    "x": 1,
                     "y": 0.22
                   },
                   {
@@ -4362,18 +4362,18 @@
               "Position": {
                 "x": -11.7300129,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4420,18 +4420,18 @@
               "Position": {
                 "x": -14.3300228,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4478,18 +4478,18 @@
               "Position": {
                 "x": -2.6,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4536,18 +4536,18 @@
               "Position": {
                 "x": -5.2,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4594,18 +4594,18 @@
               "Position": {
                 "x": -15.64002,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4652,18 +4652,18 @@
               "Position": {
                 "x": 2.6,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4710,18 +4710,18 @@
               "Position": {
                 "x": 5.2,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4768,18 +4768,18 @@
               "Position": {
                 "x": 11.7017994,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4826,18 +4826,18 @@
               "Position": {
                 "x": 15.7417946,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4884,18 +4884,18 @@
               "Position": {
                 "x": 14.3117952,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -4942,18 +4942,18 @@
               "Position": {
                 "x": -10.3000088,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -5016,18 +5016,18 @@
               "Position": {
                 "x": -6.399999,
                 "y": 0.049999997,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -5089,18 +5089,18 @@
               "Position": {
                 "x": -7.2,
                 "y": 0.85,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -5160,15 +5160,15 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 11.0,
+                "x": 11,
                 "y": 0.64,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -5195,19 +5195,19 @@
             {
               "@type": "MOD.Core.RigidbodyComponent",
               "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "Enable": true
             },
             {
               "@type": "MOD.Core.MovementComponent",
-              "InputSpeed": 1.0,
-              "JumpForce": 0.0,
+              "InputSpeed": 1,
+              "JumpForce": 0,
               "Enable": true
             },
             {
@@ -5241,14 +5241,14 @@
               "@type": "MOD.Core.NameTagComponent",
               "Bold": true,
               "FontColor": {
-                "r": 1.0,
+                "r": 1,
                 "g": 0.92,
                 "b": 0.58,
-                "a": 1.0
+                "a": 1
               },
               "FontOffset": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "FontSize": 0.62,
               "Name": "MOVING DUMMY\nReady",
@@ -5262,13 +5262,13 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
-              "ResetDelaySeconds": 3.0,
+              "MaxHp": 500,
+              "ResetDelaySeconds": 3,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1.0,
+              "SkillExperienceReward": 1,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -5301,15 +5301,15 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 10.0,
+                "x": 10,
                 "y": 0.64,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -5336,19 +5336,19 @@
             {
               "@type": "MOD.Core.RigidbodyComponent",
               "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "Enable": true
             },
             {
               "@type": "MOD.Core.MovementComponent",
-              "InputSpeed": 1.0,
-              "JumpForce": 0.0,
+              "InputSpeed": 1,
+              "JumpForce": 0,
               "Enable": true
             },
             {
@@ -5382,14 +5382,14 @@
               "@type": "MOD.Core.NameTagComponent",
               "Bold": true,
               "FontColor": {
-                "r": 1.0,
+                "r": 1,
                 "g": 0.92,
                 "b": 0.58,
-                "a": 1.0
+                "a": 1
               },
               "FontOffset": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "FontSize": 0.62,
               "Name": "MOVING DUMMY\nReady",
@@ -5403,13 +5403,13 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
-              "ResetDelaySeconds": 3.0,
+              "MaxHp": 500,
+              "ResetDelaySeconds": 3,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1.0,
+              "SkillExperienceReward": 1,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -5442,15 +5442,15 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 12.0,
+                "x": 12,
                 "y": 0.64,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -5477,19 +5477,19 @@
             {
               "@type": "MOD.Core.RigidbodyComponent",
               "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "Enable": true
             },
             {
               "@type": "MOD.Core.MovementComponent",
-              "InputSpeed": 1.0,
-              "JumpForce": 0.0,
+              "InputSpeed": 1,
+              "JumpForce": 0,
               "Enable": true
             },
             {
@@ -5523,14 +5523,14 @@
               "@type": "MOD.Core.NameTagComponent",
               "Bold": true,
               "FontColor": {
-                "r": 1.0,
+                "r": 1,
                 "g": 0.92,
                 "b": 0.58,
-                "a": 1.0
+                "a": 1
               },
               "FontOffset": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "FontSize": 0.62,
               "Name": "MOVING DUMMY\nReady",
@@ -5544,13 +5544,13 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
-              "ResetDelaySeconds": 3.0,
+              "MaxHp": 500,
+              "ResetDelaySeconds": 3,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1.0,
+              "SkillExperienceReward": 1,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -5585,13 +5585,13 @@
               "Position": {
                 "x": 13.650013,
                 "y": 0.52,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -5653,13 +5653,13 @@
               "Position": {
                 "x": 5.85999966,
                 "y": 0.5,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -5721,18 +5721,18 @@
               "Position": {
                 "x": 8.670001,
                 "y": 0.5,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -5795,18 +5795,18 @@
               "Position": {
                 "x": 10.5400009,
                 "y": 0.5,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -5869,18 +5869,18 @@
               "Position": {
                 "x": -5.210492,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -5943,18 +5943,18 @@
               "Position": {
                 "x": -10.3000088,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -6001,18 +6001,18 @@
               "Position": {
                 "x": 5.2,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -6075,18 +6075,18 @@
               "Position": {
                 "x": 10.4000072,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -6133,26 +6133,26 @@
               "Position": {
                 "x": -5.72875166,
                 "y": -0.501385,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
             {
               "@type": "MOD.Core.ClimbableSpriteRendererComponent",
               "BodySpriteFlipInfo": {
-                "x": 1.0,
-                "y": 1.0
+                "x": 1,
+                "y": 1
               },
               "BodySpriteLocalPos": {
                 "x": -0.18,
@@ -6161,8 +6161,8 @@
               "NeedGizmo": true,
               "OrderInLayer": 3,
               "OriginOffset": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "OriginRectSize": {
                 "x": 0.36,
@@ -6174,15 +6174,15 @@
               "SpriteRUIDHead": "",
               "SpriteRUIDTail": "",
               "TiledSize": {
-                "x": 1.0,
-                "y": 2.0
+                "x": 1,
+                "y": 2
               },
               "Enable": true
             },
             {
               "@type": "MOD.Core.ClimbableComponent",
               "BoxOffset": {
-                "x": 0.0,
+                "x": 0,
                 "y": 0.16
               },
               "BoxSize": {
@@ -6214,33 +6214,33 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Rotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
+                "x": 0,
+                "y": 0,
+                "z": 0
               },
               "Position": {
-                "x": 0.0,
+                "x": 0,
                 "y": 0.57,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
-              "ZRotation": 0.0,
+              "ZRotation": 0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.ClimbableSpriteRendererComponent",
               "BodySpriteFlipInfo": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "BodySpriteLocalPos": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "NeedGizmo": false,
               "OrderInLayer": 3,
@@ -6282,38 +6282,38 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Rotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
+                "x": 0,
+                "y": 0,
+                "z": 0
               },
               "Position": {
-                "x": 0.0,
+                "x": 0,
                 "y": -0.32,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
-              "ZRotation": 0.0,
+              "ZRotation": 0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.ClimbableSpriteRendererComponent",
               "BodySpriteFlipInfo": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "BodySpriteLocalPos": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "NeedGizmo": false,
               "OrderInLayer": 3,
               "OriginOffset": {
-                "x": 0.0,
+                "x": 0,
                 "y": 0.065
               },
               "OriginRectSize": {
@@ -6359,18 +6359,18 @@
               "Position": {
                 "x": -9.07,
                 "y": 0.85,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -6432,13 +6432,13 @@
               "Position": {
                 "x": -10.0105219,
                 "y": 0.85,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -6500,13 +6500,13 @@
               "Position": {
                 "x": -5.959814,
                 "y": 0.87,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -6568,13 +6568,13 @@
               "Position": {
                 "x": -9.210002,
                 "y": 0.049999997,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -6636,13 +6636,13 @@
               "Position": {
                 "x": -5.15981531,
                 "y": 0.0690565556,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -6704,18 +6704,18 @@
               "Position": {
                 "x": -9.06567,
                 "y": 1.065,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": -1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": -1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -6742,19 +6742,19 @@
             {
               "@type": "MOD.Core.RigidbodyComponent",
               "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "Enable": true
             },
             {
               "@type": "MOD.Core.MovementComponent",
-              "InputSpeed": 1.0,
-              "JumpForce": 0.0,
+              "InputSpeed": 1,
+              "JumpForce": 0,
               "Enable": false
             },
             {
@@ -6788,14 +6788,14 @@
               "@type": "MOD.Core.NameTagComponent",
               "Bold": true,
               "FontColor": {
-                "r": 1.0,
+                "r": 1,
                 "g": 0.92,
                 "b": 0.58,
-                "a": 1.0
+                "a": 1
               },
               "FontOffset": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "FontSize": 0.62,
               "Name": "MOVING DUMMY\nReady",
@@ -6809,13 +6809,13 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
-              "ResetDelaySeconds": 3.0,
+              "MaxHp": 500,
+              "ResetDelaySeconds": 3,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1.0,
+              "SkillExperienceReward": 1,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -6850,13 +6850,13 @@
               "Position": {
                 "x": -6.71996832,
                 "y": 2.25,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -6918,13 +6918,13 @@
               "Position": {
                 "x": -7.03000069,
                 "y": 2.23,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -6986,18 +6986,18 @@
               "Position": {
                 "x": -8.270002,
                 "y": 0.049999997,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7059,18 +7059,18 @@
               "Position": {
                 "x": 12.4100113,
                 "y": 0.5,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7133,18 +7133,18 @@
               "Position": {
                 "x": 8.050003,
                 "y": -1.06999993,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7161,12 +7161,12 @@
             {
               "@type": "MOD.Core.RigidbodyComponent",
               "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "Enable": true
             },
@@ -7237,18 +7237,18 @@
               "Position": {
                 "x": -7.80655575,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7311,18 +7311,18 @@
               "Position": {
                 "x": -7.79997063,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7369,18 +7369,18 @@
               "Position": {
                 "x": 7.79997063,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7443,18 +7443,18 @@
               "Position": {
                 "x": 7.79997063,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7504,15 +7504,15 @@
                 "z": -0.001
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7529,12 +7529,12 @@
             {
               "@type": "MOD.Core.RigidbodyComponent",
               "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "Enable": true
             },
@@ -7601,20 +7601,20 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": -5.0,
+                "x": -5,
                 "y": -0.71,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7664,15 +7664,15 @@
                 "z": -0.001
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7689,12 +7689,12 @@
             {
               "@type": "MOD.Core.RigidbodyComponent",
               "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0,
+                "y": 0
               },
               "Enable": true
             },
@@ -7759,20 +7759,20 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 17.0,
+                "x": 17,
                 "y": 0.2,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7819,18 +7819,18 @@
               "Position": {
                 "x": -16.5663776,
                 "y": 0.5,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7880,15 +7880,15 @@
                 "z": -0.001
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7937,15 +7937,15 @@
                 "z": -0.001
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -7994,15 +7994,15 @@
                 "z": -0.002
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8051,15 +8051,15 @@
                 "z": -0.002
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8108,15 +8108,15 @@
                 "z": -0.001
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8162,18 +8162,18 @@
               "Position": {
                 "x": 20.1000042,
                 "y": -1.02,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8220,18 +8220,18 @@
               "Position": {
                 "x": -17.1070786,
                 "y": -1.01,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8278,18 +8278,18 @@
               "Position": {
                 "x": -18.2400017,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8352,18 +8352,18 @@
               "Position": {
                 "x": -18.2400017,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8410,18 +8410,18 @@
               "Position": {
                 "x": 18.3400078,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8484,18 +8484,18 @@
               "Position": {
                 "x": 18.3400078,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8542,18 +8542,18 @@
               "Position": {
                 "x": -20.8400021,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8616,18 +8616,18 @@
               "Position": {
                 "x": -20.8400021,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8674,18 +8674,18 @@
               "Position": {
                 "x": 20.9399986,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8748,18 +8748,18 @@
               "Position": {
                 "x": 20.9399986,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8804,20 +8804,20 @@
             {
               "@type": "MOD.Core.TransformComponent",
               "Position": {
-                "x": 17.0,
+                "x": 17,
                 "y": -1.02,
                 "z": -0.001
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8864,18 +8864,18 @@
               "Position": {
                 "x": -20.5756569,
                 "y": -0.99,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8922,18 +8922,18 @@
               "Position": {
                 "x": -23.4400082,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -8996,18 +8996,18 @@
               "Position": {
                 "x": -23.4400082,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9054,18 +9054,18 @@
               "Position": {
                 "x": 21.6000061,
                 "y": 0.2,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9112,18 +9112,18 @@
               "Position": {
                 "x": 23.54,
                 "y": -1.3,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9186,18 +9186,18 @@
               "Position": {
                 "x": 23.54,
                 "y": -1.75,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9244,13 +9244,13 @@
               "Position": {
                 "x": 21.7000046,
                 "y": -2.64999938,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -9300,15 +9300,15 @@
                 "z": 999.999
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9358,15 +9358,15 @@
                 "z": 999.999
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9417,15 +9417,15 @@
                 "z": -0.001
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9472,13 +9472,13 @@
               "Position": {
                 "x": -16.2339745,
                 "y": -2.64890838,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -9525,13 +9525,13 @@
               "Position": {
                 "x": -17.9339828,
                 "y": -2.2,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Enable": true
             },
@@ -9581,15 +9581,15 @@
                 "z": 999.999
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9637,18 +9637,18 @@
               "Position": {
                 "x": 7.743869,
                 "y": 0.7522079,
-                "z": 0.0
+                "z": 0
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9704,7 +9704,7 @@
                     "y": -1.54
                   },
                   {
-                    "x": 3.0,
+                    "x": 3,
                     "y": -1.56
                   }
                 ],
@@ -9728,7 +9728,7 @@
                     "y": 0.3
                   },
                   {
-                    "x": 0.0,
+                    "x": 0,
                     "y": 0.37
                   }
                 ],

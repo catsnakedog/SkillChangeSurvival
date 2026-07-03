@@ -1,0 +1,91 @@
+@Component
+script MesoCoinProjectile extends Component
+
+	property number maxDist = 2.5
+
+	property number duration = 1.0
+
+	method void OnBeginPlay()
+		-- Initializes coin runtime state without clobbering an already-issued Fire().
+		if self._T.fired == true then
+			return
+		end
+		self._T.fired = false
+		self._T.t = 0
+		self._T.target = nil
+		self._T.attacker = nil
+		self._T.damage = 0
+		self._T.dirX = 1
+		self._T.dirY = 0
+	end
+
+	@ExecSpace("ServerOnly")
+	method void Fire(Entity target, Entity attacker, number angleRad, number dmg)
+		-- Launches the coin with a random 360-degree spread direction, chasing `target`.
+		self._T.target = target
+		self._T.attacker = attacker
+		self._T.damage = dmg
+		self._T.dirX = math.cos(angleRad)
+		self._T.dirY = math.sin(angleRad)
+		self._T.t = 0
+		self._T.fired = true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnUpdate(number delta)
+		-- Sine-curve chase over `duration`s: pos = target.currentWorldPos + dir * sin(pi*t) * maxDist.
+		if self._T.fired ~= true then
+			return
+		end
+		if self._T.target == nil or isvalid(self._T.target) ~= true then
+			_EntityService:Destroy(self.Entity)
+			return
+		end
+
+		self._T.t = self._T.t + delta / math.max(0.01, self.duration)
+		local tt = self._T.t
+		if tt > 1 then
+			tt = 1
+		end
+
+		local anchor = self._T.target.TransformComponent.WorldPosition
+		local dist = math.sin(math.pi * tt) * self.maxDist
+		self.Entity.TransformComponent.WorldPosition = Vector3(
+			anchor.x + self._T.dirX * dist,
+			anchor.y + self._T.dirY * dist,
+			anchor.z
+		)
+
+		if self._T.t >= 1 then
+			self:OnHit(anchor.x, anchor.y, anchor.z)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnHit(number hx, number hy, number hz)
+		-- Applies the coin damage to the target and plays the hit effects at its position.
+		if isvalid(self._T.target) == true and _BRSkillSystem ~= nil then
+			_BRSkillSystem:ApplyMesoCoinDamage(self._T.target, self._T.attacker, self._T.damage)
+		end
+		self:ShowHitEffect(hx, hy, hz)
+		self._T.fired = false
+		_EntityService:Destroy(self.Entity)
+	end
+
+	@ExecSpace("Client")
+	method void ShowHitEffect(number hx, number hy, number hz)
+		-- Plays the meso-explosion hit animationclip + sprite burst at the hit position.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+		local pos = Vector3(hx, hy, hz)
+		local options = {}
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = 40
+		options["IgnoreMapLayerCheck"] = true
+		_EffectService:PlayEffect("644458b8c91949b4b4b84ff949eba8ca", localPlayer, pos, 0, Vector3(1, 1, 1), false, options)
+		_EffectService:PlayEffect("5c365eebdfe047cb812f66c3c0433b81", localPlayer, pos, 0, Vector3(1, 1, 1), false, options)
+	end
+
+end

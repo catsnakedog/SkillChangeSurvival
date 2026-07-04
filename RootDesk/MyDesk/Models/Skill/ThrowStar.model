@@ -19,8 +19,7 @@
       "Id": "throwstar",
       "Components": [
         "MOD.Core.TransformComponent",
-        "MOD.Core.SpriteRendererComponent",
-        "script.ThrowStarProjectile"
+        "MOD.Core.SpriteRendererComponent"
       ],
       "Properties": [],
       "Values": [

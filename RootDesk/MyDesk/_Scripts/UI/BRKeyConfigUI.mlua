@@ -1,0 +1,247 @@
+@Component
+script BRKeyConfigUI extends Component
+
+	-- Battle-HUD key rebinding panel. A toggle button opens a window that lists every rebindable fixed
+	-- action (Unique / Blink / Nimbus / Basic Attack) with its current key. Clicking a row enters capture
+	-- mode inside _BRCommonSkillSystem; the next key press becomes the new binding (duplicate / reserved
+	-- keys are rejected). Confirm commits, Cancel rolls back to the snapshot taken when the panel opened.
+	property Entity OpenButton = "1f30028f-56db-4768-ae9f-8b7ae1ca2014"
+
+	property Entity Window = "2fd938c5-a970-4e0e-8a29-4e2540410fd6"
+
+	property Entity CloseButton = "0efa0718-395e-47ea-9851-1307a078c05a"
+
+	property Entity UniqueKeyButton = "1ae96d0c-fdd0-4343-8619-93aba39e8a09"
+
+	property Entity BlinkKeyButton = "51b74682-fdeb-48b4-88fa-e148ccd8788f"
+
+	property Entity NimbusKeyButton = "74f73009-73d3-49fd-9caa-1921403a17aa"
+
+	property Entity AttackKeyButton = "87b94bb4-9e26-4d26-b381-f9a072d089f7"
+
+	property Entity StatusText = "bf7a745f-39cf-4ad9-bd62-49ba646b5ef0"
+
+	property Entity ConfirmButton = "84580808-78d0-4ce2-b96b-4df01e242ae9"
+
+	property Entity CancelButton = "5acd9a43-ffe2-4e84-a790-b813b1fc443a"
+
+	property Entity ResetButton = "409a3a9a-4041-4ed8-bfb8-ca430c51b925"
+
+	property any openHandler = nil
+
+	property any closeHandler = nil
+
+	property any uniqueHandler = nil
+
+	property any blinkHandler = nil
+
+	property any nimbusHandler = nil
+
+	property any attackHandler = nil
+
+	property any confirmHandler = nil
+
+	property any cancelHandler = nil
+
+	property any resetHandler = nil
+
+	property number refreshTimerId = 0
+
+	property boolean panelOpen = false
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		-- Wires every button and starts a light refresh loop that mirrors _BRCommonSkillSystem bindings.
+		self.openHandler = self:ConnectButton(self.OpenButton, self.OnOpenClick)
+		self.closeHandler = self:ConnectButton(self.CloseButton, self.OnCloseClick)
+		self.uniqueHandler = self:ConnectButton(self.UniqueKeyButton, self.OnUniqueClick)
+		self.blinkHandler = self:ConnectButton(self.BlinkKeyButton, self.OnBlinkClick)
+		self.nimbusHandler = self:ConnectButton(self.NimbusKeyButton, self.OnNimbusClick)
+		self.attackHandler = self:ConnectButton(self.AttackKeyButton, self.OnAttackClick)
+		self.confirmHandler = self:ConnectButton(self.ConfirmButton, self.OnConfirmClick)
+		self.cancelHandler = self:ConnectButton(self.CancelButton, self.OnCancelClick)
+		self.resetHandler = self:ConnectButton(self.ResetButton, self.OnResetClick)
+		self:SetPanelOpen(false)
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshPanel() end, 0.1)
+		self:RefreshPanel()
+		log("[BRKeyConfigUI] ready")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		self:DisconnectButton(self.OpenButton, self.openHandler)
+		self:DisconnectButton(self.CloseButton, self.closeHandler)
+		self:DisconnectButton(self.UniqueKeyButton, self.uniqueHandler)
+		self:DisconnectButton(self.BlinkKeyButton, self.blinkHandler)
+		self:DisconnectButton(self.NimbusKeyButton, self.nimbusHandler)
+		self:DisconnectButton(self.AttackKeyButton, self.attackHandler)
+		self:DisconnectButton(self.ConfirmButton, self.confirmHandler)
+		self:DisconnectButton(self.CancelButton, self.cancelHandler)
+		self:DisconnectButton(self.ResetButton, self.resetHandler)
+		self.openHandler = nil
+		self.closeHandler = nil
+		self.uniqueHandler = nil
+		self.blinkHandler = nil
+		self.nimbusHandler = nil
+		self.attackHandler = nil
+		self.confirmHandler = nil
+		self.cancelHandler = nil
+		self.resetHandler = nil
+		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
+			_TimerService:ClearTimer(self.refreshTimerId)
+		end
+		self.refreshTimerId = 0
+		if _BRCommonSkillSystem ~= nil then
+			_BRCommonSkillSystem:CancelRebind()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method any ConnectButton(Entity button, any callback)
+		-- Subscribes one button entity to ButtonClickEvent and returns the handler (or nil).
+		if isvalid(button) ~= true then
+			return nil
+		end
+		return button:ConnectEvent(ButtonClickEvent, callback)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisconnectButton(Entity button, any clickHandler)
+		if clickHandler ~= nil and isvalid(button) == true then
+			button:DisconnectEvent(ButtonClickEvent, clickHandler)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnOpenClick(ButtonClickEvent event)
+		self:SetPanelOpen(self.panelOpen ~= true)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnCloseClick(ButtonClickEvent event)
+		-- Closing via the X behaves like Cancel: any staged change is rolled back.
+		if _BRCommonSkillSystem ~= nil then
+			_BRCommonSkillSystem:RestoreBindings()
+		end
+		self:SetPanelOpen(false)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnUniqueClick(ButtonClickEvent event)
+		self:BeginRebind("unique")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnBlinkClick(ButtonClickEvent event)
+		self:BeginRebind("blink")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnNimbusClick(ButtonClickEvent event)
+		self:BeginRebind("nimbus")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnAttackClick(ButtonClickEvent event)
+		self:BeginRebind("attack")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnConfirmClick(ButtonClickEvent event)
+		if _BRCommonSkillSystem ~= nil then
+			_BRCommonSkillSystem:CommitBindings()
+		end
+		self:SetPanelOpen(false)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnCancelClick(ButtonClickEvent event)
+		if _BRCommonSkillSystem ~= nil then
+			_BRCommonSkillSystem:RestoreBindings()
+		end
+		self:SetPanelOpen(false)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnResetClick(ButtonClickEvent event)
+		if _BRCommonSkillSystem ~= nil then
+			_BRCommonSkillSystem:ResetBindingsToDefault()
+		end
+		self:RefreshPanel()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void BeginRebind(string actionId)
+		-- Delegates capture to the common skill system so no skill fires while listening for the new key.
+		if self.panelOpen ~= true or _BRCommonSkillSystem == nil then
+			return
+		end
+		_BRCommonSkillSystem:BeginRebind(actionId)
+		self:RefreshPanel()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetPanelOpen(boolean open)
+		-- Shows/hides the window and snapshots bindings on open so Cancel can roll back.
+		self.panelOpen = open == true
+		if isvalid(self.Window) == true then
+			self.Window.Enable = self.panelOpen
+		end
+		if _BRCommonSkillSystem ~= nil then
+			if self.panelOpen == true then
+				_BRCommonSkillSystem:SnapshotBindings()
+			else
+				_BRCommonSkillSystem:CancelRebind()
+			end
+		end
+		self:SetButtonText(self.OpenButton, self:GetOpenButtonText())
+		self:RefreshPanel()
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetOpenButtonText()
+		if self.panelOpen == true then
+			return "키 설정 X"
+		end
+		return "키 설정"
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshPanel()
+		-- Repaints each row from the live bindings; the capturing row shows a "press a key" prompt.
+		if _BRCommonSkillSystem == nil then
+			return
+		end
+		self:UpdateKeyButton(self.UniqueKeyButton, "unique")
+		self:UpdateKeyButton(self.BlinkKeyButton, "blink")
+		self:UpdateKeyButton(self.NimbusKeyButton, "nimbus")
+		self:UpdateKeyButton(self.AttackKeyButton, "attack")
+		self:SetButtonText(self.OpenButton, self:GetOpenButtonText())
+		if isvalid(self.StatusText) == true and self.StatusText.TextComponent ~= nil then
+			self.StatusText.TextComponent.Text = _BRCommonSkillSystem:GetRebindStatusText()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void UpdateKeyButton(Entity button, string actionId)
+		if isvalid(button) ~= true or button.TextComponent == nil then
+			return
+		end
+		local label = _BRCommonSkillSystem:GetActionLabel(actionId)
+		local capturing = _BRCommonSkillSystem:IsCapturingRebind() == true
+			and _BRCommonSkillSystem:GetCapturingActionId() == actionId
+		if capturing == true then
+			button.TextComponent.Text = label .. " :  [ ? ]"
+		else
+			button.TextComponent.Text = label .. " :  " .. _BRCommonSkillSystem:GetActionKeyName(actionId)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetButtonText(Entity button, string text)
+		if isvalid(button) == true and button.TextComponent ~= nil then
+			button.TextComponent.Text = text
+		end
+	end
+
+end

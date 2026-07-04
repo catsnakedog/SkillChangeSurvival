@@ -5,7 +5,7 @@ script BRCharacterSystem extends Logic
 	property string CharacterDefaultSkillsTableName = "character_default_skills"
 
 	property boolean VerboseLog = true
-	property integer CharacterCatalogVersion = 3
+	property integer CharacterCatalogVersion = 4
 
 	property Entity classSelectRoot = "ff877862-5ed0-4b36-81e3-29f3385d63e8"
 
@@ -526,7 +526,7 @@ script BRCharacterSystem extends Logic
 					WeaponSlot = "OneHanded",
 					Avatar = {
 						Face = "068838981d5b4815b7ee91dc3f64890b",
-						Weapon = "5c17efb794334d4980987edaace1f546",
+						Weapon = "58afacb22de340849404e626bd95c3e1",
 						Longcoat = "c92ab70d7a064aafaa34298c2e9890e3",
 						Hair = "61ef77418e654b738588e28803acb503",
 						Body = "5b510a5cb03b4ba9bfe1b1666b17b2cf",

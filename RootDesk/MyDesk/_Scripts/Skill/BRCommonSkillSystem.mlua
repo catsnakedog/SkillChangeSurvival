@@ -69,7 +69,7 @@ script BRCommonSkillSystem extends Logic
 
 	property number NimbusEffectLocalX = 0
 
-	property number NimbusEffectLocalY = -0.34
+	property number NimbusEffectLocalY = 0
 
 	property number NimbusEffectScale = 0.68
 
@@ -78,6 +78,13 @@ script BRCommonSkillSystem extends Logic
 	property number NimbusEffectPlayRate = 1.0
 
 	property integer NimbusEffectOrderInLayer = 20
+
+	-- The Nimbus/repeat clip is frames 0-7 = cloud forming, 8-22 = steady ride. Looping the whole clip
+	-- snaps 22->0 (full size -> tiny) which reads as a repeated appear/disappear, so loop only the
+	-- steady-ride frames for a seamless cloud. Cancel still plays the separate Nimbus/end disappear.
+	property integer NimbusEffectLoopStartFrame = 8
+
+	property integer NimbusEffectLoopEndFrame = 22
 
 	property any inputKeyDownHandler = nil
 
@@ -94,6 +101,41 @@ script BRCommonSkillSystem extends Logic
 	property boolean localNimbusToggleKeyHeld = false
 
 	property integer localNimbusEffectSerial = 0
+
+	-- Fixed-action key rebinding (client-local). Codes are KeyboardKey values (Q=113, C=99, E=101).
+	-- Attack has no static default in this project (DefaultPlayer engine binding), so it is discovered
+	-- at runtime via PlayerControllerComponent:GetActionName and remapped via SetActionKey.
+	property string AttackActionName = "Attack"
+
+	property integer DefaultUniqueKeyCode = 113
+
+	property integer DefaultBlinkKeyCode = 99
+
+	property integer DefaultNimbusKeyCode = 101
+
+	property integer UniqueKeyCode = 113
+
+	property integer BlinkKeyCode = 99
+
+	property integer NimbusKeyCode = 101
+
+	property integer AttackKeyCode = 0
+
+	property integer DefaultAttackKeyCode = 0
+
+	property boolean attackKeyDiscovered = false
+
+	property string capturingActionId = ""
+
+	property string rebindStatusText = ""
+
+	property integer snapUniqueKeyCode = 113
+
+	property integer snapBlinkKeyCode = 99
+
+	property integer snapNimbusKeyCode = 101
+
+	property integer snapAttackKeyCode = 0
 
 	method void OnBeginPlay()
 		-- Initializes common skill input on the client and portal-lock state on the server.
@@ -131,8 +173,9 @@ script BRCommonSkillSystem extends Logic
 		end
 		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnCommonSkillKeyDown)
 		self.inputKeyUpHandler = _InputService:ConnectEvent(KeyUpEvent, self.OnCommonSkillKeyUp)
+		self:EnsureAttackKeyDiscovered()
 		self:RemoveBlinkKeyDefaultAction(true)
-		log("[BRCommonSkill] client input ready unique=Q blink=C nimbus=E")
+		log("[BRCommonSkill] client input ready unique=" .. self:GetKeyDisplayName(self:GetUniqueKeyCode()) .. " blink=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " nimbus=" .. self:GetKeyDisplayName(self:GetNimbusKeyCode()))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -153,12 +196,18 @@ script BRCommonSkillSystem extends Logic
 		if event == nil or self.EnableCommonSkills ~= true then
 			return
 		end
-		if event.key == KeyboardKey.Q then
+		-- While the key-config panel is capturing, consume the next key as the new binding and fire nothing.
+		if self:IsCapturingRebind() == true then
+			self:HandleRebindCapture(event.key)
+			return
+		end
+		local key = event.key
+		if key == KeyboardKey.CastFrom(self:GetUniqueKeyCode()) then
 			self:TryUseUniqueSkill()
-		elseif event.key == KeyboardKey.C then
+		elseif key == KeyboardKey.CastFrom(self:GetBlinkKeyCode()) then
 			self:RemoveBlinkKeyDefaultAction(false)
 			self:TryBlink()
-		elseif event.key == KeyboardKey.E then
+		elseif key == KeyboardKey.CastFrom(self:GetNimbusKeyCode()) then
 			if self.localNimbusToggleKeyHeld == true then
 				return
 			end
@@ -173,7 +222,7 @@ script BRCommonSkillSystem extends Logic
 		if event == nil then
 			return
 		end
-		if event.key == KeyboardKey.E then
+		if event.key == KeyboardKey.CastFrom(self:GetNimbusKeyCode()) then
 			self.localNimbusToggleKeyHeld = false
 		end
 	end
@@ -186,6 +235,7 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 		self._T.nextInputOverrideCheckAt = now + 0.5
+		self:EnsureAttackKeyDiscovered()
 		self:RemoveBlinkKeyDefaultAction(false)
 	end
 
@@ -197,10 +247,15 @@ script BRCommonSkillSystem extends Logic
 		end
 
 		local controller = localPlayer.PlayerControllerComponent
-		local previousAction = self:ReadString(controller:GetActionName(KeyboardKey.C), "")
-		controller:RemoveActionKey(KeyboardKey.C)
+		local blinkKey = KeyboardKey.CastFrom(self:GetBlinkKeyCode())
+		local previousAction = self:ReadString(controller:GetActionName(blinkKey), "")
+		-- Never strip the basic-attack action off its key (defensive; Blink can never share the attack key).
+		if previousAction == self:ReadString(self.AttackActionName, "Attack") then
+			return
+		end
+		controller:RemoveActionKey(blinkKey)
 		if self.VerboseLog == true and (previousAction ~= "" or logEvenWhenEmpty == true) then
-			log("[BRCommonSkill] blink key override key=C removedAction=" .. previousAction .. " nimbus=E")
+			log("[BRCommonSkill] blink key override key=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " removedAction=" .. previousAction)
 		end
 	end
 
@@ -264,6 +319,12 @@ script BRCommonSkillSystem extends Logic
 		localPlayer.RigidbodyComponent:PositionReset()
 		if localPlayer.MovementComponent ~= nil then
 			localPlayer.MovementComponent:Stop()
+		end
+		-- Burst Step cancels the active chain: current skill motion cancels (return to idle + free
+		-- movement), queued steps are dropped, but already-spawned damage still lands. The chain runs
+		-- server-side in BRSkillSystem, so request the cancel there.
+		if _BRSkillSystem ~= nil then
+			_BRSkillSystem:RequestCancelChainByBlink(self:ReadString(localPlayer.PlayerComponent.UserId, ""))
 		end
 		log("[BRCommonSkill] burstStep dir=(" .. tostring(direction.x) .. "," .. tostring(direction.y) .. ") distance=" .. tostring(distance) .. " moved=" .. tostring(moved == true) .. " target=(" .. tostring(resolvedTarget.x) .. "," .. tostring(resolvedTarget.y) .. ")")
 	end
@@ -743,6 +804,10 @@ script BRCommonSkillSystem extends Logic
 		options["Alpha"] = alpha
 		options["PlayRate"] = math.max(0.1, self:ReadNumber(self.NimbusEffectPlayRate, 1.0))
 		options["IgnoreMapLayerCheck"] = true
+		-- Loop only the steady-ride frames (skip the 0-7 form-in and the 22->0 snap) so the attached
+		-- cloud stays seamless instead of re-appearing/disappearing every loop cycle.
+		options["StartFrameIndex"] = math.max(0, math.floor(self:ReadNumber(self.NimbusEffectLoopStartFrame, 8)))
+		options["EndFrameIndex"] = math.max(0, math.floor(self:ReadNumber(self.NimbusEffectLoopEndFrame, 22)))
 
 		local serial = _EffectService:PlayEffectAttached(
 			ruid,
@@ -1552,6 +1617,408 @@ script BRCommonSkillSystem extends Logic
 		if self.VerboseLog == true then
 			log("[BRCommonSkill] " .. self:ReadString(message, ""))
 		end
+	end
+
+	-- ===== Key rebinding (client-local, session persistence) =====
+
+	method integer GetUniqueKeyCode()
+		local code = math.floor(self:ReadNumber(self.UniqueKeyCode, self.DefaultUniqueKeyCode))
+		if code <= 0 then
+			return math.floor(self:ReadNumber(self.DefaultUniqueKeyCode, 113))
+		end
+		return code
+	end
+
+	method integer GetBlinkKeyCode()
+		local code = math.floor(self:ReadNumber(self.BlinkKeyCode, self.DefaultBlinkKeyCode))
+		if code <= 0 then
+			return math.floor(self:ReadNumber(self.DefaultBlinkKeyCode, 99))
+		end
+		return code
+	end
+
+	method integer GetNimbusKeyCode()
+		local code = math.floor(self:ReadNumber(self.NimbusKeyCode, self.DefaultNimbusKeyCode))
+		if code <= 0 then
+			return math.floor(self:ReadNumber(self.DefaultNimbusKeyCode, 101))
+		end
+		return code
+	end
+
+	method integer GetActionKeyCode(string actionId)
+		local id = self:NormalizeActionId(actionId)
+		if id == "unique" then
+			return self:GetUniqueKeyCode()
+		elseif id == "blink" then
+			return self:GetBlinkKeyCode()
+		elseif id == "nimbus" then
+			return self:GetNimbusKeyCode()
+		elseif id == "attack" then
+			return math.floor(self:ReadNumber(self.AttackKeyCode, 0))
+		end
+		return 0
+	end
+
+	method string GetActionKeyName(string actionId)
+		local code = self:GetActionKeyCode(actionId)
+		if code <= 0 then
+			return "미지정"
+		end
+		return self:GetKeyDisplayName(code)
+	end
+
+	method string GetActionLabel(string actionId)
+		local id = self:NormalizeActionId(actionId)
+		if id == "unique" then
+			return "유니크 스킬"
+		elseif id == "blink" then
+			return "블링크"
+		elseif id == "nimbus" then
+			return "근두운"
+		elseif id == "attack" then
+			return "기본 공격"
+		end
+		return ""
+	end
+
+	method string NormalizeActionId(string actionId)
+		local id = string.lower(self:ReadString(actionId, ""))
+		if id == "unique" or id == "blink" or id == "nimbus" or id == "attack" then
+			return id
+		end
+		return ""
+	end
+
+	method string GetActionUsingKeyCode(integer code, string exceptActionId)
+		-- Returns the action id already bound to code (excluding exceptActionId), or "" when free.
+		local except = self:NormalizeActionId(exceptActionId)
+		local ids = {"unique", "blink", "nimbus", "attack"}
+		local target = math.floor(self:ReadNumber(code, 0))
+		for index, id in ipairs(ids) do
+			if id ~= except and self:GetActionKeyCode(id) == target then
+				return id
+			end
+		end
+		return ""
+	end
+
+	method boolean IsCapturingRebind()
+		return self:ReadString(self.capturingActionId, "") ~= ""
+	end
+
+	method string GetCapturingActionId()
+		return self:ReadString(self.capturingActionId, "")
+	end
+
+	method string GetRebindStatusText()
+		return self:ReadString(self.rebindStatusText, "")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void BeginRebind(string actionId)
+		-- Arms capture for one action; the next key press routes through HandleRebindCapture.
+		local safeId = self:NormalizeActionId(actionId)
+		if safeId == "" then
+			return
+		end
+		self.capturingActionId = safeId
+		self.rebindStatusText = self:GetActionLabel(safeId) .. " : 새 키를 누르세요 (ESC 취소)"
+		log("[BRCommonSkill] rebind begin action=" .. safeId)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void CancelRebind()
+		if self:ReadString(self.capturingActionId, "") == "" then
+			return
+		end
+		local id = self.capturingActionId
+		self.capturingActionId = ""
+		self.rebindStatusText = "변경을 취소했습니다"
+		log("[BRCommonSkill] rebind cancel action=" .. id)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void HandleRebindCapture(KeyboardKey key)
+		-- Validates the pressed key and either applies it or reports why it was rejected.
+		local actionId = self:ReadString(self.capturingActionId, "")
+		if actionId == "" then
+			return
+		end
+		local code = self:ResolveKeyCode(key)
+		if code == 27 then
+			self:CancelRebind()
+			return
+		end
+		if code <= 0 then
+			self.rebindStatusText = "지원하지 않는 키입니다"
+			return
+		end
+		if self:IsReservedKeyCode(code) == true then
+			self.rebindStatusText = self:GetKeyDisplayName(code) .. " 키는 예약되어 변경할 수 없습니다"
+			return
+		end
+		local conflictId = self:GetActionUsingKeyCode(code, actionId)
+		if conflictId ~= "" then
+			self.rebindStatusText = self:GetKeyDisplayName(code) .. " 키는 이미 '" .. self:GetActionLabel(conflictId) .. "' 에 사용 중입니다"
+			return
+		end
+		self:ApplyBinding(actionId, code)
+		self.capturingActionId = ""
+		self.rebindStatusText = self:GetActionLabel(actionId) .. " → " .. self:GetKeyDisplayName(code)
+		log("[BRCommonSkill] rebind apply action=" .. actionId .. " key=" .. self:GetKeyDisplayName(code))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyBinding(string actionId, integer code)
+		local safeCode = math.floor(self:ReadNumber(code, 0))
+		if actionId == "unique" then
+			self.UniqueKeyCode = safeCode
+		elseif actionId == "blink" then
+			self.BlinkKeyCode = safeCode
+			self:RemoveBlinkKeyDefaultAction(true)
+		elseif actionId == "nimbus" then
+			self.NimbusKeyCode = safeCode
+		elseif actionId == "attack" then
+			self.AttackKeyCode = safeCode
+			self.attackKeyDiscovered = true
+			self:ApplyAttackKeyToController(safeCode)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method any GetLocalPlayerController()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerControllerComponent == nil then
+			return nil
+		end
+		return localPlayer.PlayerControllerComponent
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyAttackKeyToController(integer code)
+		-- Remaps the DefaultPlayer basic-attack action to a new key (client-side action map).
+		local controller = self:GetLocalPlayerController()
+		if controller == nil then
+			return
+		end
+		local actionName = self:ReadString(self.AttackActionName, "Attack")
+		controller:RemoveAllActionKeyByActionName(actionName)
+		local safeCode = math.floor(self:ReadNumber(code, 0))
+		if safeCode > 0 then
+			controller:SetActionKey(KeyboardKey.CastFrom(safeCode), actionName)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EnsureAttackKeyDiscovered()
+		-- Finds which key currently fires the "Attack" PlayerActionEvent so it can be shown and remapped.
+		if self.attackKeyDiscovered == true then
+			return
+		end
+		local controller = self:GetLocalPlayerController()
+		if controller == nil then
+			return
+		end
+		local actionName = string.lower(self:ReadString(self.AttackActionName, "Attack"))
+		local codes = self:GetResolveKeyCodes()
+		for index, code in ipairs(codes) do
+			local mapped = string.lower(self:ReadString(controller:GetActionName(KeyboardKey.CastFrom(code)), ""))
+			if mapped == actionName then
+				self.AttackKeyCode = code
+				self.DefaultAttackKeyCode = code
+				self.snapAttackKeyCode = code
+				self.attackKeyDiscovered = true
+				log("[BRCommonSkill] attack key discovered key=" .. self:GetKeyDisplayName(code))
+				return
+			end
+		end
+		-- Player controller exists but no key maps to Attack; stop scanning to avoid wasted work.
+		self.attackKeyDiscovered = true
+		log("[BRCommonSkill] attack key not found (default player attack key unbound)")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SnapshotBindings()
+		-- Called when the key-config panel opens so Cancel can restore this exact state.
+		self:EnsureAttackKeyDiscovered()
+		self.capturingActionId = ""
+		self.rebindStatusText = ""
+		self.snapUniqueKeyCode = self:GetUniqueKeyCode()
+		self.snapBlinkKeyCode = self:GetBlinkKeyCode()
+		self.snapNimbusKeyCode = self:GetNimbusKeyCode()
+		self.snapAttackKeyCode = math.floor(self:ReadNumber(self.AttackKeyCode, 0))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RestoreBindings()
+		-- Rolls back to the snapshot taken on panel open (Cancel / X button).
+		self.capturingActionId = ""
+		self.UniqueKeyCode = math.floor(self:ReadNumber(self.snapUniqueKeyCode, self.DefaultUniqueKeyCode))
+		self.BlinkKeyCode = math.floor(self:ReadNumber(self.snapBlinkKeyCode, self.DefaultBlinkKeyCode))
+		self.NimbusKeyCode = math.floor(self:ReadNumber(self.snapNimbusKeyCode, self.DefaultNimbusKeyCode))
+		local snapAttack = math.floor(self:ReadNumber(self.snapAttackKeyCode, 0))
+		if snapAttack ~= math.floor(self:ReadNumber(self.AttackKeyCode, 0)) then
+			self.AttackKeyCode = snapAttack
+			self:ApplyAttackKeyToController(snapAttack)
+		end
+		self:RemoveBlinkKeyDefaultAction(false)
+		self.rebindStatusText = "변경 사항을 되돌렸습니다"
+		log("[BRCommonSkill] rebind restore")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void CommitBindings()
+		-- Confirm: promote the current bindings to the new baseline snapshot.
+		self.capturingActionId = ""
+		self.snapUniqueKeyCode = self:GetUniqueKeyCode()
+		self.snapBlinkKeyCode = self:GetBlinkKeyCode()
+		self.snapNimbusKeyCode = self:GetNimbusKeyCode()
+		self.snapAttackKeyCode = math.floor(self:ReadNumber(self.AttackKeyCode, 0))
+		self.rebindStatusText = "저장되었습니다"
+		log("[BRCommonSkill] rebind commit")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ResetBindingsToDefault()
+		self.capturingActionId = ""
+		self.UniqueKeyCode = math.floor(self:ReadNumber(self.DefaultUniqueKeyCode, 113))
+		self.BlinkKeyCode = math.floor(self:ReadNumber(self.DefaultBlinkKeyCode, 99))
+		self.NimbusKeyCode = math.floor(self:ReadNumber(self.DefaultNimbusKeyCode, 101))
+		local defaultAttack = math.floor(self:ReadNumber(self.DefaultAttackKeyCode, 0))
+		if defaultAttack > 0 then
+			self.AttackKeyCode = defaultAttack
+			self:ApplyAttackKeyToController(defaultAttack)
+		end
+		self:RemoveBlinkKeyDefaultAction(false)
+		self.rebindStatusText = "기본값으로 초기화했습니다"
+		log("[BRCommonSkill] rebind reset default")
+	end
+
+	method boolean IsReservedKeyCode(integer code)
+		-- Arrows (move/blink dir/nimbus), mouse buttons, and core system keys cannot be rebound.
+		local c = math.floor(self:ReadNumber(code, 0))
+		if c <= 0 then
+			return true
+		end
+		if c == 273 or c == 274 or c == 275 or c == 276 then
+			return true
+		end
+		if c == 323 or c == 324 or c == 325 then
+			return true
+		end
+		if c == 27 or c == 13 or c == 9 or c == 32 then
+			return true
+		end
+		return false
+	end
+
+	method integer ResolveKeyCode(KeyboardKey key)
+		-- Maps a pressed KeyboardKey back to its integer code using the known-key catalog.
+		local codes = self:GetResolveKeyCodes()
+		for index, code in ipairs(codes) do
+			if key == KeyboardKey.CastFrom(code) then
+				return code
+			end
+		end
+		return 0
+	end
+
+	method any GetResolveKeyCodes()
+		-- Cached catalog of every key we can name / resolve (bindable + reserved for detection).
+		if self._T.resolveKeyCodes ~= nil then
+			return self._T.resolveKeyCodes
+		end
+		local codes = {}
+		local c = 97
+		while c <= 122 do
+			table.insert(codes, c)
+			c = c + 1
+		end
+		c = 48
+		while c <= 57 do
+			table.insert(codes, c)
+			c = c + 1
+		end
+		c = 282
+		while c <= 293 do
+			table.insert(codes, c)
+			c = c + 1
+		end
+		local extras = {303, 304, 305, 306, 307, 308, 32, 27, 13, 9, 273, 274, 275, 276, 323, 324, 325, 44, 45, 46, 47, 59, 61, 91, 93}
+		for index, extra in ipairs(extras) do
+			table.insert(codes, extra)
+		end
+		self._T.resolveKeyCodes = codes
+		return codes
+	end
+
+	method string GetKeyDisplayName(integer code)
+		-- Human-readable label for one KeyboardKey code (uppercase letters, digits, named specials).
+		local c = math.floor(self:ReadNumber(code, 0))
+		if c >= 97 and c <= 122 then
+			return string.upper(string.char(c))
+		end
+		if c >= 48 and c <= 57 then
+			return string.char(c)
+		end
+		if c >= 282 and c <= 293 then
+			return "F" .. tostring(c - 281)
+		end
+		if c == 32 then
+			return "Space"
+		elseif c == 27 then
+			return "Esc"
+		elseif c == 13 then
+			return "Enter"
+		elseif c == 9 then
+			return "Tab"
+		elseif c == 273 then
+			return "↑"
+		elseif c == 274 then
+			return "↓"
+		elseif c == 275 then
+			return "→"
+		elseif c == 276 then
+			return "←"
+		elseif c == 323 then
+			return "L-Click"
+		elseif c == 324 then
+			return "R-Click"
+		elseif c == 325 then
+			return "M-Click"
+		elseif c == 303 then
+			return "R-Shift"
+		elseif c == 304 then
+			return "Shift"
+		elseif c == 305 then
+			return "R-Ctrl"
+		elseif c == 306 then
+			return "Ctrl"
+		elseif c == 307 then
+			return "R-Alt"
+		elseif c == 308 then
+			return "Alt"
+		elseif c == 44 then
+			return ","
+		elseif c == 45 then
+			return "-"
+		elseif c == 46 then
+			return "."
+		elseif c == 47 then
+			return "/"
+		elseif c == 59 then
+			return ";"
+		elseif c == 61 then
+			return "="
+		elseif c == 91 then
+			return "["
+		elseif c == 93 then
+			return "]"
+		end
+		if c <= 0 then
+			return "미지정"
+		end
+		return "Key" .. tostring(c)
 	end
 
 end

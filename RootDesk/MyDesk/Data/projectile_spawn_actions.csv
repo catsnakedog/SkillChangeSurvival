@@ -1,1 +1,2 @@
 ﻿id,projectile_sprite_ruid,projectile_range,projectile_speed,projectile_front_direction,projectile_hitbox_id,projectile_pierce,collision_event_ids,expire_event_ids
+피어싱/투사체,966a6d854fe540939a947e6d488a0bb4,700,800,true,피어싱_hb,1,피어싱/타격,피어싱/소멸

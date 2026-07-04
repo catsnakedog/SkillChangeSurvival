@@ -30,3 +30,19 @@
 ### 3. 이펙트 시각 스케일 (`effects.csv` `scale` 컬럼, 추가됨)
 - 이펙트별 시각 크기 배율. **미입력/빈 셀 = 1.0**(`ReadNumber` 폴백). 브랜디쉬 계열만 `0.5`.
 - 적용: `BRSkillSystem.PlaySkillVisualForEvent` 에서 `GetContextVisualScale`(→`GetSkillEffectScale`)로 읽어 최종 스케일에 곱산. 전역 배율은 별도로 `BRSkillSystem.SkillEffectScale`(기본 1.0, 모든 스킬 공통).
+
+### 4. 상태이상의 실제 효과 (기절·침묵·공격버프) — 데이터만으로는 무효, 코드가 enforce
+- 상태는 `statusByEntityId[엔티티][statusId]`에 `ExpiresAt`(=`DurationFrames × 0.03s`)와 함께 저장됩니다. **status_id 문자열이 실제 효과를 결정**합니다.
+- **기절 `stun` / 침묵 `silence`**: `BRSkillSystem.IsCasterControlBlocked`가 시전 진입부(`TryCastNextChainSkill`/`TryCastUniqueSkill`)에서 검사 → 해당 상태가 활성인 동안 **새 스킬 시전 차단**. (기절은 추가로 `cancel_chain=true`로 적용 즉시 진행 중 체인 1회 취소.) 새 CC status_id를 시전 차단으로 만들려면 이 헬퍼의 화이트리스트에 추가.
+- **"후속" 침묵 표현**: 상태는 즉시 적용되고 개별 지연(delay) 필드가 없음. "2초 기절 + 1초 후속 침묵"은 **침묵 지속을 3초(=기절 2초 구간 겹침 + 이후 1초)**로 넣어 구현. 즉 기절 끝난 뒤 1초간 침묵만 남아 총 3초 시전 차단.
+- **공격력 버프 `attack_power_rate`**: `buff_actions.csv`의 신설 컬럼(미입력=1.0). 버프는 `시전자`(context.SourceEntity)에게 적용되고, `ApplySkillDamage`가 공격자의 활성 버프들의 `AttackPowerRate` 곱을 데미지에 곱산(`GetAttackBuffRate`). 1.7 = 공격력 +70%.
+- **자버프 발동**: `events.csv`에서 `event_type=action` 이벤트(대상 없이 `시전자` 액션 실행)로 시전자에게 버프. 예: 디바인스윙4는 `frame_event_ids`에 `6:디바인스윙4/버프`(action) 추가 → 타격(frame5) **이후** 자버프.
+- ⚠️ **행동변경 주의**: 위 시전 차단은 기존 stun 스킬(페이지 오더/사슬지옥 등)에도 소급 적용되어, 기존엔 "체인 1회 취소"만 하던 기절이 이제 지속시간 동안 시전을 막습니다.
+
+### 5. 메인 이펙트는 캐스트 frame 0에 재생, 타격(데미지)은 임팩트 프레임에 분리
+- 과거: 메인 이펙트와 area 데미지가 **같은 `frame_event` 프레임에 동시 시작**(강결합) → 이펙트가 잘리거나 타격 타이밍을 이펙트 임팩트에 맞출 수 없었음.
+- 현재: `ProcessSkillFrame`의 frame 0에서 **메인 이펙트(effect_ids)를 시전자 위치에 자동 1회 재생**(`cast.MainEffectPlayed`). area 이벤트(`StartAreaCapture`)는 `SuppressMainEffect`로 **메인 이펙트를 중복재생하지 않고**, 데미지 + 타겟별 hit 이펙트(hit_effect_ruid)만 실행.
+- 따라서 **`frame_event_ids`의 area(타격) 프레임 = 이펙트에서 슬래시가 꽂히는 임팩트 프레임**으로 두면 됨. 이펙트는 frame 0부터 끝까지 재생.
+- 임팩트 프레임은 애니메이션클립의 프레임별 width 급증 지점으로 산정(msw-search `get`). 예) 디바인 스윙 1차=f4, 2·3차=f3, 4차=f3.
+- 적용 예: `디바인스윙4` → `frame_event_ids = 3:디바인스윙4/타격;5:디바인스윙4/버프` (이펙트 frame0~, 타격 f3, 자버프 f5), `total_length_frames`=클립 길이(13).
+- ⚠️ **전 스킬 공통 적용**: 모든 area 스킬이 이제 이펙트를 frame0에 재생합니다(브랜디쉬 계열 등 포함). virtual(트리거 후속) 캐스트는 제외.

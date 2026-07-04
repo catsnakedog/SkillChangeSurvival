@@ -927,6 +927,7 @@ script BRSkillSystem extends Logic
 				actionDef.DamageTakenRate = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "damage_taken_rate", "1"), 1))
 				actionDef.ChancePercent = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "chance_percent", "100"), 100))
 				actionDef.HealMaxHpPercent = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "heal_max_hp_percent", "0"), 0))
+				actionDef.AttackPowerRate = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "attack_power_rate", "1"), 1))
 			end
 		end
 	end
@@ -997,6 +998,10 @@ script BRSkillSystem extends Logic
 
 		local userId = self:GetUserIdFromPlayer(casterEntity)
 		if userId == "" then
+			return false
+		end
+		if self:IsCasterControlBlocked(casterEntity) == true then
+			self:Log("unique cast blocked user=" .. userId .. " reason=controlStatus")
 			return false
 		end
 
@@ -1118,6 +1123,10 @@ script BRSkillSystem extends Logic
 
 		local userId = self:GetUserIdFromPlayer(casterEntity)
 		if userId == "" then
+			return false
+		end
+		if self:IsCasterControlBlocked(casterEntity) == true then
+			self:Log("chain cast blocked user=" .. userId .. " reason=controlStatus")
 			return false
 		end
 
@@ -1496,6 +1505,11 @@ script BRSkillSystem extends Logic
 		end
 		if frame == 0 then
 			self:Log("skill frame0 user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(cast.Tier, 1)))) .. " virtual=" .. tostring(cast.IsVirtualCaster == true))
+			if cast.IsVirtualCaster ~= true and cast.MainEffectPlayed ~= true then
+				local mainOrigin = self:GetContextOrigin(cast)
+				self:PlaySkillVisualForEvent(cast, "", mainOrigin.x, mainOrigin.y, false)
+				cast.MainEffectPlayed = true
+			end
 		end
 		local eventsByFrame = cast.SkillDef.EventsByFrame
 		if eventsByFrame == nil then
@@ -1586,10 +1600,13 @@ script BRSkillSystem extends Logic
 			SeenTargets = {},
 			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0))),
 			MesoAttacker = context.MesoAttacker,
-			TriggerFired = false
+			TriggerFired = false,
+			SuppressMainEffect = context.MainEffectPlayed == true
 		}
 		table.insert(self._T.activeAreas, area)
-		self:PlaySkillVisualForEvent(area, area.EventId, origin.x, origin.y, false)
+		if area.SuppressMainEffect ~= true then
+			self:PlaySkillVisualForEvent(area, area.EventId, origin.x, origin.y, false)
+		end
 		self:Log("area start user=" .. area.UserId .. " event=" .. area.EventId .. " frames=" .. tostring(area.RemainingFrames))
 	end
 
@@ -2259,7 +2276,7 @@ script BRSkillSystem extends Logic
 		local attackerEntity = context.SourceEntity
 		local attackPower = self:GetSkillAttackPower(attackerEntity)
 		local coefficient = math.max(0, self:ReadNumber(actionDef.Coefficient, 100))
-		local damage = math.max(1, math.floor(attackPower * coefficient / 100))
+		local damage = math.max(1, math.floor(attackPower * coefficient / 100 * self:GetAttackBuffRate(attackerEntity)))
 		local critical = self:RollCritical(attackerEntity)
 		if critical == true then
 			damage = math.max(1, math.floor(damage * self:GetCriticalDamageRate(attackerEntity)))
@@ -2457,6 +2474,7 @@ script BRSkillSystem extends Logic
 			ApplierUserId = self:ReadString(applierUserId, ""),
 			ExpiresAt = self:Now() + self:ReadNumber(actionDef.DurationFrames, 1) * self:GetSkillFrameSeconds(),
 			DamageTakenRate = self:ReadNumber(actionDef.DamageTakenRate, 1),
+			AttackPowerRate = self:ReadNumber(actionDef.AttackPowerRate, 1),
 			CancelChain = actionDef.CancelChain == true,
 			DotCoefficient = self:ReadNumber(actionDef.DotCoefficient, 0),
 			TickIntervalSeconds = tickIntervalSeconds,
@@ -2465,6 +2483,46 @@ script BRSkillSystem extends Logic
 		}
 		self:Log("status apply target=" .. targetEntity.Name .. " status=" .. statusId .. " source=" .. self:ReadString(sourceId, ""))
 		return true
+	end
+
+	method boolean IsCasterControlBlocked(Entity casterEntity)
+		-- True while the caster carries an active stun or silence status; blocks new skill casts (기절/침묵).
+		if casterEntity == nil then
+			return false
+		end
+		local key = self:GetEntityKey(casterEntity)
+		if key == "" or self._T.statusByEntityId == nil or self._T.statusByEntityId[key] == nil then
+			return false
+		end
+		local now = self:Now()
+		for statusId, status in pairs(self._T.statusByEntityId[key]) do
+			if status ~= nil and now < self:ReadNumber(status.ExpiresAt, 0) then
+				local safeStatusId = self:ReadString(status.StatusId, "")
+				if safeStatusId == "stun" or safeStatusId == "silence" then
+					return true
+				end
+			end
+		end
+		return false
+	end
+
+	method number GetAttackBuffRate(Entity attackerEntity)
+		-- Product of active attack-power buff rates on the attacker (buff_actions.attack_power_rate); 1.0 when none.
+		if attackerEntity == nil then
+			return 1.0
+		end
+		local key = self:GetEntityKey(attackerEntity)
+		if key == "" or self._T.statusByEntityId == nil or self._T.statusByEntityId[key] == nil then
+			return 1.0
+		end
+		local now = self:Now()
+		local rate = 1.0
+		for statusId, status in pairs(self._T.statusByEntityId[key]) do
+			if status ~= nil and now < self:ReadNumber(status.ExpiresAt, 0) then
+				rate = rate * math.max(0, self:ReadNumber(status.AttackPowerRate, 1))
+			end
+		end
+		return math.max(0, rate)
 	end
 
 	method void TickStatuses()

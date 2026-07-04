@@ -71,6 +71,14 @@ script BRBattleLauncher extends Logic
 
 	property number BattleBotMaxFillCount = 3
 
+	property boolean UseInstanceBattleRooms = true
+
+	property number InstanceRoomFirstUserWaitSeconds = 30
+
+	property number InstanceRoomRetrySeconds = 1
+
+	property number InstanceRoomCreateMaxAttempts = 0
+
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
 		-- Initializes server-side match flow runtime tables.
@@ -96,7 +104,7 @@ script BRBattleLauncher extends Logic
 
 	@ExecSpace("ServerOnly")
 	method any StartMatchRoom(any matchRoom, any owner)
-		-- Starts a match on a fixed physical map and prepares its logical room graph.
+		-- Starts a match after ensuring the per-match battle room exists.
 		if matchRoom == nil then
 			return self:CreateResult(false, "", 0, "MatchRoom is nil")
 		end
@@ -107,21 +115,45 @@ script BRBattleLauncher extends Logic
 		end
 		
 		matchRoom.TargetMapName = targetMapName
-		self:EnsurePhysicalGrid(targetMapName)
-		local roomGraph = self:GenerateRoomGraph(matchRoom, owner)
-		if roomGraph == nil then
-			return self:CreateResult(false, targetMapName, 0, "Room graph generation failed")
+		local startedAt = _UtilLogic.ServerElapsedSeconds
+		log("[BRBattleLauncher] launch begin match=" .. self:ReadString(matchRoom.MatchId, "") .. " map=" .. targetMapName)
+		local roomCreateResult = self:EnsureBattleInstanceRoom(matchRoom, owner, targetMapName)
+		if roomCreateResult == nil or roomCreateResult.Success ~= true then
+			local errorMessage = "Instance room creation failed"
+			if roomCreateResult ~= nil then
+				errorMessage = self:ReadString(roomCreateResult.Error, errorMessage)
+			end
+			if roomCreateResult ~= nil and roomCreateResult.Retry == true then
+				if self:ScheduleBattleInstanceRoomRetry(matchRoom, owner, targetMapName, roomCreateResult) == true then
+					local pendingResult = self:CreateResult(false, targetMapName, 0, errorMessage)
+					pendingResult.Pending = true
+					pendingResult.RoomKey = self:ReadString(matchRoom.RoomKey, "")
+					pendingResult.InstanceRoomKey = self:ReadString(matchRoom.InstanceRoomKey, "")
+					pendingResult.RoomCreateAttempts = self:ReadNumber(matchRoom.RoomCreateAttempts, 0)
+					return pendingResult
+				end
+			end
+			return self:CreateResult(false, targetMapName, 0, errorMessage)
 		end
+		self:EnsurePhysicalGrid(targetMapName)
 
 		local loadingSeconds = self:GetMatchLoadingSeconds(owner)
 		self:NotifyMatchLoading(matchRoom, owner, loadingSeconds)
-		self:PrepareSupplies(matchRoom, roomGraph, targetMapName)
 
 		local movedCount = self:MovePlayersToMatchRoom(matchRoom, owner)
 		local botCount = 0
+		local roomGraph = nil
 		if movedCount > 0 then
 			self:RegisterActiveMatch(matchRoom, owner, targetMapName, loadingSeconds)
 			botCount = self:SpawnBattleBotsForMatchRoom(matchRoom, owner, movedCount, targetMapName)
+			log("[BRBattleLauncher] launch actors ready match=" .. self:ReadString(matchRoom.MatchId, "") .. " moved=" .. tostring(movedCount) .. " bots=" .. tostring(botCount) .. " elapsed=" .. tostring(math.floor((_UtilLogic.ServerElapsedSeconds - startedAt) * 100) * 0.01))
+			roomGraph = self:GenerateRoomGraph(matchRoom, owner)
+			if roomGraph == nil then
+				self:ReturnPlayersToLobby(matchRoom, owner)
+				return self:CreateResult(false, targetMapName, movedCount, "Room graph generation failed")
+			end
+			log("[BRBattleLauncher] launch graph ready match=" .. self:ReadString(matchRoom.MatchId, "") .. " elapsed=" .. tostring(math.floor((_UtilLogic.ServerElapsedSeconds - startedAt) * 100) * 0.01))
+			self:SchedulePrepareSupplies(matchRoom, roomGraph, targetMapName)
 			self:ScheduleBattleSystems(matchRoom.MatchId, loadingSeconds)
 		else
 			self:NotifyMatchLoadingClosed(matchRoom)
@@ -129,7 +161,12 @@ script BRBattleLauncher extends Logic
 
 		local result = self:CreateResult(true, targetMapName, movedCount, "")
 		result.BotCount = botCount
-		self:ApplyRoomGraphToResult(result, roomGraph)
+		result.RoomKey = self:ReadString(matchRoom.RoomKey, "")
+		result.InstanceRoomKey = self:ReadString(matchRoom.InstanceRoomKey, "")
+		result.RoomCreateAttempts = self:ReadNumber(matchRoom.RoomCreateAttempts, 0)
+		if roomGraph ~= nil then
+			self:ApplyRoomGraphToResult(result, roomGraph)
+		end
 		return result
 	end
 
@@ -144,8 +181,205 @@ script BRBattleLauncher extends Logic
 			RoomGraphSummary = "",
 			RoomGraphRoomCount = 0,
 			RoomGraphConnectionCount = 0,
-			RoomGraphAssignmentCount = 0
+			RoomGraphAssignmentCount = 0,
+			RoomKey = "",
+			InstanceRoomKey = "",
+			RoomCreateAttempts = 0,
+			Pending = false
 		}
+	end
+
+	@ExecSpace("ServerOnly")
+	method any EnsureBattleInstanceRoom(any matchRoom, any owner, string targetMapName)
+		-- Attempts to create the per-match instance room once and reports whether a timer retry is needed.
+		if self:ShouldUseInstanceBattleRooms(owner) ~= true then
+			return {
+				Success = true,
+				RoomKey = "",
+				Attempts = 0,
+				Error = "",
+				Retry = false
+			}
+		end
+		if matchRoom == nil then
+			return {
+				Success = false,
+				RoomKey = "",
+				Attempts = 0,
+				Error = "MatchRoom is nil",
+				Retry = false
+			}
+		end
+		if _RoomService == nil then
+			return {
+				Success = false,
+				RoomKey = "",
+				Attempts = 0,
+				Error = "RoomService is missing",
+				Retry = false
+			}
+		end
+
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeMapName == "" then
+			return {
+				Success = false,
+				RoomKey = "",
+				Attempts = 0,
+				Error = "Target map is empty",
+				Retry = false
+			}
+		end
+
+		local roomKey = self:GetBattleInstanceRoomKey(matchRoom)
+		if roomKey == "" then
+			return {
+				Success = false,
+				RoomKey = "",
+				Attempts = 0,
+				Error = "Instance room key is empty",
+				Retry = false
+			}
+		end
+
+		matchRoom.RoomKey = roomKey
+		matchRoom.InstanceRoomKey = roomKey
+		local maps = { safeMapName }
+		local attempt = self:ReadNumber(matchRoom.RoomCreateAttempts, 0) + 1
+		local maxAttempts = self:GetInstanceRoomCreateMaxAttempts(owner)
+		local firstUserWaitSeconds = self:GetInstanceRoomFirstUserWaitSeconds(owner)
+		matchRoom.RoomCreateAttempts = attempt
+
+		local existingRoom = self:GetExistingInstanceRoom(roomKey)
+		if existingRoom ~= nil and existingRoom:IsValid() == true then
+			log("[BRBattleLauncher] instance room already ready key=" .. roomKey .. " map=" .. safeMapName .. " attempts=" .. tostring(attempt))
+			return {
+				Success = true,
+				RoomKey = roomKey,
+				Attempts = attempt,
+				Error = "",
+				Retry = false
+			}
+		end
+
+		local instanceRoom = _RoomService:CreateInstanceRoom(roomKey, maps, firstUserWaitSeconds)
+		if instanceRoom ~= nil and instanceRoom:IsValid() == true then
+			log("[BRBattleLauncher] instance room created key=" .. roomKey .. " map=" .. safeMapName .. " attempts=" .. tostring(attempt) .. " firstUserWait=" .. tostring(firstUserWaitSeconds))
+			return {
+				Success = true,
+				RoomKey = roomKey,
+				Attempts = attempt,
+				Error = "",
+				Retry = false
+			}
+		end
+
+		local shouldRetry = maxAttempts <= 0 or attempt < maxAttempts
+		log("[BRBattleLauncher] instance room create failed key=" .. roomKey .. " map=" .. safeMapName .. " attempt=" .. tostring(attempt) .. " retry=" .. tostring(shouldRetry))
+		return {
+			Success = false,
+			RoomKey = roomKey,
+			Attempts = attempt,
+			Error = "Instance room creation failed after " .. tostring(attempt) .. " attempts",
+			Retry = shouldRetry
+		}
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean ScheduleBattleInstanceRoomRetry(any matchRoom, any owner, string targetMapName, any roomCreateResult)
+		-- Schedules the next room creation attempt without relying on undocumented blocking wait calls.
+		if _TimerService == nil then
+			log("[BRBattleLauncher] instance room retry skipped: TimerService missing")
+			return false
+		end
+		local retrySeconds = self:GetInstanceRoomRetrySeconds(owner)
+		local roomKey = ""
+		local attempts = 0
+		if roomCreateResult ~= nil then
+			roomKey = self:ReadString(roomCreateResult.RoomKey, "")
+			attempts = self:ReadNumber(roomCreateResult.Attempts, 0)
+		end
+		log("[BRBattleLauncher] instance room retry scheduled key=" .. roomKey .. " map=" .. self:ReadString(targetMapName, "") .. " attempts=" .. tostring(attempts) .. " retryIn=" .. tostring(retrySeconds))
+		local timerId = _TimerService:SetTimerOnce(function()
+			self:RetryStartMatchRoomAfterInstanceRoomDelay(matchRoom, owner)
+		end, retrySeconds)
+		if timerId <= 0 then
+			log("[BRBattleLauncher] instance room retry timer failed key=" .. roomKey)
+			return false
+		end
+		return true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RetryStartMatchRoomAfterInstanceRoomDelay(any matchRoom, any owner)
+		-- Re-enters battle launch after a failed room creation attempt and reports the final result to the matchmaker.
+		local result = self:StartMatchRoom(matchRoom, owner)
+		if result == nil or result.Pending == true then
+			return
+		end
+		if owner == nil then
+			log("[BRBattleLauncher] instance room retry completed without owner callback")
+			return
+		end
+		owner:CompleteMatchLaunch(matchRoom, matchRoom.PendingTickets, result)
+	end
+
+	method any GetExistingInstanceRoom(string roomKey)
+		-- Reads an already-created instance room from RoomService by key.
+		local safeRoomKey = self:ReadString(roomKey, "")
+		if safeRoomKey == "" or _RoomService == nil or _RoomService.InstanceRooms == nil then
+			return nil
+		end
+		return _RoomService.InstanceRooms[safeRoomKey]
+	end
+
+	method string GetBattleInstanceRoomKey(any matchRoom)
+		-- Builds the stable RoomService key used to isolate one battle match.
+		if matchRoom == nil then
+			return ""
+		end
+		local matchId = self:ReadString(matchRoom.MatchId, "")
+		if matchId == "" then
+			matchId = _UtilLogic:NewGuid()
+			matchRoom.MatchId = matchId
+		end
+		return "battle_" .. matchId
+	end
+
+	method boolean ShouldUseInstanceBattleRooms(any owner)
+		-- Reads whether battle launches should create an isolated RoomService instance room.
+		local value = self.UseInstanceBattleRooms
+		if owner ~= nil and owner.UseInstanceBattleRooms ~= nil then
+			value = owner.UseInstanceBattleRooms
+		end
+		return value == true
+	end
+
+	method number GetInstanceRoomFirstUserWaitSeconds(any owner)
+		-- Reads how long an empty created instance room should wait for its first entering user.
+		local value = self.InstanceRoomFirstUserWaitSeconds
+		if owner ~= nil and owner.InstanceRoomFirstUserWaitSeconds ~= nil then
+			value = owner.InstanceRoomFirstUserWaitSeconds
+		end
+		return math.max(1, self:ReadNumber(value, 30))
+	end
+
+	method number GetInstanceRoomRetrySeconds(any owner)
+		-- Reads the paced retry interval used when RoomService room creation returns nil or invalid.
+		local value = self.InstanceRoomRetrySeconds
+		if owner ~= nil and owner.InstanceRoomRetrySeconds ~= nil then
+			value = owner.InstanceRoomRetrySeconds
+		end
+		return math.max(0.25, self:ReadNumber(value, 1))
+	end
+
+	method number GetInstanceRoomCreateMaxAttempts(any owner)
+		-- Reads the retry cap; zero or below means retry forever until creation succeeds.
+		local value = self.InstanceRoomCreateMaxAttempts
+		if owner ~= nil and owner.InstanceRoomCreateMaxAttempts ~= nil then
+			value = owner.InstanceRoomCreateMaxAttempts
+		end
+		return math.floor(self:ReadNumber(value, 0))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -540,7 +774,7 @@ script BRBattleLauncher extends Logic
 
 	@ExecSpace("ServerOnly")
 	method void MovePlayerToBattleStart(Entity playerEntity, string targetMapName, Vector2 spawnPosition, number spawnIndex)
-		-- Moves a player to the battle map using the native player map-position transfer.
+		-- Uses TeleportService first because release authority checks can block direct PlayerComponent map travel.
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return
 		end
@@ -553,8 +787,54 @@ script BRBattleLauncher extends Logic
 		end
 
 		playerEntity.PlayerComponent.RespawnPosition = Vector3(spawnPosition.x, spawnPosition.y, 0)
-		playerEntity.PlayerComponent:MoveToMapPosition(safeMapName, spawnPosition)
-		log("[BRBattleLauncher] start map position user=" .. userId .. " slot=" .. tostring(slotIndex) .. " map=" .. safeMapName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
+		self:TeleportPlayerToMapPosition(playerEntity, safeMapName, spawnPosition, "battle-start")
+		log("[BRBattleLauncher] start map teleport requested user=" .. userId .. " slot=" .. tostring(slotIndex) .. " from=" .. self:ReadString(playerEntity.CurrentMapName, "") .. " map=" .. safeMapName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
+		if userId ~= "" then
+			_TimerService:SetTimerOnce(function()
+				self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, 1)
+			end, 0.35)
+			_TimerService:SetTimerOnce(function()
+				self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, 2)
+			end, 1.2)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ConfirmBattleStartArrival(string userId, string targetMapName, Vector2 spawnPosition, number spawnIndex, number attempt)
+		-- Confirms release map travel and applies the final body-position correction after the map switch lands.
+		local safeUserId = self:ReadString(userId, "")
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeUserId == "" or safeMapName == "" then
+			return
+		end
+		self:EnsureRuntimeTables()
+		local activeEntry = self._T.activeMatchesByMap[safeMapName]
+		if activeEntry == nil or activeEntry["Finished"] == true then
+			log("[BRBattleLauncher] battle start arrival skipped user=" .. safeUserId .. " map=" .. safeMapName .. " attempt=" .. tostring(attempt) .. " reason=inactive match")
+			return
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			log("[BRBattleLauncher] battle start arrival skipped user=" .. safeUserId .. " attempt=" .. tostring(attempt) .. " reason=entity nil")
+			return
+		end
+
+		local currentMapName = self:ReadString(playerEntity.CurrentMapName, "")
+		if currentMapName ~= safeMapName then
+			if self:ReadNumber(attempt, 1) <= 1 then
+				log("[BRBattleLauncher] battle start arrival retry user=" .. safeUserId .. " attempt=" .. tostring(attempt) .. " current=" .. currentMapName .. " target=" .. safeMapName)
+				self:TeleportPlayerToMapPosition(playerEntity, safeMapName, spawnPosition, "battle-start-retry")
+			else
+				log("[BRBattleLauncher] battle start arrival failed user=" .. safeUserId .. " attempt=" .. tostring(attempt) .. " current=" .. currentMapName .. " target=" .. safeMapName)
+			end
+			return
+		end
+
+		playerEntity.PlayerComponent.RespawnPosition = Vector3(spawnPosition.x, spawnPosition.y, 0)
+		self:ApplyPlayerWorldPosition(playerEntity, spawnPosition, "battle-start-confirm")
+		self:ApplyLocalPlayerWorldPosition(spawnPosition, "battle-start-confirm", safeUserId)
+		log("[BRBattleLauncher] battle start arrived user=" .. safeUserId .. " slot=" .. tostring(spawnIndex) .. " map=" .. safeMapName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ") attempt=" .. tostring(attempt))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -1059,6 +1339,25 @@ script BRBattleLauncher extends Logic
 		local minutes = math.floor(total / 60)
 		local seconds = total - minutes * 60
 		return string.format("%02d:%02d", minutes, seconds)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SchedulePrepareSupplies(any matchRoom, any roomGraph, string targetMapName)
+		-- Keeps supply setup from blocking player transfer and bot fill in release builds.
+		if _BRSupplySystem == nil then
+			log("[BRBattleLauncher] supply schedule skipped: supply system missing")
+			return
+		end
+		local safeMapName = self:ReadString(targetMapName, "")
+		local safeMatchId = ""
+		if matchRoom ~= nil then
+			safeMatchId = self:ReadString(matchRoom.MatchId, "")
+		end
+		_TimerService:SetTimerOnce(function()
+			log("[BRBattleLauncher] supply prepare begin match=" .. safeMatchId .. " map=" .. safeMapName)
+			self:PrepareSupplies(matchRoom, roomGraph, safeMapName)
+			log("[BRBattleLauncher] supply prepare end match=" .. safeMatchId .. " map=" .. safeMapName)
+		end, 0.05)
 	end
 
 	@ExecSpace("ServerOnly")

@@ -23,6 +23,8 @@ script BRRoomGraphGenerator extends Logic
 
 	property boolean VerboseLog = true
 
+	property boolean EnableGraphDiagramLog = false
+
 	property number miniMapPlayerTimer = 0
 
 	@Sync
@@ -141,7 +143,9 @@ script BRRoomGraphGenerator extends Logic
 		self.LastGraphDiagram = self:BuildGraphDiagram(graph)
 		self:PublishMiniMapData(graph)
 		self:Log("generated match=" .. matchId .. " map=" .. mapName .. " " .. graph.Summary .. " installedPortals=" .. tostring(installedPortalCount))
-		self:LogGraphDiagram(graph)
+		if self.EnableGraphDiagramLog == true then
+			self:LogGraphDiagram(graph)
+		end
 		return graph
 	end
 

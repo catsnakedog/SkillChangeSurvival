@@ -19,6 +19,10 @@ script BRSkillSystem extends Logic
 
 	property number ExperiencePerLevel = 1
 
+	property string CharacterStatTableName = "CharacterStat"
+
+	property string LevelStatTableName = "LevelStat"
+
 	property integer MaxSkillTier = 4
 
 	property number BagSlotCount = 4
@@ -184,6 +188,12 @@ script BRSkillSystem extends Logic
 		if self._T.skillRestrictionCatalog == nil then
 			self._T.skillRestrictionCatalog = self:CreateSkillRestrictionCatalog()
 		end
+		if self._T.levelStatCatalog == nil then
+			self._T.levelStatCatalog = self:CreateLevelStatCatalog()
+		end
+		if self._T.characterStatCatalog == nil then
+			self._T.characterStatCatalog = self:CreateCharacterStatCatalog()
+		end
 		if self._T.characterDefaults == nil then
 			self._T.characterDefaults = self:CreateCharacterDefaults()
 		end
@@ -240,7 +250,8 @@ script BRSkillSystem extends Logic
 
 	method void ValidateSkillDataCatalogs()
 		-- Logs broken CSV/DataSet references early so silent skill failures are visible.
-		self:Log("data loaded skills=" .. tostring(self:GetTableCount(self._T.skillRuntimeCatalog)) .. " parts=" .. tostring(self:GetTableCount(self._T.catalog)) .. " events=" .. tostring(self:GetTableCount(self._T.skillEventCatalog)) .. " actions=" .. tostring(self:GetTableCount(self._T.skillActionCatalog)) .. " hitboxes=" .. tostring(self:GetTableCount(self._T.skillHitboxCatalog)))
+		self:Log("data loaded skills=" .. tostring(self:GetTableCount(self._T.skillRuntimeCatalog)) .. " parts=" .. tostring(self:GetTableCount(self._T.catalog)) .. " events=" .. tostring(self:GetTableCount(self._T.skillEventCatalog)) .. " actions=" .. tostring(self:GetTableCount(self._T.skillActionCatalog)) .. " hitboxes=" .. tostring(self:GetTableCount(self._T.skillHitboxCatalog)) .. " characterStats=" .. tostring(self:GetCharacterStatCount()) .. " maxLevel=" .. tostring(self:GetMaxSkillLevel()))
+		self:Log("stat sample key=Knight level=1 hp=" .. tostring(self:GetScaledMaxHpForCharacter("Knight", 1, 100)) .. " attack=" .. tostring(self:GetScaledAttackPowerForCharacter("Knight", 1, self.DefaultSkillAttackPower)))
 		self:ValidateMesoStarterClassification()
 		self:ValidateSkillTimelineEvents()
 		self:ValidateSkillEventDefinitions()
@@ -605,11 +616,17 @@ script BRSkillSystem extends Logic
 			AttackPower = math.max(1, self:ReadNumber(self.DefaultSkillAttackPower, 300)),
 			BasicSkillId = ""
 		}
-		local data = self:GetDataTable("characters")
-		if data ~= nil and self:ReadNumber(data:GetRowCount(), 0) > 0 then
-			defaults.Hp = math.max(1, self:ReadNumber(self:GetDataCell(data, 1, "hp", tostring(defaults.Hp)), defaults.Hp))
-			defaults.AttackPower = math.max(1, self:ReadNumber(self:GetDataCell(data, 1, "attack_power", tostring(defaults.AttackPower)), defaults.AttackPower))
-			defaults.BasicSkillId = self:GetDataCell(data, 1, "basic_skill_id", "")
+		local stat = self:GetCharacterStatRecord(self:GetDefaultCharacterKeyForStats())
+		if stat ~= nil then
+			defaults.Hp = math.max(1, self:ReadNumber(stat.Hp, defaults.Hp))
+			defaults.AttackPower = math.max(1, self:ReadNumber(stat.AttackPower, defaults.AttackPower))
+		else
+			local data = self:GetDataTable("characters")
+			if data ~= nil and self:ReadNumber(data:GetRowCount(), 0) > 0 then
+				defaults.Hp = math.max(1, self:ReadNumber(self:GetDataCell(data, 1, "hp", tostring(defaults.Hp)), defaults.Hp))
+				defaults.AttackPower = math.max(1, self:ReadNumber(self:GetDataCell(data, 1, "attack_power", tostring(defaults.AttackPower)), defaults.AttackPower))
+				defaults.BasicSkillId = self:GetDataCell(data, 1, "basic_skill_id", "")
+			end
 		end
 		if defaults.BasicSkillId == "" then
 			defaults.BasicSkillId = self:FindFirstSkillIdByCategory("기본 스킬")
@@ -618,6 +635,217 @@ script BRSkillSystem extends Logic
 			defaults.BasicSkillId = self:FindFirstAnySkillId()
 		end
 		return defaults
+	end
+
+	method any CreateCharacterStatCatalog()
+		-- Loads per-character base stats from CharacterStat.csv.
+		local catalog = {
+			Rows = {},
+			Count = 0
+		}
+		local data = self:GetDataTable(self.CharacterStatTableName)
+		if data == nil then
+			self:Log("character stat table missing name=" .. self:ReadString(self.CharacterStatTableName, ""))
+			return catalog
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local jobName = self:GetDataCell(data, row, "직업", "")
+			if jobName ~= "" then
+				local record = {
+					JobName = jobName,
+					Hp = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "체력", "10000"), 10000))),
+					AttackPower = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "공격력", tostring(self.DefaultSkillAttackPower)), self.DefaultSkillAttackPower))),
+					Difficulty = math.max(1, math.floor(self:ReadNumber(self:GetDataCell(data, row, "난이도", "1"), 1))),
+					Description = self:GetDataCell(data, row, "설명", "")
+				}
+				catalog.Rows[jobName] = record
+				local characterKey = self:GetCharacterKeyForStatJob(jobName)
+				if characterKey ~= "" then
+					catalog.Rows[characterKey] = record
+				end
+				catalog.Count = catalog.Count + 1
+			end
+		end
+		return catalog
+	end
+
+	method any CreateLevelStatCatalog()
+		-- Loads level growth, required experience, and slot unlock data from LevelStat.csv.
+		local catalog = {
+			Rows = {},
+			Count = 0,
+			MaxLevel = 0,
+			DefaultGrowth = 0.2
+		}
+		local data = self:GetDataTable(self.LevelStatTableName)
+		if data == nil then
+			self:Log("level stat table missing name=" .. self:ReadString(self.LevelStatTableName, ""))
+			return catalog
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			local level = math.floor(self:ReadNumber(self:GetDataCell(data, row, "레벨", "0"), 0))
+			if level > 0 then
+				local growth = self:ReadNumber(self:GetDataCell(data, row, "스탯 증가량", tostring(catalog.DefaultGrowth)), catalog.DefaultGrowth)
+				local requiredText = self:GetDataCell(data, row, "레벨업 요구 경험치", "")
+				local slotText = self:GetDataCell(data, row, "해금 스킬 슬롯", "")
+				catalog.Rows[level] = {
+					Level = level,
+					StatGrowth = growth,
+					RequiredExperience = math.max(0, math.floor(self:ReadNumber(requiredText, 0))),
+					UnlockedSlots = math.max(0, math.floor(self:ReadNumber(slotText, 0)))
+				}
+				catalog.DefaultGrowth = growth
+				catalog.MaxLevel = math.max(catalog.MaxLevel, level)
+				catalog.Count = catalog.Count + 1
+			end
+		end
+		return catalog
+	end
+
+	method any GetCharacterStatCatalog()
+		-- Returns the cached CharacterStat catalog, loading it if needed.
+		if self._T.characterStatCatalog == nil then
+			self._T.characterStatCatalog = self:CreateCharacterStatCatalog()
+		end
+		return self._T.characterStatCatalog
+	end
+
+	method any GetLevelStatCatalog()
+		-- Returns the cached LevelStat catalog, loading it if needed.
+		if self._T.levelStatCatalog == nil then
+			self._T.levelStatCatalog = self:CreateLevelStatCatalog()
+		end
+		return self._T.levelStatCatalog
+	end
+
+	method number GetCharacterStatCount()
+		-- Returns how many CharacterStat rows were loaded.
+		local catalog = self:GetCharacterStatCatalog()
+		if catalog == nil then
+			return 0
+		end
+		return math.max(0, math.floor(self:ReadNumber(catalog.Count, 0)))
+	end
+
+	method any GetCharacterStatRecord(string characterKey)
+		-- Finds a CharacterStat row by runtime character key or Korean job name.
+		local catalog = self:GetCharacterStatCatalog()
+		if catalog == nil or catalog.Rows == nil then
+			return nil
+		end
+		local key = self:ReadString(characterKey, "")
+		local record = catalog.Rows[key]
+		if record ~= nil then
+			return record
+		end
+		return catalog.Rows[self:GetCharacterStatJobName(key)]
+	end
+
+	method any GetLevelStatRecord(number level)
+		-- Finds the authored LevelStat row for a level.
+		local catalog = self:GetLevelStatCatalog()
+		if catalog == nil or catalog.Rows == nil then
+			return nil
+		end
+		local safeLevel = math.max(1, math.floor(self:ReadNumber(level, 1)))
+		return catalog.Rows[safeLevel]
+	end
+
+	method string GetDefaultCharacterKeyForStats()
+		-- Returns the default runtime character key for stat fallback.
+		if _BRCharacterSystem ~= nil then
+			return _BRCharacterSystem:GetDefaultCharacterKey()
+		end
+		return "Knight"
+	end
+
+	method string GetCharacterKeyForUser(string userId)
+		-- Resolves a user's selected character key for stat lookup.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId ~= "" and _BRCharacterSystem ~= nil then
+			return _BRCharacterSystem:GetServerCharacterKey(safeUserId)
+		end
+		return self:GetDefaultCharacterKeyForStats()
+	end
+
+	method string GetCharacterStatJobName(string characterKey)
+		-- Maps runtime character keys to CharacterStat.csv Korean job names.
+		local key = self:ReadString(characterKey, "")
+		if key == "Knight" then
+			return "전사"
+		elseif key == "Mage" then
+			return "마법사"
+		elseif key == "Rogue" then
+			return "도적"
+		elseif key == "Archer" then
+			return "궁수"
+		elseif key == "Pirate" then
+			return "해적"
+		end
+		return key
+	end
+
+	method string GetCharacterKeyForStatJob(string jobName)
+		-- Maps CharacterStat.csv Korean job names back to runtime character keys.
+		local job = self:ReadString(jobName, "")
+		if job == "전사" then
+			return "Knight"
+		elseif job == "마법사" then
+			return "Mage"
+		elseif job == "도적" then
+			return "Rogue"
+		elseif job == "궁수" then
+			return "Archer"
+		elseif job == "해적" then
+			return "Pirate"
+		end
+		return ""
+	end
+
+	method number GetLevelStatMultiplierForLevel(number level)
+		-- Calculates stat multiplier as 1 + growth * level.
+		local safeLevel = math.max(self:GetStartingSkillLevel(), math.min(self:GetMaxSkillLevel(), math.floor(self:ReadNumber(level, self:GetStartingSkillLevel()))))
+		local record = self:GetLevelStatRecord(safeLevel)
+		local catalog = self:GetLevelStatCatalog()
+		local growth = 0.2
+		if catalog ~= nil then
+			growth = self:ReadNumber(catalog.DefaultGrowth, growth)
+		end
+		if record ~= nil then
+			growth = self:ReadNumber(record.StatGrowth, growth)
+		end
+		return math.max(0, 1 + growth * safeLevel)
+	end
+
+	method number GetLevelStatMultiplierForUser(string userId)
+		-- Calculates a user's current stat multiplier from their level state.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return self:GetLevelStatMultiplierForLevel(self:GetStartingSkillLevel())
+		end
+		return self:GetLevelStatMultiplierForLevel(self:GetUserLevel(self:GetUserState(safeUserId)))
+	end
+
+	method number GetScaledMaxHpForCharacter(string characterKey, number level, number fallback)
+		-- Calculates final HP for one character key and level.
+		local stat = self:GetCharacterStatRecord(characterKey)
+		local baseHp = math.max(1, self:ReadNumber(fallback, 100))
+		if stat ~= nil then
+			baseHp = math.max(1, self:ReadNumber(stat.Hp, baseHp))
+		end
+		return math.max(1, math.floor(baseHp * self:GetLevelStatMultiplierForLevel(level)))
+	end
+
+	method number GetScaledAttackPowerForCharacter(string characterKey, number level, number fallback)
+		-- Calculates final attack power for one character key and level.
+		local stat = self:GetCharacterStatRecord(characterKey)
+		local baseAttack = math.max(1, self:ReadNumber(fallback, self.DefaultSkillAttackPower))
+		if stat ~= nil then
+			baseAttack = math.max(1, self:ReadNumber(stat.AttackPower, baseAttack))
+		end
+		return math.max(1, math.floor(baseAttack * self:GetLevelStatMultiplierForLevel(level)))
 	end
 
 	method any GetDataTable(string tableName)
@@ -5114,8 +5342,8 @@ script BRSkillSystem extends Logic
 	method number GetSkillAttackPower(Entity entity)
 		-- Returns final attack power after temporary statuses.
 		self:EnsureRuntime()
-		if self._T.characterDefaults ~= nil then
-			return math.max(1, self:ReadNumber(self._T.characterDefaults.AttackPower, self.DefaultSkillAttackPower))
+		if entity ~= nil and entity.PlayerComponent ~= nil then
+			return self:GetBasicAttackDamage(entity.PlayerComponent.UserId, self.DefaultSkillAttackPower)
 		end
 		return math.max(1, self:ReadNumber(self.DefaultSkillAttackPower, 300))
 	end
@@ -5534,22 +5762,32 @@ script BRSkillSystem extends Logic
 		self:NormalizeUserLevelState(state)
 		local oldLevel = self:GetUserLevel(state)
 		local oldSlots = self:GetUnlockedChainSlotCount(state)
+		if oldLevel >= self:GetMaxSkillLevel() then
+			state.Experience = 0
+			return false
+		end
 		state.Experience = math.max(0, math.floor(self:ReadNumber(state.Experience, 0))) + reward
 
 		local leveled = false
 		while self:CanLevelUpState(state) == true do
 			local required = self:GetRequiredExperienceForNextLevel(state.Level)
-			if state.Experience < required then
+			if required <= 0 or state.Experience < required then
 				break
 			end
 			state.Experience = state.Experience - required
 			state.Level = math.min(self:GetMaxSkillLevel(), math.floor(self:ReadNumber(state.Level, self:GetStartingSkillLevel())) + 1)
 			leveled = true
 		end
+		if self:GetUserLevel(state) >= self:GetMaxSkillLevel() then
+			state.Experience = 0
+		end
 
 		self:NormalizeUserState(state)
 		local newLevel = self:GetUserLevel(state)
 		local newSlots = self:GetUnlockedChainSlotCount(state)
+		if leveled == true then
+			self:ApplyCharacterStatsToUser(userId, "level-up")
+		end
 		self:NotifyUserChanged(userId)
 		self:Log("experience user=" .. userId
 			.. " amount=" .. tostring(reward)
@@ -6227,13 +6465,48 @@ script BRSkillSystem extends Logic
 	end
 
 	method number GetMaxHp(string userId, number baseMaxHp)
-		-- Returns base HP; skill parts do not provide stat bonuses.
-		return math.max(1, math.floor(self:ReadNumber(baseMaxHp, 100)))
+		-- Returns CharacterStat base HP scaled by the user's current level.
+		local characterKey = self:GetCharacterKeyForUser(userId)
+		local level = self:GetStartingSkillLevel()
+		if self:ReadString(userId, "") ~= "" then
+			level = self:GetUserLevel(self:GetUserState(userId))
+		end
+		return self:GetScaledMaxHpForCharacter(characterKey, level, baseMaxHp)
 	end
 
 	method number GetBasicAttackDamage(string userId, number baseDamage)
-		-- Returns base damage; skill parts do not provide stat bonuses.
-		return math.max(1, math.floor(self:ReadNumber(baseDamage, 20)))
+		-- Returns CharacterStat base attack scaled by the user's current level.
+		local characterKey = self:GetCharacterKeyForUser(userId)
+		local level = self:GetStartingSkillLevel()
+		if self:ReadString(userId, "") ~= "" then
+			level = self:GetUserLevel(self:GetUserState(userId))
+		end
+		return self:GetScaledAttackPowerForCharacter(characterKey, level, baseDamage)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyCharacterStatsToUser(string userId, string reason)
+		-- Applies current CharacterStat and LevelStat HP to a live player entity.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		local oldMaxHp = math.max(1, math.floor(self:ReadNumber(playerEntity.PlayerComponent.MaxHp, 1)))
+		local maxHp = self:GetMaxHp(safeUserId, oldMaxHp)
+		playerEntity.PlayerComponent.MaxHp = maxHp
+		if playerEntity.PlayerComponent.Hp > maxHp then
+			playerEntity.PlayerComponent.Hp = maxHp
+		end
+		self:Log("player stat applied user=" .. safeUserId
+			.. " key=" .. self:GetCharacterKeyForUser(safeUserId)
+			.. " level=" .. tostring(self:GetUserLevel(self:GetUserState(safeUserId)))
+			.. " hp=" .. tostring(oldMaxHp) .. "->" .. tostring(maxHp)
+			.. " attack=" .. tostring(self:GetBasicAttackDamage(safeUserId, self.DefaultSkillAttackPower))
+			.. " reason=" .. self:ReadString(reason, "stats"))
 	end
 
 	method void ApplyMovementStatsToPlayer(Entity playerEntity, any baseStats)
@@ -7476,6 +7749,9 @@ script BRSkillSystem extends Logic
 		local maxLevel = self:GetMaxSkillLevel()
 		state.Level = math.max(minLevel, math.min(maxLevel, math.floor(self:ReadNumber(state.Level, minLevel))))
 		state.Experience = math.max(0, math.floor(self:ReadNumber(state.Experience, 0)))
+		if state.Level >= maxLevel and self:GetRequiredExperienceForNextLevel(state.Level) <= 0 then
+			state.Experience = 0
+		end
 	end
 
 	method number GetStartingSkillLevel()
@@ -7499,7 +7775,11 @@ script BRSkillSystem extends Logic
 	end
 
 	method number GetMaxSkillLevel()
-		-- Returns the highest level needed to unlock every configured chain slot.
+		-- Returns the highest authored LevelStat level, falling back to slot-derived progression.
+		local levelCatalog = self:GetLevelStatCatalog()
+		if levelCatalog ~= nil and self:ReadNumber(levelCatalog.MaxLevel, 0) > 0 then
+			return math.max(self:GetStartingSkillLevel(), math.floor(self:ReadNumber(levelCatalog.MaxLevel, self:GetStartingSkillLevel())))
+		end
 		local startLevel = self:GetStartingSkillLevel()
 		local baseSlots = self:GetBaseUnlockedChainSlots()
 		local slotsPerLevel = self:GetChainSlotsPerLevel()
@@ -7535,27 +7815,61 @@ script BRSkillSystem extends Logic
 	end
 
 	method number GetUnlockedChainSlotCountForLevel(number level)
-		-- Calculates unlocked chain slots from a skill-chain level.
+		-- Calculates unlocked chain slots from LevelStat.csv, falling back to the old formula.
 		local startLevel = self:GetStartingSkillLevel()
 		local safeLevel = math.max(startLevel, math.floor(self:ReadNumber(level, startLevel)))
+		local authoredSlots = self:GetAuthoredUnlockedChainSlots(safeLevel)
+		if authoredSlots > 0 then
+			return math.max(1, math.min(self:GetChainSlotCount(), authoredSlots))
+		end
 		local slots = self:GetBaseUnlockedChainSlots() + math.max(0, safeLevel - startLevel) * self:GetChainSlotsPerLevel()
 		return math.max(1, math.min(self:GetChainSlotCount(), slots))
 	end
 
+	method number GetAuthoredUnlockedChainSlots(number level)
+		-- Returns the latest non-empty LevelStat unlocked-slot value at or below the requested level.
+		local catalog = self:GetLevelStatCatalog()
+		if catalog == nil or catalog.Rows == nil then
+			return 0
+		end
+		local safeLevel = math.max(1, math.floor(self:ReadNumber(level, 1)))
+		local bestLevel = 0
+		local bestSlots = 0
+		for levelKey, record in pairs(catalog.Rows) do
+			local recordLevel = math.floor(self:ReadNumber(levelKey, 0))
+			if record ~= nil and recordLevel > 0 and recordLevel <= safeLevel and recordLevel >= bestLevel then
+				local slots = math.floor(self:ReadNumber(record.UnlockedSlots, 0))
+				if slots > 0 then
+					bestLevel = recordLevel
+					bestSlots = slots
+				end
+			end
+		end
+		return bestSlots
+	end
+
 	method number GetRequiredExperienceForNextLevel(number level)
-		-- Returns the experience cost to reach the next skill-chain level.
+		-- Returns the LevelStat experience cost to reach the next level.
+		local safeLevel = math.max(self:GetStartingSkillLevel(), math.floor(self:ReadNumber(level, self:GetStartingSkillLevel())))
+		if safeLevel >= self:GetMaxSkillLevel() then
+			return 0
+		end
+		local record = self:GetLevelStatRecord(safeLevel)
+		if record ~= nil and self:ReadNumber(record.RequiredExperience, 0) > 0 then
+			return math.max(1, math.floor(self:ReadNumber(record.RequiredExperience, 1)))
+		end
 		return self:GetExperiencePerLevel()
 	end
 
 	method boolean CanLevelUpState(any state)
-		-- Returns whether the user can still unlock more chain slots.
+		-- Returns whether the user can still gain authored levels.
 		if state == nil then
 			return false
 		end
 		if self:GetUserLevel(state) >= self:GetMaxSkillLevel() then
 			return false
 		end
-		return self:GetUnlockedChainSlotCount(state) < self:GetChainSlotCount()
+		return self:GetRequiredExperienceForNextLevel(self:GetUserLevel(state)) > 0
 	end
 
 	method boolean IsChainSlotUnlocked(any state, number slotIndex)

@@ -2,7 +2,7 @@
 script BRMatchQueueStore extends Logic
 
 	method any ReadQueueSnapshot(any owner)
-		if owner.UseGlobalMatchQueue == true then
+		if self:ShouldUseGlobalQueue(owner, true) == true then
 			return self:ReadGlobalQueueSnapshot(owner)
 		end
 		
@@ -147,10 +147,44 @@ script BRMatchQueueStore extends Logic
 	end
 
 	method string GetQueueBackendName(any owner)
-		if owner.UseGlobalMatchQueue == true then
+		if self:ShouldUseGlobalQueue(owner, false) == true then
 			return "GlobalDataStorage"
 		end
 		return "Local"
+	end
+
+	method boolean ShouldUseGlobalQueue(any owner, boolean logFallback)
+		if owner == nil or owner.UseGlobalMatchQueue ~= true then
+			return false
+		end
+		if _DataStorageService == nil then
+			if logFallback == true then
+				self:LogGlobalQueueFallback(owner, "DataStorageService unavailable")
+			end
+			return false
+		end
+		if owner:GetCurrentWorldInstanceId() == "" then
+			if logFallback == true then
+				self:LogGlobalQueueFallback(owner, "WorldInstanceId unavailable")
+			end
+			return false
+		end
+		return true
+	end
+
+	method void LogGlobalQueueFallback(any owner, string reason)
+		if owner == nil then
+			return
+		end
+		owner.LastError = self:ReadString(reason, "Global queue unavailable") .. "; local queue fallback"
+		if owner._T == nil then
+			return
+		end
+		if owner._T.globalQueueFallbackReason == reason then
+			return
+		end
+		owner._T.globalQueueFallbackReason = reason
+		log("[BRMatchQueueStore] global queue fallback reason=" .. self:ReadString(reason, "unknown"))
 	end
 
 	method boolean IsDataStorageSuccess(any code)

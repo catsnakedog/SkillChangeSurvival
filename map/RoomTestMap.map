@@ -32,7 +32,7 @@
             {
               "@type": "MOD.Core.MapComponent",
               "Gravity": 1.8,
-              "IsInstanceMap": false,
+              "IsInstanceMap": true,
               "LeftBottom": {
                 "x": -98.0,
                 "y": -357.5

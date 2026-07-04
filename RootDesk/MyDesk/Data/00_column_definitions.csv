@@ -130,3 +130,12 @@ character_default_skills.csv,클래스별 기본 스킬,5,unique_skill_id,고유
 character_default_skills.csv,클래스별 기본 스킬,6,passive_id,패시브 id,string,,N,,클래스별 패시브 스킬 id,"p20,p29"
 character_default_skills.csv,클래스별 기본 스킬,7,starter_chain_id,시작 스킬체인 id,string,,N,,전투 시작 시 기본 장착할 skill_chains.chain_id,"p20,p29"
 character_default_skills.csv,클래스별 기본 스킬,8,notes,비고,string,,N,,데이터 작성 메모,"p20,p29"
+CharacterStat.csv,캐릭터 스탯,1,직업,직업,string,,N,,BRCharacterSystem 캐릭터 키와 매핑되는 직업명,
+CharacterStat.csv,캐릭터 스탯,2,체력,체력,int,10000,N,,레벨 배율 적용 전 기본 최대 체력,
+CharacterStat.csv,캐릭터 스탯,3,공격력,공격력,int,300,N,,레벨 배율 적용 전 기본 공격력,
+CharacterStat.csv,캐릭터 스탯,4,난이도,난이도,int,1,N,,직업 선택 UI/설명용 난이도,
+CharacterStat.csv,캐릭터 스탯,5,설명,설명,string,,N,,직업 설명,
+LevelStat.csv,레벨 스탯,1,레벨,레벨,int,1,N,,캐릭터/스킬 체인 레벨,
+LevelStat.csv,레벨 스탯,2,스탯 증가량,스탯 증가량,decimal,0.2,N,,스탯 배율은 1 + 스탯 증가량 * 레벨,
+LevelStat.csv,레벨 스탯,3,레벨업 요구 경험치,레벨업 요구 경험치,int,,N,,현재 레벨에서 다음 레벨까지 필요한 경험치,
+LevelStat.csv,레벨 스탯,4,해금 스킬 슬롯,해금 스킬 슬롯,int,1,N,,해당 레벨에서 사용 가능한 체인 슬롯 수,

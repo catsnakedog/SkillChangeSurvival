@@ -4295,6 +4295,13 @@ script BRSkillSystem extends Logic
 			self:Log("throw star damage dummy target=" .. target.Name .. " amount=" .. tostring(dmg))
 			return
 		end
+		---@type any
+		local partBox = self:GetPartBoxComponent(target)
+		if partBox ~= nil and partBox:IsDamageBox() == true then
+			partBox:ApplyPartBoxDamage(attacker, dmg, "throwstar")
+			self:Log("throw star damage partbox target=" .. target.Name .. " amount=" .. tostring(dmg))
+			return
+		end
 		local bot = self:GetBattleBotComponent(target)
 		if bot ~= nil then
 			bot:ApplyBotDamage(attacker, dmg, "throwstar")
@@ -5731,6 +5738,10 @@ script BRSkillSystem extends Logic
 			local empty = true
 			for statusId, status in pairs(statusMap) do
 				if status == nil or self:ReadString(status.ApplierUserId, "") == userId or self:IsStatusTargetUser(status, userId) == true then
+					if status ~= nil and self:ReadNumber(status.MoveSpeedRate, 1) < 0.999 then
+						self:RestoreTargetSlow(status.TargetEntity)
+						self:Log("status slow restored on removal entity=" .. tostring(entityId) .. " status=" .. tostring(statusId) .. " user=" .. self:ReadString(userId, ""))
+					end
 					statusMap[statusId] = nil
 				else
 					empty = false

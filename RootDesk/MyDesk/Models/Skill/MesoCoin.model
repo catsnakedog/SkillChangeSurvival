@@ -19,8 +19,7 @@
       "Id": "mesocoin",
       "Components": [
         "MOD.Core.TransformComponent",
-        "MOD.Core.SpriteRendererComponent",
-        "script.MesoCoinProjectile"
+        "MOD.Core.SpriteRendererComponent"
       ],
       "Properties": [],
       "Values": [

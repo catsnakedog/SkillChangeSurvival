@@ -1,4 +1,5 @@
 file_name,table_title,source_pages,column_count,sample_row_count,notes
+summon_actions.csv,소환수 액션 데이터,p60,18,4,스킬 체인용 논리 소환수 지속/공격/이펙트 데이터
 jobs.csv,직업/계열,p2,2,11,현재 기획 직업군 기준
 characters.csv,캐릭터,p20,6,1,기본 캐릭터 스탯
 skills.csv,스킬,"p8,p29,p44",15,48,CSV 기반 스킬 본체와 아이콘
@@ -6,7 +7,7 @@ effects.csv,이펙트,p22,4,81,공식 MapleStory 리소스 RUID 매핑
 skill_action_restrictions.csv,행동제한 데이터,"p22,p30",4,25,스킬별 시전 중 이동 제한
 events.csv,이벤트,"p24,p33,p44",4,61,프레임 이벤트와 액션 실행 연결
 area_target_captures.csv,범위 대상포착 데이터,"p41,p43,p44",6,26,히트박스 기반 타겟 포착
-rect_hitboxes.csv,히트박스 - 사각형 데이터,"p40,p44,p47",5,9,공통 사각 히트박스
+rect_hitboxes.csv,히트박스 - 사각형 데이터,"p40,p44,p47",5,10,공통 사각 히트박스
 circle_hitboxes.csv,히트박스 - 원형 데이터,p40,4,3,공통 원형 히트박스
 actions.csv,액션,"p34,p43,p44,p60",3,77,액션 타입과 요구 컨텍스트
 buff_actions.csv,버프 액션 데이터,p60,6,15,버프 확률과 즉시 회복 데이터 포함

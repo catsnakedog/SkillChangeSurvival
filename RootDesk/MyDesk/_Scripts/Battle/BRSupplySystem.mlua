@@ -9,6 +9,26 @@ script BRSupplySystem extends Logic
 
 	property number MaxSuppliesPerDrop = 0
 
+	property number SkillChestDropCount = 3
+
+	property number SupplyChestDropCount = 3
+
+	property number KioskSpawnDelaySeconds = 15
+
+	property number KioskSpawnCount = 2
+
+	property number SupplyDropCount = 1
+
+	property string BossMonsterModelId = "battlechainmonster"
+
+	property number BossSpawnYOffset = 0
+
+	property number MonsterLevelUpHpMultiplier = 1.5
+
+	property number MonsterLevelUpAttackMultiplier = 1.25
+
+	property number MonsterLevelUpRewardMultiplier = 1.25
+
 	property boolean VerboseLog = true
 
 	@Sync
@@ -25,6 +45,9 @@ script BRSupplySystem extends Logic
 
 	@Sync
 	property number LastSupplyVersion = 0
+
+	@Sync
+	property string LastSupplyAlertCells = ""
 
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
@@ -52,12 +75,14 @@ script BRSupplySystem extends Logic
 			self:SetSupplyRuntimeActive(supply, false)
 		end
 
+		local initialDropped = self:SpawnOneSkillChestPerRoom(targetMapName, candidates)
+
 		self.LastSupplyMapName = targetMapName
 		self.LastSupplyState = "Prepared"
 		self.LastSupplyCandidateCount = #candidates
-		self.LastSupplyDroppedCount = 0
+		self.LastSupplyDroppedCount = initialDropped
 		self.LastSupplyVersion = self.LastSupplyVersion + 1
-		self:Log("prepared map=" .. targetMapName .. " candidates=" .. tostring(#candidates))
+		self:Log("prepared map=" .. targetMapName .. " candidates=" .. tostring(#candidates) .. " initialChests=" .. tostring(initialDropped))
 		return #candidates
 	end
 
@@ -82,17 +107,11 @@ script BRSupplySystem extends Logic
 			return 0
 		end
 
-		local dropped = 0
 		local limit = self:GetMaxSuppliesPerDrop()
-		for index, supply in ipairs(candidates) do
-			if limit <= 0 or dropped < limit then
-				if self:SetSupplyRuntimeActive(supply, true) == true then
-					dropped = dropped + 1
-				end
-			else
-				self:SetSupplyRuntimeActive(supply, false)
-			end
+		if limit <= 0 then
+			limit = self:GetSupplyDropCount()
 		end
+		local dropped = self:SpawnSupplyDropForMap(targetMapName, limit)
 
 		self.LastSupplyMapName = targetMapName
 		self.LastSupplyState = "Dropped"
@@ -126,6 +145,46 @@ script BRSupplySystem extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
+	method void OnBattlePhaseChanged(string mapName, number phaseNumber)
+		-- Runs phase-specific supply events once per map and phase.
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.LastSupplyMapName, self:ReadString(self.DefaultMapName, "RoomTestMap")))
+		local phase = math.floor(self:ReadNumber(phaseNumber, 0))
+		local key = targetMapName .. ":" .. tostring(phase)
+		if self._T.phaseEvents[key] == true then
+			return
+		end
+		self._T.phaseEvents[key] = true
+
+		if phase == 3 then
+			local delay = self:GetKioskSpawnDelaySeconds()
+			_TimerService:SetTimerOnce(function() self:SpawnPhaseKiosks(targetMapName) end, delay)
+			self.LastSupplyState = "KioskPending"
+			self:Log("phase 3 kiosk scheduled map=" .. targetMapName .. " delay=" .. tostring(delay))
+		elseif phase == 4 then
+			local count = self:RefillOpenRoomChests(targetMapName)
+			self:PublishSupplyEvent(targetMapName, "Refill", count, "")
+		elseif phase == 5 then
+			local count = self:SpawnSupplyDropForMap(targetMapName, self:GetSupplyDropCount())
+			self:PublishSupplyEvent(targetMapName, "SupplyDrop", count, self.LastSupplyAlertCells)
+		elseif phase == 6 then
+			local count = self:LevelUpMonstersForMap(targetMapName)
+			self:PublishSupplyEvent(targetMapName, "MonsterLevelUp", count, "")
+		elseif phase == 7 then
+			local count = self:SpawnBossForMap(targetMapName)
+			self:PublishSupplyEvent(targetMapName, "Boss", count, "")
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SpawnPhaseKiosks(string mapName)
+		-- Spawns kiosk boxes in up to two empty anchors among the center nine open rooms.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.LastSupplyMapName, self:ReadString(self.DefaultMapName, "RoomTestMap")))
+		local count = self:SpawnKiosksForMap(targetMapName, self:GetKioskSpawnCount())
+		self:PublishSupplyEvent(targetMapName, "Kiosk", count, self.LastSupplyAlertCells)
+	end
+
+	@ExecSpace("ServerOnly")
 	@InspectorButton("Debug Prepare Supplies")
 	method void DebugPrepareSupplies()
 		-- Prepares supply anchors on the default test map.
@@ -144,6 +203,425 @@ script BRSupplySystem extends Logic
 	method void DebugClearSupplies()
 		-- Clears supply boxes on the default test map.
 		self:ClearSuppliesForMap(self:ReadString(self.DefaultMapName, "RoomTestMap"))
+	end
+
+	method number SpawnOneSkillChestPerRoom(string mapName, any candidates)
+		-- Activates at most one random skill chest anchor in each generated room.
+		local groups = self:GroupCandidatesByRoom(candidates)
+		local spawned = 0
+		for index, group in ipairs(groups) do
+			local supply = self:PickEmptySupplyFromGroup(group)
+			if supply ~= nil and self:SetSupplyRuntimeActiveWithKind(supply, true, "skill") == true then
+				spawned = spawned + 1
+			end
+		end
+		return spawned
+	end
+
+	method number RefillOpenRoomChests(string mapName)
+		-- Refills one skill chest in every currently open safe room that has an empty anchor.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local candidates = self:GetCandidatesForMap(targetMapName)
+		local groups = self:GroupCandidatesByRoom(candidates)
+		local spawned = 0
+		for index, group in ipairs(groups) do
+			if self:IsRoomOpenForSupplies(targetMapName, self:ReadString(group.RoomName, "")) == true and self:GroupHasActiveSupply(group) ~= true then
+				local supply = self:PickEmptySupplyFromGroup(group)
+				if supply ~= nil and self:SetSupplyRuntimeActiveWithKind(supply, true, "skill") == true then
+					spawned = spawned + 1
+				end
+			end
+		end
+		self:Log("refill map=" .. targetMapName .. " count=" .. tostring(spawned))
+		return spawned
+	end
+
+	method number SpawnSupplyDropForMap(string mapName, number count)
+		-- Spawns slime treasure boxes in empty safe-room anchors.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local candidates = self:GetEmptyOpenCandidates(targetMapName, false)
+		local spawned = self:ActivateRandomCandidates(targetMapName, candidates, math.max(1, math.floor(self:ReadNumber(count, 1))), "supply", "S")
+		self:Log("supply drop map=" .. targetMapName .. " count=" .. tostring(spawned))
+		return spawned
+	end
+
+	method number SpawnKiosksForMap(string mapName, number count)
+		-- Spawns candy-machine kiosks in empty center-nine safe-room anchors.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local candidates = self:GetEmptyOpenCandidates(targetMapName, true)
+		local spawned = self:ActivateRandomCandidates(targetMapName, candidates, math.max(1, math.floor(self:ReadNumber(count, 1))), "kiosk", "K")
+		self:Log("kiosk spawn map=" .. targetMapName .. " count=" .. tostring(spawned))
+		return spawned
+	end
+
+	method number SpawnBossForMap(string mapName)
+		-- Spawns the configured boss monster at the current map center when possible.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. targetMapName)
+		if mapEntity == nil then
+			self:Log("boss skipped reason=noMap map=" .. targetMapName)
+			return 0
+		end
+		local modelId = self:ReadString(self.BossMonsterModelId, "")
+		if modelId == "" then
+			self:Log("boss skipped reason=noModelId map=" .. targetMapName)
+			return 0
+		end
+		local center = self:GetMapCenterPosition(targetMapName)
+		local spawnPosition = Vector3(center.x, center.y + self:ReadNumber(self.BossSpawnYOffset, 0), 0)
+		local boss = _SpawnService:SpawnByModelId(modelId, "Phase7Boss_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000)), spawnPosition, mapEntity)
+		if boss == nil then
+			self:Log("boss spawn failed modelId=" .. modelId .. " map=" .. targetMapName)
+			return 0
+		end
+		self:Log("boss spawned modelId=" .. modelId .. " map=" .. targetMapName)
+		return 1
+	end
+
+	method number LevelUpMonstersForMap(string mapName)
+		-- Strengthens existing training monsters and battle bots for phase 6.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. targetMapName)
+		if mapEntity == nil then
+			self:Log("monster level-up skipped reason=noMap map=" .. targetMapName)
+			return 0
+		end
+
+		local hpMultiplier = self:GetMonsterLevelUpHpMultiplier()
+		local attackMultiplier = self:GetMonsterLevelUpAttackMultiplier()
+		local rewardMultiplier = self:GetMonsterLevelUpRewardMultiplier()
+		local count = 0
+
+		local dummyComponents = mapEntity:GetChildComponentsByTypeName("script.BRTrainingDummy", true)
+		if dummyComponents == nil or #dummyComponents <= 0 then
+			dummyComponents = mapEntity:GetChildComponentsByTypeName("BRTrainingDummy", true)
+		end
+		if dummyComponents ~= nil then
+			for index, component in ipairs(dummyComponents) do
+				if component ~= nil then
+					---@type BRTrainingDummy
+					local dummy = component
+					local oldHp = dummy:GetMaxHp()
+					dummy.MaxHp = math.max(oldHp + 1, math.floor(oldHp * hpMultiplier))
+					dummy.SkillExperienceReward = math.max(dummy:GetSkillExperienceReward(), math.floor(dummy:GetSkillExperienceReward() * rewardMultiplier))
+					dummy.MesoReward = math.max(dummy:GetMesoReward(), math.floor(dummy:GetMesoReward() * rewardMultiplier))
+					if dummy.CurrentHp > 0 then
+						dummy.CurrentHp = dummy:GetMaxHp()
+						dummy:UpdateNameTag()
+					end
+					count = count + 1
+				end
+			end
+		end
+
+		local botComponents = mapEntity:GetChildComponentsByTypeName("script.BRBattleBotController", true)
+		if botComponents == nil or #botComponents <= 0 then
+			botComponents = mapEntity:GetChildComponentsByTypeName("BRBattleBotController", true)
+		end
+		if botComponents ~= nil then
+			for index, component in ipairs(botComponents) do
+				if component ~= nil then
+					---@type BRBattleBotController
+					local bot = component
+					local oldHp = bot:GetMaxHp()
+					local oldAttack = bot:GetAttackDamage()
+					bot.MaxHp = math.max(oldHp + 1, math.floor(oldHp * hpMultiplier))
+					bot.AttackDamage = math.max(oldAttack + 1, math.floor(oldAttack * attackMultiplier))
+					bot.MesoReward = math.max(bot:GetMesoReward(), math.floor(bot:GetMesoReward() * rewardMultiplier))
+					if bot.BotState == "ALIVE" and bot.CurrentHp > 0 then
+						bot.CurrentHp = bot:GetMaxHp()
+						bot:UpdateNameTag()
+					end
+					count = count + 1
+				end
+			end
+		end
+
+		self:Log("phase 6 monster level-up map=" .. targetMapName .. " count=" .. tostring(count)
+			.. " hpMul=" .. tostring(hpMultiplier) .. " attackMul=" .. tostring(attackMultiplier))
+		return count
+	end
+
+	method number ActivateRandomCandidates(string mapName, any candidates, number count, string kind, string alertKind)
+		-- Picks random empty candidates, activates them, and publishes minimap alert cells.
+		local spawned = 0
+		local alertRecords = {}
+		local pool = self:CopyCandidateList(candidates)
+		local limit = math.max(0, math.floor(self:ReadNumber(count, 0)))
+		while spawned < limit and #pool > 0 do
+			local index = _UtilLogic:RandomIntegerRange(1, #pool)
+			local supply = pool[index]
+			table.remove(pool, index)
+			if supply ~= nil and self:SetSupplyRuntimeActiveWithKind(supply, true, kind) == true then
+				spawned = spawned + 1
+				local record = self:GetSupplyAlertRecord(mapName, supply, alertKind)
+				if record ~= "" then
+					table.insert(alertRecords, record)
+				end
+			end
+		end
+		self.LastSupplyAlertCells = self:JoinRecords(alertRecords)
+		return spawned
+	end
+
+	method any GetEmptyOpenCandidates(string mapName, boolean centerOnly)
+		-- Returns empty supply anchors in safe rooms, optionally restricted to the center nine cells.
+		local result = {}
+		local candidates = self:GetCandidatesForMap(mapName)
+		for index, supply in ipairs(candidates) do
+			local roomName = self:GetRoomNameForSupply(supply)
+			if self:IsSupplyEmpty(supply) == true and self:IsRoomOpenForSupplies(mapName, roomName) == true then
+				if centerOnly ~= true or self:IsRoomInCenterNine(mapName, roomName) == true then
+					table.insert(result, supply)
+				end
+			end
+		end
+		return result
+	end
+
+	method any GetCandidatesForMap(string mapName)
+		-- Returns cached candidates or recollects anchors for the target map.
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local candidates = self._T.candidatesByMap[targetMapName]
+		if candidates == nil or #candidates <= 0 then
+			candidates = self:CollectSupplyCandidates(targetMapName, nil)
+			self._T.candidatesByMap[targetMapName] = candidates
+		end
+		return candidates
+	end
+
+	method any GroupCandidatesByRoom(any candidates)
+		-- Groups supply anchors by the generated room that owns them.
+		local groups = {}
+		local byRoom = {}
+		if candidates == nil then
+			return groups
+		end
+		for index, supply in ipairs(candidates) do
+			local roomName = self:GetRoomNameForSupply(supply)
+			if roomName == "" then
+				roomName = self:GetEntityKey(supply)
+			end
+			if roomName ~= "" then
+				local group = byRoom[roomName]
+				if group == nil then
+					group = { RoomName = roomName, Supplies = {} }
+					byRoom[roomName] = group
+					table.insert(groups, group)
+				end
+				table.insert(group.Supplies, supply)
+			end
+		end
+		return groups
+	end
+
+	method Entity PickEmptySupplyFromGroup(any group)
+		-- Chooses one empty supply anchor from a room group.
+		if group == nil or group.Supplies == nil then
+			return nil
+		end
+		local candidates = {}
+		for index, supply in ipairs(group.Supplies) do
+			if self:IsSupplyEmpty(supply) == true then
+				table.insert(candidates, supply)
+			end
+		end
+		if #candidates <= 0 then
+			return nil
+		end
+		return candidates[_UtilLogic:RandomIntegerRange(1, #candidates)]
+	end
+
+	method boolean GroupHasActiveSupply(any group)
+		-- Checks whether a room already has an active chest or kiosk.
+		if group == nil or group.Supplies == nil then
+			return false
+		end
+		for index, supply in ipairs(group.Supplies) do
+			if supply ~= nil and isvalid(supply) == true and supply.Enable == true then
+				local component = supply:GetComponent("script.BRPartBox")
+				if component == nil then
+					component = supply:GetComponent("BRPartBox")
+				end
+				if component == nil then
+					return true
+				end
+				---@type BRPartBox
+				local partBox = component
+				if partBox.available == true then
+					return true
+				end
+			end
+		end
+		return false
+	end
+
+	method boolean IsSupplyEmpty(Entity supply)
+		-- Checks whether a supply anchor is currently free to receive a chest.
+		if supply == nil or isvalid(supply) ~= true then
+			return false
+		end
+		if supply.Enable == true then
+			local component = supply:GetComponent("script.BRPartBox")
+			if component == nil then
+				component = supply:GetComponent("BRPartBox")
+			end
+			if component == nil then
+				return false
+			end
+			---@type BRPartBox
+			local partBox = component
+			return partBox.available ~= true
+		end
+		return true
+	end
+
+	method boolean IsRoomOpenForSupplies(string mapName, string roomName)
+		-- Checks whether the room is currently inside the magnetic safe region.
+		local cell = self:GetLogicalCellForRoom(mapName, roomName)
+		if cell == nil then
+			return true
+		end
+		if _BRMagneticZoneSystem == nil or _BRMagneticZoneSystem.ZoneRunning ~= true then
+			return true
+		end
+		local row = math.floor(self:ReadNumber(cell.Row, 0))
+		local column = math.floor(self:ReadNumber(cell.Column, 0))
+		if row <= 0 or column <= 0 then
+			return true
+		end
+		return row >= self:ReadNumber(_BRMagneticZoneSystem.SafeMinRow, 1)
+			and row <= self:ReadNumber(_BRMagneticZoneSystem.SafeMaxRow, 999)
+			and column >= self:ReadNumber(_BRMagneticZoneSystem.SafeMinColumn, 1)
+			and column <= self:ReadNumber(_BRMagneticZoneSystem.SafeMaxColumn, 999)
+	end
+
+	method boolean IsRoomInCenterNine(string mapName, string roomName)
+		-- Checks whether the room belongs to the 3x3 center kiosk band.
+		local cell = self:GetLogicalCellForRoom(mapName, roomName)
+		if cell == nil then
+			return false
+		end
+		local graph = self:GetGraphForMap(mapName)
+		if graph == nil then
+			return false
+		end
+		local centerRow = math.floor((self:ReadNumber(graph.Rows, 1) + 1) * 0.5)
+		local centerColumn = math.floor((self:ReadNumber(graph.Columns, 1) + 1) * 0.5)
+		local row = math.floor(self:ReadNumber(cell.Row, 0))
+		local column = math.floor(self:ReadNumber(cell.Column, 0))
+		return math.abs(row - centerRow) <= 1 and math.abs(column - centerColumn) <= 1
+	end
+
+	method any GetLogicalCellForRoom(string mapName, string roomName)
+		-- Finds the logical row and column assigned to a physical generated room.
+		local safeRoomName = self:ReadString(roomName, "")
+		if safeRoomName == "" then
+			return nil
+		end
+		local graph = self:GetGraphForMap(mapName)
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+		for index, room in ipairs(graph.Rooms) do
+			local assigned = self:ReadString(room.AssignedRoomName, self:ReadString(room.Name, ""))
+			if assigned == safeRoomName or self:ReadString(room.Name, "") == safeRoomName then
+				return { Row = self:ReadNumber(room.Row, 0), Column = self:ReadNumber(room.Column, 0) }
+			end
+		end
+		return nil
+	end
+
+	method any GetGraphForMap(string mapName)
+		-- Returns the latest logical graph for a battle map.
+		if _BRRoomGraphGenerator == nil then
+			return nil
+		end
+		return _BRRoomGraphGenerator:GetLatestGraphForMap(self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap")))
+	end
+
+	method string GetRoomNameForSupply(Entity supply)
+		-- Walks up the entity tree to find the generated room name for an anchor.
+		local current = supply
+		local depth = 0
+		while current ~= nil and depth < 12 do
+			if self:IsGeneratedRoomName(current.Name) == true then
+				return self:ReadString(current.Name, "")
+			end
+			current = current.Parent
+			depth = depth + 1
+		end
+		return ""
+	end
+
+	method string GetSupplyAlertRecord(string mapName, Entity supply, string alertKind)
+		-- Builds one minimap alert record in row,column,kind form.
+		local roomName = self:GetRoomNameForSupply(supply)
+		local cell = self:GetLogicalCellForRoom(mapName, roomName)
+		if cell == nil then
+			return ""
+		end
+		return tostring(math.floor(self:ReadNumber(cell.Row, 0))) .. "," .. tostring(math.floor(self:ReadNumber(cell.Column, 0))) .. "," .. self:ReadString(alertKind, "S")
+	end
+
+	method string JoinRecords(any records)
+		-- Joins minimap alert records with semicolons.
+		local result = ""
+		if records == nil then
+			return result
+		end
+		for index, record in ipairs(records) do
+			local value = self:ReadString(record, "")
+			if value ~= "" then
+				if result ~= "" then
+					result = result .. ";"
+				end
+				result = result .. value
+			end
+		end
+		return result
+	end
+
+	method any CopyCandidateList(any candidates)
+		-- Copies a candidate list before random removal.
+		local result = {}
+		if candidates == nil then
+			return result
+		end
+		for index, supply in ipairs(candidates) do
+			table.insert(result, supply)
+		end
+		return result
+	end
+
+	method Vector2 GetMapCenterPosition(string mapName)
+		-- Uses the center logical room if available, falling back to map origin.
+		local graph = self:GetGraphForMap(mapName)
+		if graph ~= nil and graph.Rooms ~= nil then
+			local centerRow = math.floor((self:ReadNumber(graph.Rows, 1) + 1) * 0.5)
+			local centerColumn = math.floor((self:ReadNumber(graph.Columns, 1) + 1) * 0.5)
+			for index, room in ipairs(graph.Rooms) do
+				if math.floor(self:ReadNumber(room.Row, 0)) == centerRow and math.floor(self:ReadNumber(room.Column, 0)) == centerColumn then
+					local roomName = self:ReadString(room.AssignedRoomName, self:ReadString(room.Name, ""))
+					local physicalRoom = self:GetPhysicalRoom(mapName, self:GetPhysicalRoomRoot(mapName), roomName)
+					if physicalRoom ~= nil and physicalRoom.TransformComponent ~= nil then
+						local position = physicalRoom.TransformComponent.WorldPosition
+						return Vector2(position.x, position.y)
+					end
+				end
+			end
+		end
+		return Vector2(0, 0)
+	end
+
+	method void PublishSupplyEvent(string mapName, string state, number count, string alertCells)
+		-- Updates synced supply state and minimap alert payload.
+		self.LastSupplyMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		self.LastSupplyState = self:ReadString(state, "Supply")
+		self.LastSupplyDroppedCount = math.max(0, math.floor(self:ReadNumber(count, 0)))
+		self.LastSupplyAlertCells = self:ReadString(alertCells, "")
+		self.LastSupplyVersion = self.LastSupplyVersion + 1
 	end
 
 	method any CollectSupplyCandidates(string mapName, any graph)
@@ -250,17 +728,34 @@ script BRSupplySystem extends Logic
 
 	method boolean SetSupplyRuntimeActive(Entity supply, boolean active)
 		-- Toggles one supply prefab and its optional BRPartBox component.
+		return self:SetSupplyRuntimeActiveWithKind(supply, active, "skill")
+	end
+
+	method boolean SetSupplyRuntimeActiveWithKind(Entity supply, boolean active, string kind)
+		-- Toggles one supply prefab and configures its BRPartBox behavior.
 		if supply == nil or isvalid(supply) ~= true then
 			return false
 		end
 
 		local component = supply:GetComponent("script.BRPartBox")
+		if component == nil then
+			component = supply:GetComponent("BRPartBox")
+		end
+		if component == nil and active == true then
+			component = supply:AddComponent("script.BRPartBox")
+		end
 		if active == true then
 			supply:SetEnable(true)
 			supply:SetVisible(true)
 			if component ~= nil then
 				---@type BRPartBox
 				local partBox = component
+				partBox:ConfigureSupplyKind(self:ReadString(kind, "skill"))
+				if string.lower(self:ReadString(kind, "skill")) == "supply" then
+					partBox.DropCount = self:GetSupplyChestDropCount()
+				elseif string.lower(self:ReadString(kind, "skill")) == "skill" then
+					partBox.DropCount = self:GetSkillChestDropCount()
+				end
 				partBox:SetRuntimeActive(true)
 			end
 		else
@@ -366,6 +861,46 @@ script BRSupplySystem extends Logic
 		return math.max(0, math.floor(self:ReadNumber(self.MaxSuppliesPerDrop, 0)))
 	end
 
+	method number GetSkillChestDropCount()
+		-- Returns the number of skill parts dropped by wooden skill chests.
+		return math.max(1, math.floor(self:ReadNumber(self.SkillChestDropCount, 3)))
+	end
+
+	method number GetSupplyChestDropCount()
+		-- Returns the number of skill parts dropped by slime treasure chests.
+		return math.max(1, math.floor(self:ReadNumber(self.SupplyChestDropCount, 3)))
+	end
+
+	method number GetKioskSpawnDelaySeconds()
+		-- Returns the phase-3 kiosk spawn delay.
+		return math.max(0, self:ReadNumber(self.KioskSpawnDelaySeconds, 15))
+	end
+
+	method number GetKioskSpawnCount()
+		-- Returns the number of phase-3 kiosks to spawn.
+		return math.max(0, math.floor(self:ReadNumber(self.KioskSpawnCount, 2)))
+	end
+
+	method number GetSupplyDropCount()
+		-- Returns the number of phase-5 supply drops.
+		return math.max(0, math.floor(self:ReadNumber(self.SupplyDropCount, 1)))
+	end
+
+	method number GetMonsterLevelUpHpMultiplier()
+		-- Returns phase-6 monster HP multiplier.
+		return math.max(1, self:ReadNumber(self.MonsterLevelUpHpMultiplier, 1.5))
+	end
+
+	method number GetMonsterLevelUpAttackMultiplier()
+		-- Returns phase-6 battle-bot attack multiplier.
+		return math.max(1, self:ReadNumber(self.MonsterLevelUpAttackMultiplier, 1.25))
+	end
+
+	method number GetMonsterLevelUpRewardMultiplier()
+		-- Returns phase-6 reward multiplier for training monsters.
+		return math.max(1, self:ReadNumber(self.MonsterLevelUpRewardMultiplier, 1.25))
+	end
+
 	method string ResolveMapName(any matchRoom, string mapName)
 		-- Resolves the target map from explicit input or match room fields.
 		local value = self:ReadString(mapName, "")
@@ -413,6 +948,9 @@ script BRSupplySystem extends Logic
 		end
 		if self._T.candidatesByMap == nil then
 			self._T.candidatesByMap = {}
+		end
+		if self._T.phaseEvents == nil then
+			self._T.phaseEvents = {}
 		end
 	end
 

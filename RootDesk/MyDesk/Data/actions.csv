@@ -1,4 +1,20 @@
 ﻿action_id,action_type,required_context
+PirateMonkeySummon/summon,summon,위치|시전자
+PirateMonkeySummon2/summon,summon,위치|시전자
+PirateMonkeySummon3/summon,summon,위치|시전자
+PirateMonkeySummon4/summon,summon,위치|시전자
+PirateProjectileTrigger/projectile,projectile,위치|방향|시전자
+PirateProjectileTrigger/damage,damage,시전자|대상
+PirateProjectileTrigger/trigger,trigger,위치|방향|시전자
+PirateProjectileTrigger2/projectile,projectile,위치|방향|시전자
+PirateProjectileTrigger2/damage,damage,시전자|대상
+PirateProjectileTrigger2/trigger,trigger,위치|방향|시전자
+PirateProjectileTrigger3/projectile,projectile,위치|방향|시전자
+PirateProjectileTrigger3/damage,damage,시전자|대상
+PirateProjectileTrigger3/trigger,trigger,위치|방향|시전자
+PirateProjectileTrigger4/projectile,projectile,위치|방향|시전자
+PirateProjectileTrigger4/damage,damage,시전자|대상
+PirateProjectileTrigger4/trigger,trigger,위치|방향|시전자
 브랜디쉬/피해,damage,시전자|대상
 브랜디쉬2/피해,damage,시전자|대상
 브랜디쉬3/피해,damage,시전자|대상
@@ -18,3 +34,7 @@
 피어싱/투사체,projectile,시전자
 피어싱/피해,damage,시전자|대상
 피어싱/트리거,trigger,시전자
+샤프 슬래시/피해,damage,시전자|대상
+샤프 슬래시2/피해,damage,시전자|대상
+샤프 슬래시3/피해,damage,시전자|대상
+샤프 슬래시4/피해,damage,시전자|대상

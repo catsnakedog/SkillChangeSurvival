@@ -17,6 +17,8 @@ script BRTrainingDummy extends Component
 
 	property number SkillExperienceReward = 1
 
+	property number MesoReward = 5
+
 	property boolean PauseMovementWhenBroken = true
 
 	@Sync
@@ -94,8 +96,16 @@ script BRTrainingDummy extends Component
 		end
 
 		local leveled = _BRSkillSystem:GrantUserExperience(userId, reward, self:ReadString(source, "dummy"))
+		local meso = self:GetMesoReward()
+		if meso > 0 then
+			local addUserMeso = _BRSkillSystem["AddUserMeso"]
+			if addUserMeso ~= nil then
+				addUserMeso(_BRSkillSystem, userId, meso, self.Entity.Id)
+			end
+		end
 		self:Log("reward user=" .. userId
 			.. " exp=" .. tostring(reward)
+			.. " meso=" .. tostring(meso)
 			.. " leveled=" .. tostring(leveled)
 			.. " source=" .. self:ReadString(source, "dummy"))
 	end
@@ -283,6 +293,10 @@ script BRTrainingDummy extends Component
 
 	method number GetSkillExperienceReward()
 		return math.max(0, math.floor(self:ReadNumber(self.SkillExperienceReward, 1)))
+	end
+
+	method number GetMesoReward()
+		return math.max(0, math.floor(self:ReadNumber(self.MesoReward, 5)))
 	end
 
 	method string ReadString(any value, string fallback)

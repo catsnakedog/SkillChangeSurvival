@@ -1,5 +1,8 @@
 ﻿event_id,event_type,area_target_id,action_ids
-크루얼 스텝/타격,area,크루얼 스텝/범위,
+PirateMonkeySummon/summon,action,,PirateMonkeySummon/summon
+PirateMonkeySummon2/summon,action,,PirateMonkeySummon2/summon
+PirateMonkeySummon3/summon,action,,PirateMonkeySummon3/summon
+PirateMonkeySummon4/summon,action,,PirateMonkeySummon4/summon
 브랜디쉬/타격,area,브랜디쉬/범위,
 브랜디쉬2/타격,area,브랜디쉬2/범위,
 브랜디쉬3/타격,area,브랜디쉬3/범위,
@@ -12,3 +15,7 @@
 피어싱/발사,action,,피어싱/투사체
 피어싱/타격,action,,피어싱/피해
 피어싱/소멸,action,,피어싱/트리거
+샤프 슬래시/타격,area,샤프 슬래시/범위,
+샤프 슬래시2/타격,area,샤프 슬래시2/범위,
+샤프 슬래시3/타격,area,샤프 슬래시3/범위,
+샤프 슬래시4/타격,area,샤프 슬래시4/범위

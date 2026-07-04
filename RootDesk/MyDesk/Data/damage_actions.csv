@@ -1,5 +1,4 @@
 ﻿action_id,attack_power_coefficient_percent,hit_effect_ruid
-크루얼 스텝/피해,100,
 브랜디쉬/피해,80,38e9351c34b843ddbcc191c762e7464c
 브랜디쉬2/피해,120,7d4fd3b71abd42d6b37f49652d13a8d7
 브랜디쉬3/피해,100,b79cbdf6d06b487382f03d625a1fc464
@@ -9,3 +8,7 @@
 디바인스윙3/피해,150,c63011fbd1ae4060911379e36735f2e6
 디바인스윙4/피해,200,e3aca6d3ff0c488b95ff88f67af1f2db
 피어싱/피해,120,a2052fbfbbd94064b29dd3c1c651d65f
+샤프 슬래시/피해,100,9af100ddbf024e759415ff3c182421b9
+샤프 슬래시2/피해,120,315f5313f77c495e82f636840298950f
+샤프 슬래시3/피해,150,5dea20576bc64def8adac985ea73a9fc
+샤프 슬래시4/피해,200,7e6a8bb11f3b4a5d92a2297cb5221b2d

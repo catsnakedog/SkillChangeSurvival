@@ -1,4 +1,22 @@
 ﻿file_name,table_title,column_order,column_name,column_label,data_type,default_value,multiple,input_format,description,source_pages
+summon_actions.csv,소환수 액션 데이터,1,action_id,액션 id,string,,N,,actions.csv action_id,p60
+summon_actions.csv,소환수 액션 데이터,2,duration_frames,지속 프레임,int,1,N,,소환수가 유지되는 프레임,p60
+summon_actions.csv,소환수 액션 데이터,3,attack_interval_frames,공격 주기 프레임,int,20,N,,소환수 공격 간격,p60
+summon_actions.csv,소환수 액션 데이터,4,summon_offsets,소환 위치 오프셋,offset_list,"0,0",Y,"x,y;x,y",시전자 기준 px 오프셋 목록,p60
+summon_actions.csv,소환수 액션 데이터,5,stand_effect_ids,대기 이펙트 id,pipe_string,,Y,effect1|effect2,소환수 대기 이펙트,p60
+summon_actions.csv,소환수 액션 데이터,6,move_effect_ids,이동 이펙트 id,pipe_string,,Y,effect1|effect2,이동형 소환수 이동 이펙트,p60
+summon_actions.csv,소환수 액션 데이터,7,attack_effect_ids,공격 이펙트 id,pipe_string,,Y,effect1|effect2,소환수 공격 이펙트,p60
+summon_actions.csv,소환수 액션 데이터,8,summoned_effect_ids,소환 이펙트 id,pipe_string,,Y,effect1|effect2,소환 시 이펙트,p60
+summon_actions.csv,소환수 액션 데이터,9,die_effect_ids,소멸 이펙트 id,pipe_string,,Y,effect1|effect2,소환 종료 이펙트,p60
+summon_actions.csv,소환수 액션 데이터,10,hit_effect_ruid,타격 이펙트 RUID,string,,N,,피해 대상 위치 타격 이펙트,p60
+summon_actions.csv,소환수 액션 데이터,11,hitbox_ids,히트박스 id,pipe_string,,Y,hitbox1|hitbox2,소환수 공격 판정,p60
+summon_actions.csv,소환수 액션 데이터,12,target,대상,enum,적군,N,아군|적군,공격 대상군,p60
+summon_actions.csv,소환수 액션 데이터,13,max_targets,최대 대상 수,int,0,N,,공격 1회당 최대 대상 수,p60
+summon_actions.csv,소환수 액션 데이터,14,attack_power_coefficient_percent,공격력 계수,decimal,100,N,,공격력 기반 피해 계수,p60
+summon_actions.csv,소환수 액션 데이터,15,move_enabled,이동형 여부,bool,false,N,true|false,시전자를 부드럽게 따라오는지,p60
+summon_actions.csv,소환수 액션 데이터,16,follow_speed,추적 속도,decimal,360,N,,px/s 기준 추적 속도,p60
+summon_actions.csv,소환수 액션 데이터,17,visual_interval_seconds,반복 표시 간격,decimal,0.45,N,,대기/이동 이펙트 반복 간격,p60
+summon_actions.csv,소환수 액션 데이터,18,scale_rate,표시 배율,decimal,0.85,N,,소환수 이펙트 표시 배율,p60
 skills.csv,스킬,14,end_sound_ruid,종료 사운드 RUID,string,,N,,스킬 종료/해제 사운드 또는 보이스 RUID,p60
 skills.csv,스킬,15,common_speed,공용 스킬 속도,decimal,5.2,N,,근두운 같은 공용 이동 스킬 속도,p60
 jobs.csv,직업/계열,1,display_order,표시 순서,int,,N,,기획서 목록 순서,p2
@@ -68,11 +86,12 @@ projectile_spawn_actions.csv,투사체 생성 액션 데이터,1,id,id,string,,N
 projectile_spawn_actions.csv,투사체 생성 액션 데이터,2,projectile_sprite_ruid,투사체 스프라이트 RUID,string,,N,,투사체 스프라이트 RUID,"p49,p50"
 projectile_spawn_actions.csv,투사체 생성 액션 데이터,3,projectile_range,투사체 사거리,int,,N,,투사체 사거리,"p49,p50"
 projectile_spawn_actions.csv,투사체 생성 액션 데이터,4,projectile_speed,투사체 속도,decimal,,N,,투사체 속도,"p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,5,projectile_front_direction,투사체 방향 정면 여부,bool,,N,true|false,"투사체 방향이 스킬의 방향과 동일한지, 반대인지","p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,6,projectile_hitbox_id,투사체 히트박스 id,string,,N,,투사체 히트박스 id,"p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,7,projectile_pierce,투사체 관통,string,,N,,투사체 관통,"p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,8,collision_event_ids,충돌 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,9,expire_event_ids,소멸 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,5,projectile_spin_degrees_per_second,투사체 초당 회전각,decimal,0,Y,,초당 Z축 회전 각도. 0이면 회전 없음,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,6,projectile_front_direction,투사체 방향 정면 여부,bool,,N,true|false,"투사체 방향이 스킬의 방향과 동일한지, 반대인지","p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,7,projectile_hitbox_id,투사체 히트박스 id,string,,N,,투사체 히트박스 id,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,8,projectile_pierce,투사체 관통,string,0,N,0|1|always|-1,관통 횟수. always/infinite/inf/all/-1이면 사거리 끝까지 항상 관통,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,9,collision_event_ids,충돌 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,10,expire_event_ids,소멸 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
 ground_area_spawn_actions.csv,장판 데이터,1,action_id,액션 id,string,,N,,장판 생성 액션 id,p52
 ground_area_spawn_actions.csv,장판 데이터,2,ground_area_cycle,장판 주기,int,,N,,장판 주기,p52
 ground_area_spawn_actions.csv,장판 데이터,3,ground_area_event_ids,장판 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,p52

@@ -2,7 +2,7 @@
 script BRKeyConfigUI extends Component
 
 	-- Battle-HUD key rebinding panel. A toggle button opens a window that lists every rebindable fixed
-	-- action (Unique / Blink / Nimbus / Basic Attack) with its current key. Clicking a row enters capture
+	-- action (Unique / Blink / Nimbus / Chain Skill) with its current key. Clicking a row enters capture
 	-- mode inside _BRCommonSkillSystem; the next key press becomes the new binding (duplicate / reserved
 	-- keys are rejected). Confirm commits, Cancel rolls back to the snapshot taken when the panel opened.
 	property Entity OpenButton = "1f30028f-56db-4768-ae9f-8b7ae1ca2014"

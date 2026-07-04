@@ -19,7 +19,7 @@ script BRMatchButton extends Component
 
 	property number ClickCooldownSeconds = 0.5
 
-	property number QueueRequestDebounceSeconds = 3
+	property number QueueRequestDebounceSeconds = 0.25
 
 	property any buttonHandler = nil
 

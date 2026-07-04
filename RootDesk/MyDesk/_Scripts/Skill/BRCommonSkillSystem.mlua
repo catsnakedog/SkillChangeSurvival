@@ -102,9 +102,12 @@ script BRCommonSkillSystem extends Logic
 
 	property integer localNimbusEffectSerial = 0
 
+	@Sync
+	property string NimbusActiveUsersText = ""
+
 	-- Fixed-action key rebinding (client-local). Codes are KeyboardKey values (Q=113, C=99, E=101, R=114).
-	-- Attack has no static default in this project (DefaultPlayer engine binding), so it is discovered
-	-- at runtime via PlayerControllerComponent:GetActionName and remapped via SetActionKey.
+	-- The legacy "attack" action id below is the chain-skill hotkey. The native PlayerController
+	-- Attack action remains the basic attack key and is only discovered for conflict checks.
 	property string AttackActionName = "Attack"
 
 	property integer DefaultUniqueKeyCode = 113
@@ -123,7 +126,9 @@ script BRCommonSkillSystem extends Logic
 
 	property integer DefaultAttackKeyCode = 114
 
-	property boolean attackKeyDiscovered = false
+	property integer BasicAttackKeyCode = 0
+
+	property boolean basicAttackKeyDiscovered = false
 
 	property string capturingActionId = ""
 
@@ -142,6 +147,7 @@ script BRCommonSkillSystem extends Logic
 		self:EnsureRuntime()
 		if self:IsClient() then
 			self:StartClientInput()
+			self:ApplyNimbusActiveUsersText(self.NimbusActiveUsersText)
 		end
 		if self:IsServer() then
 			self:Log("ready common=Unique/Blink/Nimbus")
@@ -151,6 +157,7 @@ script BRCommonSkillSystem extends Logic
 	method void OnEndPlay()
 		if self:IsClient() then
 			self:StopNimbusEffect()
+			self:StopAllRemoteNimbusEffects()
 			self:SetLocalNimbusActive(false, "endplay")
 			self:StopClientInput()
 		end
@@ -160,6 +167,18 @@ script BRCommonSkillSystem extends Logic
 		if self:IsClient() then
 			self:TickLocalInputOverrides(delta)
 			self:TickLocalNimbus(delta)
+			self:TickRemoteNimbusVisuals()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnSyncProperty(string name, any value)
+		if name == "NimbusActiveUsersText" then
+			local activeUsersText = ""
+			if value ~= nil then
+				activeUsersText = tostring(value)
+			end
+			self:ApplyNimbusActiveUsersText(activeUsersText)
 		end
 	end
 
@@ -173,9 +192,9 @@ script BRCommonSkillSystem extends Logic
 		end
 		self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnCommonSkillKeyDown)
 		self.inputKeyUpHandler = _InputService:ConnectEvent(KeyUpEvent, self.OnCommonSkillKeyUp)
-		self:EnsureAttackKeyDiscovered()
+		self:EnsureBasicAttackKeyDiscovered()
 		self:RemoveBlinkKeyDefaultAction(true)
-		log("[BRCommonSkill] client input ready unique=" .. self:GetKeyDisplayName(self:GetUniqueKeyCode()) .. " blink=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " nimbus=" .. self:GetKeyDisplayName(self:GetNimbusKeyCode()) .. " chain=" .. self:GetActionKeyName("attack"))
+		log("[BRCommonSkill] client input ready unique=" .. self:GetKeyDisplayName(self:GetUniqueKeyCode()) .. " blink=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " nimbus=" .. self:GetKeyDisplayName(self:GetNimbusKeyCode()) .. " chain=" .. self:GetActionKeyName("attack") .. " basicAttack=" .. self:GetKeyDisplayName(self.BasicAttackKeyCode))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -213,6 +232,11 @@ script BRCommonSkillSystem extends Logic
 			end
 			self.localNimbusToggleKeyHeld = true
 			self:TryToggleNimbus()
+		else
+			local chainKeyCode = self:GetActionKeyCode("attack")
+			if chainKeyCode > 0 and key == KeyboardKey.CastFrom(chainKeyCode) then
+				self:TryUseChainSkill()
+			end
 		end
 	end
 
@@ -235,7 +259,7 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 		self._T.nextInputOverrideCheckAt = now + 0.5
-		self:EnsureAttackKeyDiscovered()
+		self:EnsureBasicAttackKeyDiscovered()
 		self:RemoveBlinkKeyDefaultAction(false)
 	end
 
@@ -337,6 +361,27 @@ script BRCommonSkillSystem extends Logic
 		end
 		self.localNextNimbusToggleAt = now + self:GetNimbusToggleCooldownSeconds()
 		self:SetLocalNimbusActive(self.localNimbusActive ~= true, "toggle")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void TryUseChainSkill()
+		-- Requests the server to cast the editable chain sequence without touching the native basic attack.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return
+		end
+		if localPlayer.PlayerComponent:IsDead() == true or localPlayer.PlayerComponent.Hp <= 0 then
+			return
+		end
+		if _BRSkillSystem == nil then
+			return
+		end
+		local userId = self:ReadString(localPlayer.PlayerComponent.UserId, "")
+		if userId == "" then
+			return
+		end
+		_BRSkillSystem:RequestCastNextChainSkill(userId)
+		log("[BRCommonSkill] chain request user=" .. userId .. " key=" .. self:GetActionKeyName("attack"))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -909,7 +954,23 @@ script BRCommonSkillSystem extends Logic
 			return
 		end
 		self._T.serverNimbusByUserId[userId] = active == true
-		self:Log("nimbus server user=" .. userId .. " active=" .. tostring(active == true))
+		self.NimbusActiveUsersText = self:BuildNimbusActiveUsersText()
+		self:PushNimbusVisualClient(userId, active == true)
+		self:Log("nimbus server user=" .. userId .. " active=" .. tostring(active == true) .. " users=" .. self.NimbusActiveUsersText)
+	end
+
+	@ExecSpace("ServerOnly")
+	@EventSender("Service", "UserService")
+	handler HandleNimbusUserLeaveEvent(UserLeaveEvent event)
+		self:EnsureRuntime()
+		local userId = self:ReadString(event.UserId, "")
+		if userId == "" or self._T.serverNimbusByUserId[userId] ~= true then
+			return
+		end
+		self._T.serverNimbusByUserId[userId] = nil
+		self.NimbusActiveUsersText = self:BuildNimbusActiveUsersText()
+		self:PushNimbusVisualClient(userId, false)
+		self:Log("nimbus server cleared user=" .. userId .. " reason=leave users=" .. self.NimbusActiveUsersText)
 	end
 
 	method boolean IsNimbusActiveForUser(string userId)
@@ -918,8 +979,206 @@ script BRCommonSkillSystem extends Logic
 	end
 
 	@ExecSpace("Client")
+	method void PushNimbusVisualClient(string userId, boolean active)
+		self:SetRemoteNimbusVisual(self:ReadString(userId, ""), active == true, "push")
+	end
+
+	@ExecSpace("Client")
 	method boolean IsLocalNimbusActive()
 		return self.localNimbusActive == true
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyNimbusActiveUsersText(string activeUsersText)
+		self:EnsureRuntime()
+		local desired = self:ParseNimbusActiveUsersText(activeUsersText)
+		local staleUsers = {}
+		for userId, active in pairs(self._T.remoteNimbusActiveByUserId) do
+			if desired[userId] ~= true then
+				table.insert(staleUsers, userId)
+			end
+		end
+		for index, userId in ipairs(staleUsers) do
+			self:SetRemoteNimbusVisual(userId, false, "sync")
+		end
+		for userId, active in pairs(desired) do
+			if active == true then
+				self:SetRemoteNimbusVisual(userId, true, "sync")
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void TickRemoteNimbusVisuals()
+		self:EnsureRuntime()
+		for userId, active in pairs(self._T.remoteNimbusActiveByUserId) do
+			if active == true then
+				local serial = self:ReadNumber(self._T.remoteNimbusEffectSerialByUserId[userId], 0)
+				if serial <= 0 then
+					local playerEntity = self:GetUserEntityForNimbus(userId)
+					if playerEntity ~= nil then
+						self:StartRemoteNimbusEffect(userId, playerEntity)
+						self:ApplyNimbusAvatarState(playerEntity, true)
+					end
+				end
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetRemoteNimbusVisual(string userId, boolean active, string reason)
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" or self:IsLocalUserId(safeUserId) == true then
+			return
+		end
+
+		if active == true then
+			self._T.remoteNimbusActiveByUserId[safeUserId] = true
+			local playerEntity = self:GetUserEntityForNimbus(safeUserId)
+			if playerEntity ~= nil then
+				self:StartRemoteNimbusEffect(safeUserId, playerEntity)
+				self:ApplyNimbusAvatarState(playerEntity, true)
+			end
+			return
+		end
+
+		self._T.remoteNimbusActiveByUserId[safeUserId] = nil
+		self:StopRemoteNimbusEffect(safeUserId, true)
+	end
+
+	@ExecSpace("ClientOnly")
+	method Entity GetUserEntityForNimbus(string userId)
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" or _UserService == nil then
+			return nil
+		end
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil or isvalid(playerEntity) ~= true then
+			return nil
+		end
+		return playerEntity
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean IsLocalUserId(string userId)
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return false
+		end
+		return self:ReadString(localPlayer.PlayerComponent.UserId, "") == self:ReadString(userId, "")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StartRemoteNimbusEffect(string userId, Entity playerEntity)
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" or playerEntity == nil or _EffectService == nil then
+			return
+		end
+		if self:ReadNumber(self._T.remoteNimbusEffectSerialByUserId[safeUserId], 0) > 0 then
+			return
+		end
+
+		local ruid = self:GetNimbusEffectRUID("repeat", self.NimbusEffectRUID)
+		if ruid == "" then
+			return
+		end
+
+		local scale = math.max(0.05, self:ReadNumber(self.NimbusEffectScale, 0.68))
+		local alpha = math.max(0, math.min(1, self:ReadNumber(self.NimbusEffectAlpha, 0.95)))
+		local options = {}
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = math.floor(self:ReadNumber(self.NimbusEffectOrderInLayer, 20))
+		options["Alpha"] = alpha
+		options["PlayRate"] = math.max(0.1, self:ReadNumber(self.NimbusEffectPlayRate, 1.0))
+		options["IgnoreMapLayerCheck"] = true
+		options["StartFrameIndex"] = math.max(0, math.floor(self:ReadNumber(self.NimbusEffectLoopStartFrame, 8)))
+		options["EndFrameIndex"] = math.max(0, math.floor(self:ReadNumber(self.NimbusEffectLoopEndFrame, 22)))
+
+		local serial = _EffectService:PlayEffectAttached(
+			ruid,
+			playerEntity,
+			Vector3(self:ReadNumber(self.NimbusEffectLocalX, 0), self:ReadNumber(self.NimbusEffectLocalY, -0.34), 0),
+			0,
+			Vector3(scale, scale, 1),
+			true,
+			options
+		)
+		self._T.remoteNimbusEffectSerialByUserId[safeUserId] = math.floor(self:ReadNumber(serial, 0))
+		if self._T.remoteNimbusEffectSerialByUserId[safeUserId] <= 0 then
+			log("[BRCommonSkill] remote nimbus effect failed user=" .. safeUserId .. " ruid=" .. ruid)
+		else
+			log("[BRCommonSkill] remote nimbus effect start user=" .. safeUserId .. " serial=" .. tostring(self._T.remoteNimbusEffectSerialByUserId[safeUserId]))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StopRemoteNimbusEffect(string userId, boolean playEndEffect)
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		local serial = math.floor(self:ReadNumber(self._T.remoteNimbusEffectSerialByUserId[safeUserId], 0))
+		self._T.remoteNimbusEffectSerialByUserId[safeUserId] = nil
+		local playerEntity = self:GetUserEntityForNimbus(safeUserId)
+		if serial > 0 and _EffectService ~= nil then
+			_EffectService:RemoveEffect(serial)
+			log("[BRCommonSkill] remote nimbus effect stop user=" .. safeUserId .. " serial=" .. tostring(serial))
+		end
+		if playerEntity ~= nil then
+			self:ApplyNimbusAvatarState(playerEntity, false)
+			if playEndEffect == true then
+				self:PlayNimbusEndEffect(playerEntity)
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void StopAllRemoteNimbusEffects()
+		self:EnsureRuntime()
+		local users = {}
+		for userId, active in pairs(self._T.remoteNimbusActiveByUserId) do
+			table.insert(users, userId)
+		end
+		for index, userId in ipairs(users) do
+			self._T.remoteNimbusActiveByUserId[userId] = nil
+			self:StopRemoteNimbusEffect(userId, false)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyNimbusAvatarState(Entity playerEntity, boolean active)
+		if playerEntity == nil or self.NimbusUseFlyAnimation ~= true then
+			return
+		end
+		local actionState = MapleAvatarBodyActionState.Stand
+		if active == true then
+			actionState = MapleAvatarBodyActionState.Fly
+		end
+		playerEntity:SendEvent(BodyActionStateChangeEvent(true, actionState, 0, 2147483647, 1))
+	end
+
+	method any ParseNimbusActiveUsersText(string activeUsersText)
+		local result = {}
+		for userId in string.gmatch(self:ReadString(activeUsersText, ""), "([^;]+)") do
+			local safeUserId = self:ReadString(userId, "")
+			if safeUserId ~= "" then
+				result[safeUserId] = true
+			end
+		end
+		return result
+	end
+
+	method string BuildNimbusActiveUsersText()
+		self:EnsureRuntime()
+		local users = {}
+		for userId, active in pairs(self._T.serverNimbusByUserId) do
+			if active == true then
+				table.insert(users, userId)
+			end
+		end
+		table.sort(users)
+		return table.concat(users, ";")
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1380,6 +1639,12 @@ script BRCommonSkillSystem extends Logic
 		if self._T.serverNimbusByUserId == nil then
 			self._T.serverNimbusByUserId = {}
 		end
+		if self._T.remoteNimbusActiveByUserId == nil then
+			self._T.remoteNimbusActiveByUserId = {}
+		end
+		if self._T.remoteNimbusEffectSerialByUserId == nil then
+			self._T.remoteNimbusEffectSerialByUserId = {}
+		end
 	end
 
 	method string GetSkillDataCell(string skillKey, string columnName, string fallback)
@@ -1757,6 +2022,11 @@ script BRCommonSkillSystem extends Logic
 			self.rebindStatusText = self:GetKeyDisplayName(code) .. " 키는 예약되어 변경할 수 없습니다"
 			return
 		end
+		self:EnsureBasicAttackKeyDiscovered()
+		if math.floor(self:ReadNumber(self.BasicAttackKeyCode, 0)) == code then
+			self.rebindStatusText = self:GetKeyDisplayName(code) .. " 키는 기본 공격 키라서 사용할 수 없습니다"
+			return
+		end
 		local conflictId = self:GetActionUsingKeyCode(code, actionId)
 		if conflictId ~= "" then
 			self.rebindStatusText = self:GetKeyDisplayName(code) .. " 키는 이미 '" .. self:GetActionLabel(conflictId) .. "' 에 사용 중입니다"
@@ -1780,8 +2050,6 @@ script BRCommonSkillSystem extends Logic
 			self.NimbusKeyCode = safeCode
 		elseif actionId == "attack" then
 			self.AttackKeyCode = safeCode
-			self.attackKeyDiscovered = true
-			self:ApplyAttackKeyToController(safeCode)
 		end
 	end
 
@@ -1795,36 +2063,9 @@ script BRCommonSkillSystem extends Logic
 	end
 
 	@ExecSpace("ClientOnly")
-	method void ApplyAttackKeyToController(integer code)
-		-- Remaps the DefaultPlayer basic-attack action to a new key (client-side action map).
-		local controller = self:GetLocalPlayerController()
-		if controller == nil then
-			return
-		end
-		local actionName = self:ReadString(self.AttackActionName, "Attack")
-		controller:RemoveAllActionKeyByActionName(actionName)
-		local safeCode = math.floor(self:ReadNumber(code, 0))
-		if safeCode > 0 then
-			controller:SetActionKey(KeyboardKey.CastFrom(safeCode), actionName)
-		end
-	end
-
-	@ExecSpace("ClientOnly")
-	method void EnsureAttackKeyDiscovered()
-		-- Finds which key currently fires the "Attack" PlayerActionEvent so it can be shown and remapped.
-		if self.attackKeyDiscovered == true then
-			return
-		end
-		local configuredCode = math.floor(self:ReadNumber(self.AttackKeyCode, self.DefaultAttackKeyCode))
-		if configuredCode > 0 then
-			self.AttackKeyCode = configuredCode
-			if math.floor(self:ReadNumber(self.DefaultAttackKeyCode, 0)) <= 0 then
-				self.DefaultAttackKeyCode = configuredCode
-			end
-			self.snapAttackKeyCode = configuredCode
-			self.attackKeyDiscovered = true
-			self:ApplyAttackKeyToController(configuredCode)
-			log("[BRCommonSkill] attack key configured key=" .. self:GetKeyDisplayName(configuredCode))
+	method void EnsureBasicAttackKeyDiscovered()
+		-- Finds which key currently fires the native "Attack" PlayerActionEvent without remapping it.
+		if self.basicAttackKeyDiscovered == true then
 			return
 		end
 		local controller = self:GetLocalPlayerController()
@@ -1836,23 +2077,22 @@ script BRCommonSkillSystem extends Logic
 		for index, code in ipairs(codes) do
 			local mapped = string.lower(self:ReadString(controller:GetActionName(KeyboardKey.CastFrom(code)), ""))
 			if mapped == actionName then
-				self.AttackKeyCode = code
-				self.DefaultAttackKeyCode = code
-				self.snapAttackKeyCode = code
-				self.attackKeyDiscovered = true
-				log("[BRCommonSkill] attack key discovered key=" .. self:GetKeyDisplayName(code))
+				self.BasicAttackKeyCode = code
+				self.basicAttackKeyDiscovered = true
+				log("[BRCommonSkill] basic attack key discovered key=" .. self:GetKeyDisplayName(code))
 				return
 			end
 		end
 		-- Player controller exists but no key maps to Attack; stop scanning to avoid wasted work.
-		self.attackKeyDiscovered = true
-		log("[BRCommonSkill] attack key not found (default player attack key unbound)")
+		self.BasicAttackKeyCode = 0
+		self.basicAttackKeyDiscovered = true
+		log("[BRCommonSkill] basic attack key not found")
 	end
 
 	@ExecSpace("ClientOnly")
 	method void SnapshotBindings()
 		-- Called when the key-config panel opens so Cancel can restore this exact state.
-		self:EnsureAttackKeyDiscovered()
+		self:EnsureBasicAttackKeyDiscovered()
 		self.capturingActionId = ""
 		self.rebindStatusText = ""
 		self.snapUniqueKeyCode = self:GetUniqueKeyCode()
@@ -1871,7 +2111,6 @@ script BRCommonSkillSystem extends Logic
 		local snapAttack = math.floor(self:ReadNumber(self.snapAttackKeyCode, 0))
 		if snapAttack ~= math.floor(self:ReadNumber(self.AttackKeyCode, 0)) then
 			self.AttackKeyCode = snapAttack
-			self:ApplyAttackKeyToController(snapAttack)
 		end
 		self:RemoveBlinkKeyDefaultAction(false)
 		self.rebindStatusText = "변경 사항을 되돌렸습니다"
@@ -1899,7 +2138,6 @@ script BRCommonSkillSystem extends Logic
 		local defaultAttack = math.floor(self:ReadNumber(self.DefaultAttackKeyCode, 0))
 		if defaultAttack > 0 then
 			self.AttackKeyCode = defaultAttack
-			self:ApplyAttackKeyToController(defaultAttack)
 		end
 		self:RemoveBlinkKeyDefaultAction(false)
 		self.rebindStatusText = "기본값으로 초기화했습니다"

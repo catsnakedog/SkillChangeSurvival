@@ -5,19 +5,17 @@ script BRRoomMiniMapUI extends Component
 
 	property Entity mapArea = "935c0429-e65c-4b60-94a0-a41cc48ec352"
 
+	property Entity roomBg = "b5310173-a6b2-49a3-9ea5-bb84ec78d8c8"
+
 	property TextComponent titleText = "c8d8f8fb-a528-458a-9a45-a3a59193f8fb"
 
 	property number RefreshSeconds = 0.1
 
 	property number SlowScanTicks = 5
 
-	property number MaxFootholds = 24
-
 	property number MaxItems = 12
 
 	property number MaxEnemies = 8
-
-	property number FootholdMargin = 0.3
 
 	property boolean VerboseLog = true
 
@@ -59,8 +57,8 @@ script BRRoomMiniMapUI extends Component
 			self._T.assignments = {}
 			self._T.roomCenterX = 0
 			self._T.roomCenterY = 0
-			self._T.roomHalfX = 5
-			self._T.roomHalfY = 5
+			self._T.roomHalfX = 10
+			self._T.roomHalfY = 7.5
 			self._T.enemyEntities = {}
 			self._T.itemRecords = {}
 		end
@@ -68,7 +66,7 @@ script BRRoomMiniMapUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void Refresh()
-		-- Updates room detection, static layers, and live markers.
+		-- Updates room detection, the baked room background, and live markers.
 		self:EnsureRuntime()
 
 		local visible = self:ShouldShow()
@@ -164,7 +162,7 @@ script BRRoomMiniMapUI extends Component
 	end
 
 	method void OnRoomChanged(any room)
-		-- Rebuilds static layers when the local player enters another room.
+		-- Swaps the baked room background and rebuilds portal marks when the player enters another room.
 		self.currentRoomKey = self:ReadString(room.Key, "")
 		self.currentRoomName = self:ReadString(room.RoomName, "")
 		self._T.roomCenterX = self:ReadNumber(room.CenterX, 0)
@@ -179,7 +177,7 @@ script BRRoomMiniMapUI extends Component
 			self.titleText.Text = "ROOM " .. tostring(room.Row) .. "-" .. tostring(room.Column)
 		end
 
-		self:RenderFootholds(mapName)
+		self:SetRoomBackground(self.currentRoomName)
 		self:RenderPortals(room.Row, room.Column)
 		self:ScanEnemies()
 		self:ScanItems()
@@ -187,81 +185,66 @@ script BRRoomMiniMapUI extends Component
 			.. " center=(" .. string.format("%.2f", self._T.roomCenterX) .. "," .. string.format("%.2f", self._T.roomCenterY) .. ")")
 	end
 
-	method void RenderFootholds(string mapName)
-		-- Draws in-room foothold segments as light gray bars.
-		local maxCount = math.max(1, math.floor(self:ReadNumber(self.MaxFootholds, 24)))
-		for index = 1, maxCount do
-			self:SetAreaChildActive("Fh_" .. tostring(index), false)
-		end
-
-		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap"))
-		if mapEntity == nil or mapEntity.FootholdComponent == nil then
-			self:Log("footholds skipped: map foothold component missing")
+	method void SetRoomBackground(string roomName)
+		-- Loads the pre-baked minimap image for this physical room, or hides the background if none exists.
+		if self.roomBg == nil then
 			return
 		end
 
-		local footholds = mapEntity.FootholdComponent:GetFootholdAll()
-		if footholds == nil then
+		local ruid = self:GetRoomImageRuid(roomName)
+		if ruid == "" then
+			self.roomBg.Enable = false
+			self:Log("room background missing image room=" .. self:ReadString(roomName, ""))
 			return
 		end
 
-		local margin = math.max(0, self:ReadNumber(self.FootholdMargin, 0.3))
-		local used = 0
-		local skipped = 0
-		for index, foothold in ipairs(footholds) do
-			if foothold ~= nil and self:IsSegmentInsideRoom(foothold.StartPoint, foothold.EndPoint, margin) == true then
-				used = used + 1
-				if used <= maxCount then
-					self:PlaceFootholdBar(used, foothold.StartPoint, foothold.EndPoint)
-				else
-					skipped = skipped + 1
-				end
-			end
+		if self.roomBg.SpriteGUIRendererComponent ~= nil then
+			-- Force-download/cache the UGC sprite so a runtime-only reference still renders.
+			local sprite = _ResourceService:LoadSpriteAndWait(ruid)
+			self.roomBg.SpriteGUIRendererComponent.ImageRUID = DataRef(ruid)
+			self:Log("bg set room=" .. self:ReadString(roomName, "") .. " ruid=" .. ruid .. " loaded=" .. tostring(sprite ~= nil))
 		end
-
-		if skipped > 0 then
-			self:Log("foothold pool exhausted: shown=" .. tostring(maxCount) .. " skipped=" .. tostring(skipped))
-		end
-		self:Log("footholds rendered count=" .. tostring(math.min(used, maxCount)) .. " total=" .. tostring(#footholds))
+		self.roomBg.Enable = true
 	end
 
-	method boolean IsSegmentInsideRoom(Vector2 startPoint, Vector2 endPoint, number margin)
-		-- Checks whether both segment endpoints belong to the current room rectangle.
-		if startPoint == nil or endPoint == nil then
-			return false
-		end
-		return self:IsPointInsideRoom(startPoint.x, startPoint.y, margin) == true
-			and self:IsPointInsideRoom(endPoint.x, endPoint.y, margin) == true
-	end
-
-	method boolean IsPointInsideRoom(number x, number y, number margin)
-		-- Checks whether one world point is inside the current room rectangle.
-		local safeMargin = self:ReadNumber(margin, 0)
-		return x >= self._T.roomCenterX - self._T.roomHalfX - safeMargin
-			and x <= self._T.roomCenterX + self._T.roomHalfX + safeMargin
-			and y >= self._T.roomCenterY - self._T.roomHalfY - safeMargin
-			and y <= self._T.roomCenterY + self._T.roomHalfY + safeMargin
-	end
-
-	method void PlaceFootholdBar(number index, Vector2 startPoint, Vector2 endPoint)
-		-- Positions, sizes, and rotates one foothold bar sprite.
-		local bar = self:GetAreaChild("Fh_" .. tostring(math.floor(index)))
-		if bar == nil or bar.UITransformComponent == nil then
-			return
+	method string GetRoomImageRuid(string roomName)
+		-- Returns the pre-uploaded minimap sprite RUID for one physical room name.
+		local name = self:ReadString(roomName, "")
+		if name == "" then
+			return ""
 		end
 
-		local scale = self:GetMapScale()
-		local dx = endPoint.x - startPoint.x
-		local dy = endPoint.y - startPoint.y
-		local length = math.sqrt(dx * dx + dy * dy)
-		local centerX = (startPoint.x + endPoint.x) * 0.5
-		local centerY = (startPoint.y + endPoint.y) * 0.5
-		local angle = math.deg(math.atan(dy, dx))
-
-		bar.UITransformComponent.RectSize = Vector2(math.max(2, length * scale), 3)
-		bar.UITransformComponent.anchoredPosition = self:ToMapPosition(centerX, centerY)
-		bar.UITransformComponent.UIRotation = Vector3(0, 0, angle)
-		bar.Enable = true
+		local imageMap = {
+			CornerNW = "0a19c0acc0aa4b6a864765dcef59030f",
+			CornerNE = "35dd94a94ae1451a94d8bb42696f056a",
+			CornerSW = "194cd611f0334ee48cfd58da15b4522d",
+			CornerSE = "702ee0ecfd15410c8e65e1b831f7cb6f",
+			Room_001 = "be6679daf2b64d91af616bec9baf8fa9",
+			Room_002 = "27141617d79241e9b653c79de87adcd0",
+			Room_003 = "7a9d49380ad24a4f80505fac7c05da4b",
+			Room_004 = "784b007309854f1d80a028a23109549c",
+			Room_005 = "e39d92d0206c4970a474d6de44a36043",
+			Room_006 = "1b420c7de90a4c82a25d232d105453fc",
+			Room_007 = "b3be3a1ff56f40c1b4e8c1e4a342fe01",
+			Room_008 = "81ee22b48b674805a61eca29d70c0170",
+			Room_009 = "13eda689030e4ff69e5aa52b2f842d01",
+			Room_010 = "f10d730437124819a4012f54ee3b1d23",
+			Room_011 = "7e5a629925fc46d08aab5789b46d6034",
+			Room_012 = "822ab074bcfd4c9d8a409c4bbe6ab420",
+			Room_013 = "3758386ccab944c7ba1aa985aec1e275",
+			Room_014 = "1b0bf12433f849089e2a565316146bd6",
+			Room_015 = "449b2a143908490eb1ab3317445d9e73",
+			Room_016 = "d0da90c8bd16461884fd3ddeebea22d4",
+			Room_017 = "41857926f70a40268f07242c5036abcf",
+			Room_018 = "212e725f91cd440b8d68a5a38649274c",
+			Room_019 = "faaa4c3ca8eb4265b9c64a058a8379b3",
+			Room_020 = "71d657b8eaae4d53b0dc918ef37ed4f7",
+			Room_021 = "6ebf705ec14f4b399b265496b0235a5f",
+			Room_022 = "39813b4677104ec29230cbfdb9c0c0ed",
+			Room_023 = "29f897425fb54881b87ea594d1b4844d",
+			Room_024 = "a9f7f5ca0b894c218339ff52b2f378d7",
+		}
+		return self:ReadString(imageMap[name], "")
 	end
 
 	method void RenderPortals(number row, number column)
@@ -299,7 +282,7 @@ script BRRoomMiniMapUI extends Component
 	end
 
 	method void ScanEnemies()
-		-- Caches same-map enemy candidates: other users plus battle bots.
+		-- Caches same-map dynamic markers: other players (red) plus battle-bot monsters (purple).
 		local result = {}
 		local mapName = self:ReadString(_BRRoomGraphGenerator.LastMiniMapMapName, "")
 		local localPlayer = _UserService.LocalPlayer
@@ -308,7 +291,7 @@ script BRRoomMiniMapUI extends Component
 		if users ~= nil then
 			for index, userEntity in ipairs(users) do
 				if isvalid(userEntity) and userEntity ~= localPlayer then
-					table.insert(result, userEntity)
+					table.insert(result, { Target = userEntity, MarkerColor = Color(1, 0.35, 0.35, 1) })
 				end
 			end
 		end
@@ -319,7 +302,7 @@ script BRRoomMiniMapUI extends Component
 			if bots ~= nil then
 				for index, bot in ipairs(bots) do
 					if bot ~= nil and isvalid(bot.Entity) then
-						table.insert(result, bot.Entity)
+						table.insert(result, { Target = bot.Entity, MarkerColor = Color(0.8, 0.45, 1, 1) })
 					end
 				end
 			end
@@ -355,7 +338,7 @@ script BRRoomMiniMapUI extends Component
 	end
 
 	method void UpdateLiveMarkers()
-		-- Repositions my marker, enemy markers, and item markers every tick.
+		-- Repositions my marker, enemy/player markers, and item markers every tick.
 		local localPlayer = _UserService.LocalPlayer
 		local me = self:GetAreaChild("Me")
 		if me ~= nil and me.UITransformComponent ~= nil and localPlayer ~= nil and localPlayer.TransformComponent ~= nil then
@@ -366,15 +349,16 @@ script BRRoomMiniMapUI extends Component
 
 		local maxEnemies = math.max(1, math.floor(self:ReadNumber(self.MaxEnemies, 8)))
 		local enemySlot = 0
-		for index, enemyEntity in ipairs(self._T.enemyEntities) do
+		for index, record in ipairs(self._T.enemyEntities) do
 			if enemySlot >= maxEnemies then
 				break
 			end
+			local enemyEntity = record.Target
 			if isvalid(enemyEntity) and self:IsEntityAlive(enemyEntity) == true and enemyEntity.TransformComponent ~= nil then
 				local position = enemyEntity.TransformComponent.WorldPosition
 				if self:IsPointInsideRoom(position.x, position.y, 0) == true then
 					enemySlot = enemySlot + 1
-					self:PlaceDotMarker("Enemy_" .. tostring(enemySlot), position.x, position.y, nil)
+					self:PlaceDotMarker("Enemy_" .. tostring(enemySlot), position.x, position.y, record.MarkerColor)
 				end
 			end
 		end
@@ -402,6 +386,15 @@ script BRRoomMiniMapUI extends Component
 		end
 	end
 
+	method boolean IsPointInsideRoom(number x, number y, number margin)
+		-- Checks whether one world point is inside the current room rectangle.
+		local safeMargin = self:ReadNumber(margin, 0)
+		return x >= self._T.roomCenterX - self._T.roomHalfX - safeMargin
+			and x <= self._T.roomCenterX + self._T.roomHalfX + safeMargin
+			and y >= self._T.roomCenterY - self._T.roomHalfY - safeMargin
+			and y <= self._T.roomCenterY + self._T.roomHalfY + safeMargin
+	end
+
 	method boolean IsEntityAlive(Entity target)
 		-- Checks player-like entities for a living state before showing a marker.
 		if target.PlayerComponent ~= nil then
@@ -427,19 +420,15 @@ script BRRoomMiniMapUI extends Component
 	end
 
 	method Vector2 ToMapPosition(number worldX, number worldY)
-		-- Converts a world position into a clamped map-area anchored position.
-		local scale = self:GetMapScale()
+		-- Converts a world position into a clamped map-area anchored position using independent x/y room scale.
+		-- Rooms are non-square (e.g. 20x15) while the map area is square, so x and y scale separately so the
+		-- room fills the area edge-to-edge and lines up with the baked room background and the edge portal marks.
 		local areaHalf = self:GetMapAreaHalf()
-		local x = (worldX - self._T.roomCenterX) * scale
-		local y = (worldY - self._T.roomCenterY) * scale
+		local scaleX = areaHalf.x / math.max(0.5, self._T.roomHalfX)
+		local scaleY = areaHalf.y / math.max(0.5, self._T.roomHalfY)
+		local x = (worldX - self._T.roomCenterX) * scaleX
+		local y = (worldY - self._T.roomCenterY) * scaleY
 		return Vector2(math.max(-areaHalf.x, math.min(areaHalf.x, x)), math.max(-areaHalf.y, math.min(areaHalf.y, y)))
-	end
-
-	method number GetMapScale()
-		-- Returns UI pixels per world unit for the current room.
-		local areaHalf = self:GetMapAreaHalf()
-		local roomWidth = math.max(0.5, self._T.roomHalfX * 2)
-		return (areaHalf.x * 2) / roomWidth
 	end
 
 	method Vector2 GetMapAreaHalf()
@@ -453,8 +442,8 @@ script BRRoomMiniMapUI extends Component
 
 	method Vector2 GetRoomHalf(string mapName)
 		-- Reads room half extents from the grid editor tool when available.
-		local width = 10
-		local height = 10
+		local width = 20
+		local height = 15
 		local toolEntity = _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, "RoomTestMap") .. "/GridMapEditorTool")
 		if toolEntity ~= nil then
 			---@type BRGridMapEditorTool
@@ -487,9 +476,9 @@ script BRRoomMiniMapUI extends Component
 	end
 
 	method void HideAllMarkers()
-		-- Hides every static marker child before the first render.
-		for index = 1, math.max(1, math.floor(self:ReadNumber(self.MaxFootholds, 24))) do
-			self:SetAreaChildActive("Fh_" .. tostring(index), false)
+		-- Hides the room background and every dynamic marker before the first render.
+		if self.roomBg ~= nil then
+			self.roomBg.Enable = false
 		end
 		for index = 1, math.max(1, math.floor(self:ReadNumber(self.MaxItems, 12))) do
 			self:SetAreaChildActive("Item_" .. tostring(index), false)

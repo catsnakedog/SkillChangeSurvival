@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd \\\"C:/Users/wjdgj/AppData/Local/Temp/claude/C--Users-wjdgj-Documents-GitHub-SkillChangeSurvival/8cc09def-3acb-420f-8cf7-58d044b41e9c/scratchpad\\\" && node batchgen.cjs\"}",
+  "error": "Exit code 1\nC:\\Users\\wjdgj\\Documents\\GitHub\\SkillChangeSurvival\\.claude\\skills\\msw-general\\scripts\\map\\msw_map_builder.cjs:21\r\n    if (err && err.code === \"ENOENT\") throw new Error(`${label} not found: ${filepath}`);\r\n                                      ^\r\n\r\nError: map not found: map/RoomTestMap.map\r\n    at readJsonFile (C:\\Users\\wjdgj\\Documents\\GitHub\\SkillChangeSurvival\\.claude\\skills\\msw-general\\scripts\\map\\msw_map_builder.cjs:21:45)\r\n    at MapBuilder.load (C:\\Users\\wjdgj\\Documents\\GitHub\\...",
+  "timestamp": "2026-07-04T11:14:15.185Z",
+  "retry_count": 1
+}

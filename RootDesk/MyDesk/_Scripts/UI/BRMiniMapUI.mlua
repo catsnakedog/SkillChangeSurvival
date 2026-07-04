@@ -68,7 +68,11 @@ script BRMiniMapUI extends Component
 		self:UpdateMyCell()
 		local version = self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapVersion, 0)
 		local playerVersion = self:ReadNumber(_BRRoomGraphGenerator.LastMiniMapPlayerVersion, 0)
-		local zoneStateKey = self:GetZoneStateKey() .. ":players:" .. tostring(playerVersion) .. ":me:" .. tostring(self.myRow) .. ":" .. tostring(self.myColumn)
+		local supplyVersion = 0
+		if _BRSupplySystem ~= nil then
+			supplyVersion = self:ReadNumber(_BRSupplySystem.LastSupplyVersion, 0)
+		end
+		local zoneStateKey = self:GetZoneStateKey() .. ":players:" .. tostring(playerVersion) .. ":supply:" .. tostring(supplyVersion) .. ":me:" .. tostring(self.myRow) .. ":" .. tostring(self.myColumn)
 		if version ~= self.lastVersion or zoneStateKey ~= self.lastZoneStateKey then
 			self.lastVersion = version
 			self.lastZoneStateKey = zoneStateKey
@@ -106,20 +110,25 @@ script BRMiniMapUI extends Component
 		local connections = self:ParseConnections(self:ReadString(_BRRoomGraphGenerator.LastMiniMapConnections, ""))
 		local assignments = self:ParseAssignments(self:ReadString(_BRRoomGraphGenerator.LastMiniMapAssignments, ""))
 		local playerCounts = self:ParsePlayerCounts(self:ReadString(_BRRoomGraphGenerator.LastMiniMapPlayerCounts, ""))
+		local supplyAlerts = self:ParseSupplyAlerts()
 
 		self:HideAllCellsAndLinks()
-		self:RenderCells(rows, columns, roomSet, assignments, playerCounts)
+		self:RenderCells(rows, columns, roomSet, assignments, playerCounts, supplyAlerts)
 		self:RenderConnections(rows, columns, connections, assignments)
 		self:UpdateLabels(rows, columns, #connections, self:GetTotalPlayerCount(playerCounts))
 		self:Log("render grid=" .. tostring(columns) .. "x" .. tostring(rows) .. " links=" .. tostring(#connections) .. " players=" .. tostring(self:GetTotalPlayerCount(playerCounts)) .. " zone=" .. self:GetZoneSummaryText())
 	end
 
-	method void RenderCells(number rows, number columns, any roomSet, any assignments, any playerCounts)
+	method void RenderCells(number rows, number columns, any roomSet, any assignments, any playerCounts, any supplyAlerts)
 		-- Shows every in-range grid cell and highlights cells that belong to the graph.
 		for row = 1, rows do
 			for column = 1, columns do
 				local child = self:GetGridChild(self:GetCellName(row, column))
 				local active = roomSet[self:GetRoomKey(row, column)] == true
+				local alertKind = ""
+				if supplyAlerts ~= nil then
+					alertKind = self:ReadString(supplyAlerts[self:GetRoomKey(row, column)], "")
+				end
 				if child ~= nil then
 					child.Enable = true
 					local zoneState = 0
@@ -129,6 +138,9 @@ script BRMiniMapUI extends Component
 					self:SetSpriteColor(child, active, false, zoneState)
 					if active == true and zoneState <= 0 and self:IsMyCell(row, column) == true and child.SpriteGUIRendererComponent ~= nil then
 						child.SpriteGUIRendererComponent.Color = Color(0.3, 1, 0.45, 0.95)
+					end
+					if active == true and alertKind ~= "" then
+						self:SetSupplyAlertColor(child, alertKind)
 					end
 				end
 				self:SetCellPlayerCount(row, column, active, self:ReadNumber(playerCounts[self:GetRoomKey(row, column)], 0))
@@ -228,6 +240,25 @@ script BRMiniMapUI extends Component
 			local count = math.max(0, math.floor(self:ReadNumber(parts[3], 0)))
 			if row > 0 and column > 0 and count > 0 then
 				result[self:GetRoomKey(row, column)] = count
+			end
+		end
+		return result
+	end
+
+	method any ParseSupplyAlerts()
+		-- Parses row,column,kind supply alert records from the supply system.
+		local result = {}
+		if _BRSupplySystem == nil then
+			return result
+		end
+		local value = self:ReadString(_BRSupplySystem.LastSupplyAlertCells, "")
+		for record in string.gmatch(value, "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local row = math.floor(self:ReadNumber(parts[1], 0))
+			local column = math.floor(self:ReadNumber(parts[2], 0))
+			local kind = self:ReadString(parts[3], "S")
+			if row > 0 and column > 0 then
+				result[self:GetRoomKey(row, column)] = kind
 			end
 		end
 		return result
@@ -791,6 +822,21 @@ script BRMiniMapUI extends Component
 		end
 	end
 
+	method void SetSupplyAlertColor(Entity entity, string kind)
+		-- Applies a high-priority minimap color for kiosk or supply events.
+		if entity == nil or entity.SpriteGUIRendererComponent == nil then
+			return
+		end
+		local safeKind = string.upper(self:ReadString(kind, "S"))
+		if safeKind == "K" then
+			entity.SpriteGUIRendererComponent.Color = Color(1, 0.5, 0.95, 0.98)
+		elseif safeKind == "S" then
+			entity.SpriteGUIRendererComponent.Color = Color(1, 0.92, 0.2, 0.98)
+		else
+			entity.SpriteGUIRendererComponent.Color = Color(0.62, 1, 0.36, 0.95)
+		end
+	end
+
 	method void UpdateLabels(number rows, number columns, number linkCount, number playerCount)
 		-- Updates static minimap title and compact graph summary text.
 		if self.titleText ~= nil then
@@ -858,6 +904,9 @@ script BRMiniMapUI extends Component
 		end
 
 		local rects = self:GetCellRects()
+		if rects == nil then
+			return nil
+		end
 		for index, rect in ipairs(rects) do
 			if self:IsPointInsideRoomRect(point, rect.Center, rect.HalfSize) == true then
 				return rect
@@ -889,7 +938,9 @@ script BRMiniMapUI extends Component
 			for key, roomName in pairs(assignments) do
 				local center = self:GetAssignedRoomCenter(mapName, roomName)
 				if center ~= nil then
-					local rowText, columnText = string.match(self:ReadString(key, ""), "^(%d+):(%d+)$")
+					local keyParts = { string.match(self:ReadString(key, ""), "^(%d+):(%d+)$") }
+					local rowText = keyParts[1]
+					local columnText = keyParts[2]
 					local row = math.floor(self:ReadNumber(rowText, 0))
 					local column = math.floor(self:ReadNumber(columnText, 0))
 					if row > 0 and column > 0 then

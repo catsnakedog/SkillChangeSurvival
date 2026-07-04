@@ -15,30 +15,82 @@ script BRPartBox extends Component
 
 	property boolean RequirePickupKey = true
 
+	@Sync
+	property string BoxKind = "legacy"
+
+	property number MaxHp = 3
+
+	@Sync
+	property number CurrentHp = 3
+
+	property number RewardMeso = 0
+
+	property string StandRUID = "b871399ae18d41c4b76c2ae79feefa7d"
+
+	property string HitRUID = "036fa49e90994b54a1686c1bb93aeafd"
+
+	property string DieRUID = "76815f621e354f57b5adb5b9faaf9eb3"
+
+	property string DamageSoundRUID = "5c72f477349742328ad0202da51dd06f"
+
+	property string DieSoundRUID = "0c10526afba64323818e19b1e5c422e0"
+
+	property string KioskStandRUID = "fe310ca2f8e74eb18858ff45273f61e4"
+
+	property string KioskActionRUID = "ea9a08bfa95c4217b1796262feaa737b"
+
+	property number KioskPrice = 10
+
+	property boolean DropPartsToWorld = false
+
+	property boolean DamageOpensBox = false
+
 	property boolean VerboseLog = false
 
 	property boolean available = true
 
+	property Entity lastAttacker = nil
+
 	property number pollTimerId = 0
 
-	@ExecSpace("ServerOnly")
+	property any touchHandler = nil
+
 	method void OnBeginPlay()
 		-- Starts the box interaction loop when this box is currently active.
+		if self:IsClient() then
+			self:RefreshKioskTouchHandler()
+			return
+		end
+		if self:IsServer() ~= true then
+			return
+		end
 		self:ForcePickupKeyMode()
 		if self.EnablePartBox == false then
 			self:SetVisualAvailable(false)
 			return
 		end
 		self.available = true
+		self.CurrentHp = self:GetMaxHp()
 		self:SetVisualAvailable(true)
 		self:ClearPollTimer()
-		self:Log("ready mode=key")
+		self:Log("ready mode=" .. self:ReadString(self.BoxKind, "legacy") .. " hp=" .. tostring(self.CurrentHp))
 	end
 
-	@ExecSpace("ServerOnly")
 	method void OnEndPlay()
 		-- Stops any active polling loop when the box leaves play.
-		self:ClearPollTimer()
+		if self:IsClient() then
+			self:DisconnectKioskTouchHandler()
+		end
+		if self:IsServer() then
+			self:ClearPollTimer()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnSyncProperty(string name, any value)
+		if name == "BoxKind" then
+			self:RefreshKioskTouchHandler()
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -47,8 +99,116 @@ script BRPartBox extends Component
 		self:ForcePickupKeyMode()
 		self.EnablePartBox = active == true
 		self.available = active == true
+		self.CurrentHp = self:GetMaxHp()
 		self:SetVisualAvailable(active == true)
 		self:ClearPollTimer()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ConfigureSupplyKind(string kind)
+		-- Applies the runtime behavior and visuals for generated supply anchors.
+		local safeKind = string.lower(self:ReadString(kind, "skill"))
+		if safeKind == "supply" then
+			self.BoxKind = "supply"
+			self.StandRUID = "de9e72502d03423db16ba8cb2cd85b6b"
+			self.HitRUID = "61d5e3b066a2401f987164693c9a7cea"
+			self.DieRUID = "033bf9e970b64f59ad2fd396fe62b30c"
+			self.DamageSoundRUID = "2e851e0529ad454580385222aa4f273e"
+			self.DieSoundRUID = "1beb34c6c4b24d1199f6adcb65f13743"
+			self.DropCount = math.max(3, math.floor(self:ReadNumber(self.DropCount, 3)))
+			self.DropPartsToWorld = true
+			self.DamageOpensBox = true
+			self.AutoEquipOnDrop = false
+			self.RespawnSeconds = 0
+		elseif safeKind == "kiosk" then
+			self.BoxKind = "kiosk"
+			self.StandRUID = self:ReadString(self.KioskStandRUID, "fe310ca2f8e74eb18858ff45273f61e4")
+			self.HitRUID = self:ReadString(self.KioskActionRUID, "ea9a08bfa95c4217b1796262feaa737b")
+			self.DieRUID = self:ReadString(self.KioskActionRUID, "ea9a08bfa95c4217b1796262feaa737b")
+			self.DropPartsToWorld = false
+			self.DamageOpensBox = false
+			self.AutoEquipOnDrop = false
+			self.RespawnSeconds = 0
+		else
+			self.BoxKind = "skill"
+			self.StandRUID = "b871399ae18d41c4b76c2ae79feefa7d"
+			self.HitRUID = "036fa49e90994b54a1686c1bb93aeafd"
+			self.DieRUID = "76815f621e354f57b5adb5b9faaf9eb3"
+			self.DamageSoundRUID = "5c72f477349742328ad0202da51dd06f"
+			self.DieSoundRUID = "0c10526afba64323818e19b1e5c422e0"
+			self.DropCount = math.max(3, math.floor(self:ReadNumber(self.DropCount, 3)))
+			self.DropPartsToWorld = true
+			self.DamageOpensBox = true
+			self.AutoEquipOnDrop = false
+			self.RespawnSeconds = 0
+		end
+		self.CurrentHp = self:GetMaxHp()
+		self:SetVisualAvailable(self.EnablePartBox == true and self.available == true)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshKioskTouchHandler()
+		-- Kiosks are opened by clicking the world object itself.
+		if string.lower(self:ReadString(self.BoxKind, "")) == "kiosk" then
+			self:ConnectKioskTouchHandler()
+		else
+			self:DisconnectKioskTouchHandler()
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ConnectKioskTouchHandler()
+		if self.touchHandler ~= nil then
+			return
+		end
+		self:EnsureTouchReceiver()
+		if self.Entity == nil then
+			return
+		end
+		self.touchHandler = self.Entity:ConnectEvent(TouchEvent, self.HandleKioskTouchEvent)
+		self:Log("kiosk touch ready")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisconnectKioskTouchHandler()
+		if self.touchHandler ~= nil and self.Entity ~= nil then
+			self.Entity:DisconnectEvent(TouchEvent, self.touchHandler)
+		end
+		self.touchHandler = nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EnsureTouchReceiver()
+		if self.Entity == nil then
+			return
+		end
+		local receiver = self.Entity.TouchReceiveComponent
+		if receiver == nil then
+			receiver = self.Entity:AddComponent("TouchReceiveComponent")
+		end
+		if receiver ~= nil then
+			receiver.AutoFitToSize = true
+			receiver.TouchArea = Vector2(1.2, 1.6)
+			receiver.Offset = Vector2(0, 0.15)
+			receiver.RelayEventToBehind = false
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void HandleKioskTouchEvent(TouchEvent event)
+		if string.lower(self:ReadString(self.BoxKind, "")) ~= "kiosk" then
+			return
+		end
+		local userId = self:GetLocalUserId()
+		if userId == "" then
+			return
+		end
+		self:PlayKioskActionLocal()
+		if _BRSkillPartTestUI ~= nil then
+			local position = self:GetEntityPosition2(self.Entity)
+			_BRSkillPartTestUI:OpenKiosk(userId, self:GetMapName(), position.x, position.y, self:ReadNumber(self.KioskPrice, 10))
+		end
+		self:Log("kiosk click user=" .. userId)
 	end
 
 	@ExecSpace("ServerOnly")
@@ -95,8 +255,42 @@ script BRPartBox extends Component
 			return false
 		end
 
+		if self:IsDamageBox() == true then
+			self:ShowPickupLabel(playerEntity, "Attack the box")
+			return false
+		end
+
 		self:OpenForPlayer(playerEntity)
 		return true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyPartBoxDamage(Entity attackerEntity, number rawDamage, string source)
+		-- Applies skill damage to attackable supply boxes.
+		if self.EnablePartBox == false or self.available == false then
+			return
+		end
+		if self:IsDamageBox() ~= true then
+			return
+		end
+		local damage = math.max(1, math.floor(self:ReadNumber(rawDamage, 1)))
+		self.lastAttacker = attackerEntity
+		self.CurrentHp = math.max(0, self:ReadNumber(self.CurrentHp, self:GetMaxHp()) - damage)
+		self:Log("hit kind=" .. self:ReadString(self.BoxKind, "skill")
+			.. " source=" .. self:ReadString(source, "skill")
+			.. " damage=" .. tostring(damage)
+			.. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()))
+		if self.CurrentHp <= 0 then
+			self:BreakBox(attackerEntity, source)
+		else
+			self:PlayHitFeedback()
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyTrainingDamage(Entity attackerEntity, number rawDamage, string source)
+		-- Compatibility entry point so the skill system can treat boxes like simple monsters.
+		self:ApplyPartBoxDamage(attackerEntity, rawDamage, source)
 	end
 
 	@ExecSpace("ServerOnly")
@@ -119,6 +313,9 @@ script BRPartBox extends Component
 	method void OpenForPlayer(Entity playerEntity)
 		-- Grants the configured part reward to one player and starts the respawn delay.
 		if self.available == false or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		if self:TryOpenKiosk(playerEntity) == true then
 			return
 		end
 		self.available = false
@@ -154,9 +351,86 @@ script BRPartBox extends Component
 	end
 
 	@ExecSpace("ServerOnly")
+	method boolean TryOpenKiosk(Entity playerEntity)
+		-- Opens the skill-part purchase kiosk when this entity is configured as a kiosk.
+		if string.lower(self:ReadString(self.BoxKind, "")) ~= "kiosk" then
+			return false
+		end
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return true
+		end
+		self:ShowPickupLabel(playerEntity, "Skill Kiosk")
+		self:PlayKioskAction()
+		if _BRSkillPartTestUI ~= nil then
+			local position = self:GetEntityPosition2(self.Entity)
+			local openKiosk = _BRSkillPartTestUI["OpenKiosk"]
+			if openKiosk ~= nil then
+				openKiosk(_BRSkillPartTestUI, self:ReadString(playerEntity.PlayerComponent.UserId, ""), self:GetMapName(), position.x, position.y, self:ReadNumber(self.KioskPrice, 10))
+			end
+		end
+		self:Log("kiosk open user=" .. self:ReadString(playerEntity.PlayerComponent.UserId, ""))
+		return true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void BreakBox(Entity attackerEntity, string source)
+		-- Breaks the box, drops skill parts at its own position, and hides the anchor.
+		if self.available == false then
+			return
+		end
+		self.available = false
+		self:PlayBreakFeedback()
+
+		local mapEntity = self.Entity.CurrentMap
+		local position2 = self:GetEntityPosition2(self.Entity)
+		if _BRSkillSystem ~= nil and self.DropPartsToWorld == true and mapEntity ~= nil then
+			local dropRandomPartsAt = _BRSkillSystem["DropRandomPartsAt"]
+			local dropped = 0
+			if dropRandomPartsAt ~= nil then
+				dropped = dropRandomPartsAt(_BRSkillSystem, mapEntity, Vector3(position2.x, position2.y, 0), self.DropCount, self.Entity.Id)
+			end
+			self:Log("broken kind=" .. self:ReadString(self.BoxKind, "skill") .. " drops=" .. tostring(dropped))
+		else
+			self:Log("broken kind=" .. self:ReadString(self.BoxKind, "skill") .. " drops=0")
+		end
+
+		if _BRSkillSystem ~= nil and self:GetRewardMeso() > 0 then
+			local userId = self:GetUserId(attackerEntity)
+			if userId ~= "" then
+				local addUserMeso = _BRSkillSystem["AddUserMeso"]
+				if addUserMeso ~= nil then
+					addUserMeso(_BRSkillSystem, userId, self:GetRewardMeso(), self.Entity.Id)
+				end
+			end
+		end
+
+		local hideDelay = 0.45
+		_TimerService:SetTimerOnce(function() self:FinishBrokenState() end, hideDelay)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void FinishBrokenState()
+		-- Hides or respawns a broken box after its death animation begins.
+		self:SetVisualAvailable(false)
+		if self.RespawnSeconds > 0 then
+			_TimerService:SetTimerOnce(function() self:RespawnBox() end, self.RespawnSeconds)
+		else
+			if self.Entity ~= nil then
+				self.Entity:SetVisible(false)
+				self.Entity:SetEnable(false)
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
 	method void RespawnBox()
 		-- Makes the box claimable again after its respawn delay.
 		self.available = true
+		self.CurrentHp = self:GetMaxHp()
+		if self.Entity ~= nil then
+			self.Entity:SetEnable(true)
+			self.Entity:SetVisible(true)
+		end
 		self:SetVisualAvailable(true)
 	end
 
@@ -169,6 +443,76 @@ script BRPartBox extends Component
 		self.Entity.Visible = value
 		if self.Entity.PolygonRendererComponent ~= nil then
 			self.Entity.PolygonRendererComponent.Enable = value
+		end
+		if self.Entity.SpriteRendererComponent ~= nil then
+			self.Entity.SpriteRendererComponent.Enable = value
+			if value == true then
+				self.Entity.SpriteRendererComponent.SpriteRUID = self:GetStandRUID()
+				self.Entity.SpriteRendererComponent.SortingLayer = "MapLayer0"
+				self.Entity.SpriteRendererComponent.OrderInLayer = 35
+				self.Entity.SpriteRendererComponent.IgnoreMapLayerCheck = true
+				self.Entity.SpriteRendererComponent.PlayRate = 1.0
+				self.Entity.SpriteRendererComponent:SetAlpha(1)
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PlayHitFeedback()
+		-- Plays hit feedback without changing availability.
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil and self:GetHitRUID() ~= "" then
+			self.Entity.SpriteRendererComponent.SpriteRUID = self:GetHitRUID()
+			_TimerService:SetTimerOnce(function() self:RestoreStandVisualIfAlive() end, 0.18)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PlayBreakFeedback()
+		-- Plays the configured death animation clip on the box renderer.
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil and self:GetDieRUID() ~= "" then
+			self.Entity.SpriteRendererComponent.Enable = true
+			self.Entity.SpriteRendererComponent.SpriteRUID = self:GetDieRUID()
+			self.Entity.SpriteRendererComponent.SortingLayer = "MapLayer0"
+			self.Entity.SpriteRendererComponent.OrderInLayer = 35
+			self.Entity.SpriteRendererComponent.IgnoreMapLayerCheck = true
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PlayKioskAction()
+		-- Plays the kiosk action clip briefly and then returns to idle.
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil and self:ReadString(self.KioskActionRUID, "") ~= "" then
+			self.Entity.SpriteRendererComponent.SpriteRUID = self:ReadString(self.KioskActionRUID, "")
+			_TimerService:SetTimerOnce(function() self:RestoreStandVisualIfAlive() end, 0.6)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayKioskActionLocal()
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil and self:ReadString(self.KioskActionRUID, "") ~= "" then
+			self.Entity.SpriteRendererComponent.SpriteRUID = self:ReadString(self.KioskActionRUID, "")
+			_TimerService:SetTimerOnce(function() self:RestoreStandVisualIfAliveLocal() end, 0.6)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RestoreStandVisualIfAliveLocal()
+		if self.EnablePartBox ~= true or self.available ~= true then
+			return
+		end
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil then
+			self.Entity.SpriteRendererComponent.SpriteRUID = self:GetStandRUID()
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RestoreStandVisualIfAlive()
+		-- Restores the idle animation if the box was not destroyed in the meantime.
+		if self.EnablePartBox ~= true or self.available ~= true then
+			return
+		end
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil then
+			self.Entity.SpriteRendererComponent.SpriteRUID = self:GetStandRUID()
 		end
 	end
 
@@ -199,6 +543,54 @@ script BRPartBox extends Component
 
 	method number GetTouchRadius()
 		return math.max(0.1, self:ReadNumber(self.TouchRadius, 1.25))
+	end
+
+	method boolean IsDamageBox()
+		-- Checks whether this box should be broken through attacks instead of opened with Z.
+		if self.DamageOpensBox == true then
+			return true
+		end
+		local kind = string.lower(self:ReadString(self.BoxKind, ""))
+		return kind == "skill" or kind == "supply"
+	end
+
+	method number GetMaxHp()
+		return math.max(1, math.floor(self:ReadNumber(self.MaxHp, 3)))
+	end
+
+	method number GetRewardMeso()
+		return math.max(0, math.floor(self:ReadNumber(self.RewardMeso, 0)))
+	end
+
+	method string GetStandRUID()
+		local kind = string.lower(self:ReadString(self.BoxKind, ""))
+		if kind == "kiosk" then
+			return self:ReadString(self.KioskStandRUID, self.StandRUID)
+		end
+		return self:ReadString(self.StandRUID, "")
+	end
+
+	method string GetHitRUID()
+		return self:ReadString(self.HitRUID, "")
+	end
+
+	method string GetDieRUID()
+		return self:ReadString(self.DieRUID, "")
+	end
+
+	method string GetUserId(Entity entity)
+		if entity ~= nil and entity.PlayerComponent ~= nil then
+			return self:ReadString(entity.PlayerComponent.UserId, "")
+		end
+		return ""
+	end
+
+	method string GetLocalUserId()
+		local player = _UserService.LocalPlayer
+		if player ~= nil and player.PlayerComponent ~= nil then
+			return self:ReadString(player.PlayerComponent.UserId, "")
+		end
+		return ""
 	end
 
 	method number GetPollSeconds()

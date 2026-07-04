@@ -25,9 +25,9 @@ script BRGridMapEditorTool extends Component
 
 	property boolean RefreshGeneratedRoomPhysicsOnSync = true
 
-	property number GeneratedRoomPhysicsNudgeAmount = 0.01
+	property number GeneratedRoomPhysicsNudgeAmount = 0.25
 
-	property number GeneratedRoomPhysicsRestoreDelaySeconds = 0.03
+	property number GeneratedRoomPhysicsRestoreDelaySeconds = 0.12
 
 	property boolean RemoveGeneratedRoomFloorFootholds = true
 
@@ -305,7 +305,7 @@ script BRGridMapEditorTool extends Component
 	end
 
 	method void RefreshGeneratedRoomPhysics(Entity root, string reason)
-		-- Nudges generated room roots for one tick so copied visual and physical caches re-align.
+		-- Nudges generated room roots upward before restoring so copied foothold physics caches re-align.
 		self:EnsureRuntimeTables()
 		if self.RefreshGeneratedRoomPhysicsOnSync ~= true then
 			return
@@ -314,7 +314,9 @@ script BRGridMapEditorTool extends Component
 			return
 		end
 		if self._T.generatedRoomPhysicsNudgePending == true then
-			self:Log("generated room physics nudge skipped reason=" .. self:ReadString(reason, "sync") .. " pending=true")
+			self._T.generatedRoomPhysicsNudgeQueued = true
+			self._T.generatedRoomPhysicsQueuedReason = self:ReadString(reason, "sync")
+			self:Log("generated room physics nudge queued reason=" .. self._T.generatedRoomPhysicsQueuedReason .. " pending=true")
 			return
 		end
 
@@ -338,7 +340,7 @@ script BRGridMapEditorTool extends Component
 						Y = position.y,
 						Z = position.z
 					}
-					child.TransformComponent.Position = Vector3(position.x + amount, position.y, position.z)
+					child.TransformComponent.Position = Vector3(position.x, position.y + amount, position.z)
 				end
 			end
 		end
@@ -349,7 +351,7 @@ script BRGridMapEditorTool extends Component
 
 		local safeReason = self:ReadString(reason, "sync")
 		self._T.generatedRoomPhysicsNudgePending = true
-		self:Log("generated room physics nudge reason=" .. safeReason .. " count=" .. tostring(count) .. " amount=" .. tostring(amount))
+		self:Log("generated room physics vertical nudge reason=" .. safeReason .. " count=" .. tostring(count) .. " amount=" .. tostring(amount) .. " restoreDelay=" .. tostring(self:GetGeneratedRoomPhysicsRestoreDelaySeconds()))
 		if _TimerService ~= nil then
 			_TimerService:SetTimerOnce(function()
 				self:RestoreGeneratedRoomPhysicsSnapshots(snapshots, safeReason)
@@ -376,6 +378,12 @@ script BRGridMapEditorTool extends Component
 		end
 		self._T.generatedRoomPhysicsNudgePending = false
 		self:Log("generated room physics restore reason=" .. self:ReadString(reason, "sync") .. " count=" .. tostring(count))
+		if self._T.generatedRoomPhysicsNudgeQueued == true then
+			local queuedReason = self:ReadString(self._T.generatedRoomPhysicsQueuedReason, "queued")
+			self._T.generatedRoomPhysicsNudgeQueued = false
+			self._T.generatedRoomPhysicsQueuedReason = ""
+			self:RefreshGeneratedRoomPhysics(self:GetGeneratedRoot(), queuedReason .. " retry")
+		end
 	end
 
 	method string SyncMapBoundsFromGrid()
@@ -1230,13 +1238,13 @@ script BRGridMapEditorTool extends Component
 	end
 
 	method number GetGeneratedRoomPhysicsNudgeAmount()
-		-- Returns the tiny movement used to force generated room physics refresh.
-		return math.max(0, self:ReadNumber(self.GeneratedRoomPhysicsNudgeAmount, 0.01))
+		-- Returns the upward movement used to force generated room physics refresh.
+		return math.max(0, self:ReadNumber(self.GeneratedRoomPhysicsNudgeAmount, 0.25))
 	end
 
 	method number GetGeneratedRoomPhysicsRestoreDelaySeconds()
 		-- Returns how long the generated rooms stay nudged before returning.
-		return math.max(0.01, self:ReadNumber(self.GeneratedRoomPhysicsRestoreDelaySeconds, 0.03))
+		return math.max(0.01, self:ReadNumber(self.GeneratedRoomPhysicsRestoreDelaySeconds, 0.12))
 	end
 
 	method boolean ShouldRemoveGeneratedRoomFloorFootholds()

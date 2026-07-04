@@ -19,7 +19,6 @@
       "Id": "brgridroom",
       "Components": [
         "MOD.Core.TransformComponent",
-        "MOD.Core.CustomFootholdComponent",
         "MOD.Core.PolygonRendererComponent"
       ],
       "Properties": [],
@@ -33,8 +32,8 @@
           },
           "Value": {
             "$type": "MOD.Core.MODVector3, MOD.Core",
-            "x": 0.0,
-            "y": 0.0,
+            "x": 0,
+            "y": 0,
             "z": 999.997
           }
         },
@@ -64,51 +63,6 @@
             "type": "System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
           },
           "Value": 2
-        },
-        {
-          "TargetType": "MOD.Core.CustomFootholdComponent",
-          "Name": "IsDynamicFoothold",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": true
-        },
-        {
-          "TargetType": "MOD.Core.CustomFootholdComponent",
-          "Name": "PhysicsInteractable",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": true
-        },
-        {
-          "TargetType": "MOD.Core.CustomFootholdComponent",
-          "Name": "FootholdWalkSpeedFactor",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 1.0
-        },
-        {
-          "TargetType": "MOD.Core.CustomFootholdComponent",
-          "Name": "FootholdDrag",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 1.0
-        },
-        {
-          "TargetType": "MOD.Core.CustomFootholdComponent",
-          "Name": "FootholdForce",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
-          },
-          "Value": 0.0
         }
       ],
       "EventLinks": [],
@@ -156,7 +110,7 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
-                  "x": 0.0,
+                  "x": 0,
                   "y": 4.65,
                   "z": -0.002
                 }
@@ -206,8 +160,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 0.0,
-                  "y": 0.0
+                  "x": 0,
+                  "y": 0
                 }
               },
               {
@@ -272,7 +226,7 @@
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
                   "x": 4.65,
-                  "y": 0.0,
+                  "y": 0,
                   "z": -0.002
                 }
               },
@@ -321,8 +275,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 0.0,
-                  "y": 0.0
+                  "x": 0,
+                  "y": 0
                 }
               },
               {
@@ -386,7 +340,7 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
-                  "x": 0.0,
+                  "x": 0,
                   "y": -4.65,
                   "z": -0.002
                 }
@@ -436,8 +390,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 0.0,
-                  "y": 0.0
+                  "x": 0,
+                  "y": 0
                 }
               },
               {
@@ -502,7 +456,7 @@
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
                   "x": -4.65,
-                  "y": 0.0,
+                  "y": 0,
                   "z": -0.002
                 }
               },
@@ -551,8 +505,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 0.0,
-                  "y": 0.0
+                  "x": 0,
+                  "y": 0
                 }
               },
               {
@@ -615,8 +569,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
-                  "x": 0.0,
-                  "y": 0.0,
+                  "x": 0,
+                  "y": 0,
                   "z": -0.001
                 }
               },
@@ -645,7 +599,7 @@
                   "$type": "MODNativeType",
                   "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
                 },
-                "Value": 24.0
+                "Value": 24
               },
               {
                 "TargetType": "MOD.Core.TextRendererComponent",
@@ -656,8 +610,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 10.0,
-                  "y": 4.0
+                  "x": 10,
+                  "y": 4
                 }
               },
               {

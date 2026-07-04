@@ -44,7 +44,7 @@ effects.csv,이펙트,1,effect_id,이펙트 id,string,,N,,스킬 데이터의 �
 effects.csv,이펙트,2,effect_ruid,이펙트 RUID,string,,N,,이펙트 RUID,p22
 effects.csv,이펙트,3,is_loop,루프 여부,bool,,N,,루프 여부,p22
 effects.csv,이펙트,4,total_length_frames,전체 길이,int,,N,,전체 길이,p22
-effects.csv,이펙트,5,scale,이펙트 스케일 배율,decimal,1,N,,이펙트 시각 크기 배율(1=기본,0.5=절반). 미입력 시 1.0. BRSkillSystem PlaySkillVisualForEvent에서 곱산 적용,추가
+effects.csv,이펙트,5,scale,이펙트 스케일 배율,decimal,1,N,,이펙트 시각 크기 배율(1=기본,0.5=절반). 미입력 시 1.0. BRSkillSystem PlaySkillVisualForEvent에서 곱산 적용
 skill_action_restrictions.csv,행동제한 데이터,1,skill_id,스킬 id,string,,N,,행동제한이 적용되는 스킬 id,"p22,p30"
 skill_action_restrictions.csv,행동제한 데이터,2,start_frame,행동 제한 시작 프레임,int,,N,,행동 제한 구간 시작,"p22,p30"
 skill_action_restrictions.csv,행동제한 데이터,3,end_frame,행동 제한 종료 프레임,int,,N,,행동 제한 구간 종료,"p22,p30"
@@ -85,11 +85,12 @@ projectile_spawn_actions.csv,투사체 생성 액션 데이터,1,id,id,string,,N
 projectile_spawn_actions.csv,투사체 생성 액션 데이터,2,projectile_sprite_ruid,투사체 스프라이트 RUID,string,,N,,투사체 스프라이트 RUID,"p49,p50"
 projectile_spawn_actions.csv,투사체 생성 액션 데이터,3,projectile_range,투사체 사거리,int,,N,,투사체 사거리,"p49,p50"
 projectile_spawn_actions.csv,투사체 생성 액션 데이터,4,projectile_speed,투사체 속도,decimal,,N,,투사체 속도,"p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,5,projectile_front_direction,투사체 방향 정면 여부,bool,,N,true|false,"투사체 방향이 스킬의 방향과 동일한지, 반대인지","p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,6,projectile_hitbox_id,투사체 히트박스 id,string,,N,,투사체 히트박스 id,"p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,7,projectile_pierce,투사체 관통,string,,N,,투사체 관통,"p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,8,collision_event_ids,충돌 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
-projectile_spawn_actions.csv,투사체 생성 액션 데이터,9,expire_event_ids,소멸 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,5,projectile_spin_degrees_per_second,투사체 초당 회전각,decimal,0,Y,,초당 Z축 회전 각도. 0이면 회전 없음,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,6,projectile_front_direction,투사체 방향 정면 여부,bool,,N,true|false,"투사체 방향이 스킬의 방향과 동일한지, 반대인지","p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,7,projectile_hitbox_id,투사체 히트박스 id,string,,N,,투사체 히트박스 id,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,8,projectile_pierce,투사체 관통,string,0,N,0|1|always|-1,관통 횟수. always/infinite/inf/all/-1이면 사거리 끝까지 항상 관통,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,9,collision_event_ids,충돌 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
+projectile_spawn_actions.csv,투사체 생성 액션 데이터,10,expire_event_ids,소멸 시 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,"p49,p50"
 ground_area_spawn_actions.csv,장판 데이터,1,action_id,액션 id,string,,N,,장판 생성 액션 id,p52
 ground_area_spawn_actions.csv,장판 데이터,2,ground_area_cycle,장판 주기,int,,N,,장판 주기,p52
 ground_area_spawn_actions.csv,장판 데이터,3,ground_area_event_ids,장판 이벤트 id,pipe_string,,Y,event1|event2|event3,복수 가능,p52

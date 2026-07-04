@@ -1,3 +1,4 @@
 {"t":0,"agent":"system","event":"skill_invoked","skill_name":"msw-combat-system"}
 {"t":0,"agent":"a6ed25a","agent_type":"unknown","event":"agent_stop","success":true,"duration_ms":0}
 {"t":0,"agent":"a85306b","agent_type":"unknown","event":"agent_stop","success":true,"duration_ms":0}
+{"t":0,"agent":"aa77ebc","agent_type":"unknown","event":"agent_stop","success":true,"duration_ms":0}

@@ -1,4 +1,4 @@
-hitbox_id,offset_x,offset_y,width,height
+﻿hitbox_id,offset_x,offset_y,width,height
 front_short,0,0,180,65
 front_mid,0,0,260,70
 front_wide,0,0,340,75
@@ -13,7 +13,10 @@ projectile_big,0,-12,180,38
 브랜디쉬2,0,0,170,65
 브랜디쉬3,0,0,170,65
 브랜디쉬4,0,0,170,65
+<<<<<<< HEAD
 샤프 슬래시,0,0,180,65
 샤프 슬래시2,0,0,240,75
 샤프 슬래시3,0,0,320,90
 샤프 슬래시4,0,0,420,110
+=======
+>>>>>>> ef5e1f9ad69fc03adbbe3dbca85be1018531e861

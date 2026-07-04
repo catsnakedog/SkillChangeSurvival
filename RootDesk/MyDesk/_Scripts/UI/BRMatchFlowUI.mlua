@@ -7,40 +7,74 @@ script BRMatchFlowUI extends Component
 
 	property number loadingEndAt = 0
 
+	property number loadingAutoHideAt = 0
+
+	property number effectTimerId = 0
+
+	property string LucidWalkRUID = "2035089d2e614442b3234143b30dced6"
+
+	property number LucidBaseX = -150
+
+	property number LucidBaseY = 118
+
+	property number LucidTravelPixels = 170
+
+	property number LucidWalkCycleSeconds = 2.4
+
+	property number CenterEffectBaseWidth = 760
+
+	property number CenterEffectBaseHeight = 300
+
 	property any closeHandler = nil
 
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
 		-- Initializes modal panels as hidden and non-blocking.
 		self:HideLoading("")
+		self:HideStartSequence()
 		self:HideResult()
 		self:ConnectButtons()
-		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshLoadingCountdown() end, 0.1, 0.1)
+		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshLoadingCountdown() end, 1 / 60, 0.1)
 	end
 
 	@ExecSpace("ClientOnly")
 	method void OnEndPlay()
+		-- Clears timers and event handlers owned by the match-flow UI.
 		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
 			_TimerService:ClearTimer(self.refreshTimerId)
 		end
 		self.refreshTimerId = 0
+		self:ClearEffectTimer()
 		self:DisconnectButtons()
 	end
 
 	@ExecSpace("Client")
-	method void ShowLoading(string message, number seconds)
+	method void ShowLoading(string message, number seconds, number curtainHoldSeconds)
 		-- Opens a full-screen loading curtain.
 		self:SetEntityActive("Loading", true)
+		self:SetEntityActive("Loading/LucidWalker", true)
+		self:SetEntityActive("StartSequence", false)
 		self:SetEntityActive("Result", false)
 		self:SetRootRaycastBlocked(true)
 		self:SetTextByPath("Loading/Message", self:ReadString(message, "MATCH LOADING..."))
+		self:SetTextByPath("Loading/Sub", "Loading battle arena")
+		self:SetTextByPath("Loading/Countdown", "")
+		self:SetSpriteRUIDByPath("Loading/LucidWalker", self:ReadString(self.LucidWalkRUID, ""))
 		local duration = math.max(0, self:ReadNumber(seconds, 0))
+		local hold = math.max(0, self:ReadNumber(curtainHoldSeconds, 0))
+		local now = _UtilLogic.ElapsedSeconds
+		if duration + hold > 0 then
+			self.loadingAutoHideAt = now + duration + hold
+		else
+			self.loadingAutoHideAt = 0
+		end
 		if duration > 0 then
-			self.loadingEndAt = _UtilLogic.ElapsedSeconds + duration
+			self.loadingEndAt = now + duration
 		else
 			self.loadingEndAt = 0
 		end
 		self:RefreshLoadingCountdown()
+		log("[BRMatchFlowUI] loading shown seconds=" .. tostring(duration) .. " curtainHold=" .. tostring(hold))
 	end
 
 	@ExecSpace("Client")
@@ -49,10 +83,40 @@ script BRMatchFlowUI extends Component
 		self:SetEntityActive("Loading", false)
 		self:RefreshRootRaycastBlocked()
 		self.loadingEndAt = 0
+		self.loadingAutoHideAt = 0
 		local safeMessage = self:ReadString(message, "")
 		if safeMessage ~= "" and _UIToast ~= nil then
 			_UIToast:ShowMessage(safeMessage)
 		end
+	end
+
+	@ExecSpace("Client")
+	method void PlayCenterEffect(string animationRuid, number scale, number seconds, string phase)
+		-- Plays a center-screen battle-start animationclip.
+		self:ClearEffectTimer()
+		local safeRuid = self:ResolveAnimationClipRUID(self:ReadString(animationRuid, ""))
+		if safeRuid == "" then
+			return
+		end
+
+		self:SetEntityActive("StartSequence", true)
+		self:SetEntityActive("StartSequence/CenterEffect", false)
+		self:SetSpriteRUIDByPath("StartSequence/CenterEffect", safeRuid)
+		self:ResizeCenterEffect(scale)
+		self:SetEntityActive("StartSequence/CenterEffect", true)
+
+		local duration = math.max(0, self:ReadNumber(seconds, 0))
+		if duration > 0 then
+			self.effectTimerId = _TimerService:SetTimerOnce(function() self:HideStartSequence() end, duration)
+		end
+		log("[BRMatchFlowUI] center effect phase=" .. self:ReadString(phase, "start") .. " ruid=" .. safeRuid .. " duration=" .. tostring(duration))
+	end
+
+	@ExecSpace("Client")
+	method void HideStartSequence()
+		-- Hides the battle-start animation layer.
+		self:ClearEffectTimer()
+		self:SetEntityActive("StartSequence", false)
 	end
 
 	@ExecSpace("Client")
@@ -93,12 +157,84 @@ script BRMatchFlowUI extends Component
 	end
 
 	method void RefreshLoadingCountdown()
-		if self.loadingEndAt <= 0 then
-			self:SetTextByPath("Loading/Countdown", "")
+		-- Updates loading presentation timers and the walking Lucid position.
+		local now = _UtilLogic.ElapsedSeconds
+		if self:IsEntityActive("Loading") == true then
+			self:RefreshLucidWalker(now)
+		end
+		if self.loadingAutoHideAt > 0 and now >= self.loadingAutoHideAt then
+			self:HideLoading("")
 			return
 		end
-		local remaining = math.max(0, math.ceil(self.loadingEndAt - _UtilLogic.ElapsedSeconds))
-		self:SetTextByPath("Loading/Countdown", tostring(remaining))
+		self:SetTextByPath("Loading/Countdown", "")
+		if self.loadingEndAt <= 0 then
+			return
+		end
+	end
+
+	method void RefreshLucidWalker(number now)
+		-- Moves the Lucid loading sprite so the walk clip has screen motion.
+		local entity = self:GetEntity("Loading/LucidWalker")
+		if entity == nil or entity.UITransformComponent == nil then
+			return
+		end
+
+		local cycleSeconds = math.max(0.1, self:ReadNumber(self.LucidWalkCycleSeconds, 2.4))
+		local cycle = math.fmod(self:ReadNumber(now, 0), cycleSeconds) / cycleSeconds
+		local baseX = self:ReadNumber(self.LucidBaseX, -150)
+		local baseY = self:ReadNumber(self.LucidBaseY, 118)
+		local travel = math.max(0, self:ReadNumber(self.LucidTravelPixels, 170))
+		local bob = math.sin(cycle * 6.28318530718) * 5
+		entity.UITransformComponent.anchoredPosition = Vector2(baseX - travel * cycle, baseY + bob)
+	end
+
+	method void ResizeCenterEffect(number scale)
+		-- Applies the requested presentation scale to the center animation slot.
+		local entity = self:GetEntity("StartSequence/CenterEffect")
+		if entity == nil or entity.UITransformComponent == nil then
+			return
+		end
+
+		local safeScale = math.max(0.05, self:ReadNumber(scale, 1))
+		local width = math.max(1, self:ReadNumber(self.CenterEffectBaseWidth, 760) * safeScale)
+		local height = math.max(1, self:ReadNumber(self.CenterEffectBaseHeight, 300) * safeScale)
+		entity.UITransformComponent.RectSize = Vector2(width, height)
+	end
+
+	method void SetSpriteRUIDByPath(string relativePath, string ruid)
+		-- Assigns a sprite or animationclip RUID to a UI sprite entity.
+		local entity = self:GetEntity(relativePath)
+		if entity == nil or entity.SpriteGUIRendererComponent == nil then
+			return
+		end
+
+		local safeRuid = self:ResolveAnimationClipRUID(self:ReadString(ruid, ""))
+		if safeRuid == "" then
+			return
+		end
+		entity.SpriteGUIRendererComponent.ImageRUID = DataRef(safeRuid)
+		entity.SpriteGUIRendererComponent.StartFrameIndex = 0
+		entity.SpriteGUIRendererComponent.EndFrameIndex = 2147483647
+		entity.SpriteGUIRendererComponent.PlayRate = 1
+	end
+
+	method string ResolveAnimationClipRUID(string value)
+		-- Converts Maker/search display ids into actual animationclip resource RUIDs.
+		local safeValue = self:ReadString(value, "")
+		if safeValue == "animationclip-1092315" then
+			return "3b765e2b2a68476996ea77b2e5b8bcb4"
+		elseif safeValue == "animationclip-1092321" then
+			return "1dea1763a5fb4c5da2e06411183dbca8"
+		end
+		return safeValue
+	end
+
+	method void ClearEffectTimer()
+		-- Clears the auto-hide timer used by the center presentation effect.
+		if self.effectTimerId ~= nil and self.effectTimerId > 0 then
+			_TimerService:ClearTimer(self.effectTimerId)
+		end
+		self.effectTimerId = 0
 	end
 
 	method Entity GetEntity(string relativePath)

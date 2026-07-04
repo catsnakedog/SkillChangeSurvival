@@ -15,6 +15,22 @@ script BRPortalConnectionSystem extends Logic
 
 	property number ReuseCooldownSeconds = 1
 
+	property number PortalExitGroundYOffset = 0.12
+
+	property number PortalExitGroundSearchUp = 4
+
+	property number PortalExitGroundSearchDown = 16
+
+	property string PortalVisualStandRUID = "2dd3fc7ae5864a0cb35eca3cadd284b9"
+
+	property string PortalVisualCondition2StandRUID = "018490c89cf94f40859704167df57b09"
+
+	property string PortalVisualCondition3StandRUID = "92d06355e9844e359ef7b53c235c3116"
+
+	property number PortalVisualScale = 1
+
+	property number PortalVisualOrderInLayer = 36
+
 	property number ClientRequestCooldownSeconds = 0.15
 
 	property boolean InstantCameraFollow = true
@@ -91,7 +107,9 @@ script BRPortalConnectionSystem extends Logic
 		if graph.PortalLinks ~= nil then
 			linkCount = #graph.PortalLinks
 		end
-		self.LastPortalInstallSummary = "map=" .. mapName .. " links=" .. tostring(linkCount)
+		local pairIssueCount = self:ValidatePortalLinkPairs(graph)
+		self:ConfigureMapPortalAnchors(mapName, graph, true)
+		self.LastPortalInstallSummary = "map=" .. mapName .. " links=" .. tostring(linkCount) .. " pairIssues=" .. tostring(pairIssueCount)
 		self:Log("installed " .. self.LastPortalInstallSummary)
 	end
 
@@ -104,10 +122,194 @@ script BRPortalConnectionSystem extends Logic
 			return
 		end
 
+		local graph = self._T.graphsByMap[safeMapName]
+		if graph ~= nil then
+			self:ConfigureMapPortalAnchors(safeMapName, graph, false)
+		end
 		self._T.graphsByMap[safeMapName] = nil
 		self._T.cooldownUntil = {}
 		self._T.arrivalPortalKeyByUser = {}
 		self:Log("cleared map=" .. safeMapName)
+	end
+
+	method void ConfigureMapPortalAnchors(string mapName, any graph, boolean activeGraph)
+		-- Treats authored portal entities as position/trigger anchors and paints runtime visuals from the crack resource clips.
+		if graph == nil then
+			return
+		end
+		local root = self:GetPhysicalRoomRoot(mapName)
+		if root == nil then
+			self:Log("portal visuals skipped: room root missing map=" .. self:ReadString(mapName, ""))
+			return
+		end
+
+		local resetCount = self:ConfigureAllGraphRoomPortalAnchors(mapName, graph, root, false)
+		local activeCount = 0
+		local missingCount = 0
+		if activeGraph == true and graph.PortalLinks ~= nil then
+			for index, link in ipairs(graph.PortalLinks) do
+				if link ~= nil then
+					local portal = self:GetPhysicalPortal(mapName, root, link.FromRoomName, link.FromDirection)
+					if self:ConfigurePortalAnchorVisual(portal, link, true) == true then
+						activeCount = activeCount + 1
+					else
+						missingCount = missingCount + 1
+					end
+				end
+			end
+		end
+
+		self:Log("portal visuals map=" .. self:ReadString(mapName, "")
+			.. " reset=" .. tostring(resetCount)
+			.. " active=" .. tostring(activeCount)
+			.. " missing=" .. tostring(missingCount))
+	end
+
+	method number ConfigureAllGraphRoomPortalAnchors(string mapName, any graph, Entity root, boolean active)
+		-- Applies one visibility state to every physical portal listed in the graph's room candidate pool.
+		if graph == nil or root == nil or graph.PhysicalRooms == nil then
+			return 0
+		end
+
+		local count = 0
+		local directions = { "North", "East", "South", "West" }
+		for index, candidate in ipairs(graph.PhysicalRooms) do
+			if candidate ~= nil then
+				local roomName = self:ReadString(candidate.Name, "")
+				for directionIndex, direction in ipairs(directions) do
+					local portal = self:GetPhysicalPortal(mapName, root, roomName, direction)
+					if portal ~= nil then
+						if self:ConfigurePortalAnchorVisual(portal, nil, active == true) == true then
+							count = count + 1
+						end
+					end
+				end
+			end
+		end
+		return count
+	end
+
+	method boolean ConfigurePortalAnchorVisual(Entity portal, any link, boolean active)
+		-- Replaces the old polygon debug rectangle with the supplied animationclip RUID.
+		if portal == nil or isvalid(portal) ~= true then
+			return false
+		end
+
+		local direction = ""
+		if link ~= nil then
+			direction = self:ReadString(link.FromDirection, "")
+		end
+		if portal.PortalComponent ~= nil then
+			portal.PortalComponent.BoxOffset = Vector2(0, 0)
+			portal.PortalComponent.BoxSize = self:GetPortalBoxSize(direction)
+			portal.PortalComponent.Enable = false
+			portal.PortalComponent.PortalEntityRef = nil
+		end
+		if portal.PolygonRendererComponent ~= nil then
+			portal.PolygonRendererComponent.Enable = false
+		end
+		if portal.SpriteRendererComponent == nil and active == true then
+			portal:AddComponent("SpriteRendererComponent")
+		end
+		if portal.SpriteRendererComponent ~= nil then
+			portal.SpriteRendererComponent.Enable = active == true
+			if active == true then
+				portal.SpriteRendererComponent.SpriteRUID = self:GetPortalVisualRUIDForLink(link)
+				portal.SpriteRendererComponent.SortingLayer = "MapLayer0"
+				portal.SpriteRendererComponent.OrderInLayer = math.floor(self:GetPortalVisualOrderInLayer())
+				portal.SpriteRendererComponent.IgnoreMapLayerCheck = true
+				portal.SpriteRendererComponent.PlayRate = 1.0
+				portal.SpriteRendererComponent:SetAlpha(1)
+			else
+				portal.SpriteRendererComponent:SetAlpha(0)
+			end
+		end
+		if portal.TransformComponent ~= nil and active == true then
+			local scale = self:GetPortalVisualScale()
+			portal.TransformComponent.Scale = Vector3(scale, scale, 1)
+		end
+		portal.Visible = active == true
+		portal:SetVisible(active == true)
+		return true
+	end
+
+	method string GetPortalVisualRUIDForLink(any link)
+		-- Picks one of the supplied resource-pack clips; paired portal endpoints resolve to the same variant.
+		local variant = self:GetPortalVisualVariant(link)
+		if variant == 2 then
+			local ruid = self:ReadString(self.PortalVisualCondition2StandRUID, "")
+			if ruid ~= "" then
+				return ruid
+			end
+		elseif variant == 3 then
+			local ruid = self:ReadString(self.PortalVisualCondition3StandRUID, "")
+			if ruid ~= "" then
+				return ruid
+			end
+		end
+		return self:ReadString(self.PortalVisualStandRUID, "")
+	end
+
+	method number GetPortalVisualVariant(any link)
+		-- Uses a normalized pair key so both directions of one connection share the same visual.
+		if link == nil then
+			return 1
+		end
+		local fromKey = self:ReadString(link.FromPortalKey, self:ReadString(link.Key, self:BuildPortalKey(link.FromRoomName, link.FromDirection)))
+		local toKey = self:GetArrivalPortalKey(link)
+		local pairKey = fromKey .. "|" .. toKey
+
+		local score = 0
+		for index = 1, string.len(pairKey) do
+			score = score + string.byte(pairKey, index)
+		end
+		return (score % 3) + 1
+	end
+
+	method number GetPortalVisualScale()
+		-- Returns the world scale applied to runtime portal sprites.
+		return math.max(0.1, self:ReadNumber(self.PortalVisualScale, 1))
+	end
+
+	method number GetPortalVisualOrderInLayer()
+		-- Returns the draw order for runtime portal sprites.
+		return self:ReadNumber(self.PortalVisualOrderInLayer, 36)
+	end
+
+	method number ValidatePortalLinkPairs(any graph)
+		-- Verifies every directed portal link has a reverse directed endpoint.
+		if graph == nil or graph.PortalLinks == nil or graph.PortalLinkByKey == nil then
+			return 0
+		end
+
+		local issueCount = 0
+		for index, link in ipairs(graph.PortalLinks) do
+			if link ~= nil then
+				local key = self:ReadString(link.FromPortalKey, self:ReadString(link.Key, ""))
+				local pairKey = self:GetArrivalPortalKey(link)
+				local pairedLink = graph.PortalLinkByKey[pairKey]
+				if key == "" or pairKey == "" or pairedLink == nil then
+					issueCount = issueCount + 1
+					if issueCount <= 5 then
+						self:Log("portal pair issue missing key=" .. key .. " pair=" .. pairKey)
+					end
+				else
+					local reverseKey = self:GetArrivalPortalKey(pairedLink)
+					if reverseKey ~= key then
+						issueCount = issueCount + 1
+						if issueCount <= 5 then
+							self:Log("portal pair issue asymmetric key=" .. key .. " pair=" .. pairKey .. " reverse=" .. reverseKey)
+						end
+					end
+				end
+			end
+		end
+		if issueCount == 0 then
+			self:Log("portal pairs validated links=" .. tostring(#graph.PortalLinks))
+		else
+			self:Log("portal pairs issueCount=" .. tostring(issueCount) .. " links=" .. tostring(#graph.PortalLinks))
+		end
+		return issueCount
 	end
 
 	@ExecSpace("ServerOnly")
@@ -396,7 +598,7 @@ script BRPortalConnectionSystem extends Logic
 			self:Log("pair missing key=" .. self:ReadString(link.Key, "") .. " pair=" .. arrivalPortalKey)
 		end
 
-		local exitPosition = self:GetPortalExitPosition(destinationPortal, arrivalDirection)
+		local exitPosition = self:ResolvePortalExitPosition(mapName, destinationPortal, arrivalDirection)
 		local boundsWarning = self:BuildMapBoundsWarning(mapName, exitPosition)
 		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
 		self._T.cooldownUntil[userId] = self:Now() + self:GetReuseCooldownSeconds()
@@ -667,6 +869,66 @@ script BRPortalConnectionSystem extends Logic
 			return Vector2(portalPosition.x, portalPosition.y + offset)
 		end
 		return portalPosition
+	end
+
+	method Vector2 ResolvePortalExitPosition(string mapName, Entity destinationPortal, string arrivalDirection)
+		-- Resolves the destination portal offset, then lands it on the nearest foothold.
+		local exitPosition = self:GetPortalExitPosition(destinationPortal, arrivalDirection)
+		return self:AlignPortalExitToFoothold(mapName, exitPosition)
+	end
+
+	method Vector2 AlignPortalExitToFoothold(string mapName, Vector2 position)
+		-- Aligns portal exits to playable footholds so players do not appear in the air.
+		if position == nil then
+			return Vector2(0, 0)
+		end
+		local safeMapName = self:ReadString(mapName, "")
+		if safeMapName == "" then
+			return position
+		end
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. safeMapName)
+		if mapEntity == nil or mapEntity.FootholdComponent == nil then
+			return position
+		end
+
+		local searchUp = self:GetPortalExitGroundSearchUp()
+		local searchDown = self:GetPortalExitGroundSearchDown()
+		local rayStart = Vector2(position.x, position.y + searchUp)
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchUp + searchDown)
+		if foothold == nil then
+			foothold = mapEntity.FootholdComponent:GetNearestFootholdByPoint(position, searchUp + searchDown)
+		end
+		if foothold == nil or foothold:IsVertical() == true then
+			return position
+		end
+
+		local startPoint = foothold.StartPoint
+		local endPoint = foothold.EndPoint
+		if startPoint == nil or endPoint == nil then
+			return position
+		end
+		local minX = math.min(startPoint.x, endPoint.x) + 0.05
+		local maxX = math.max(startPoint.x, endPoint.x) - 0.05
+		local x = position.x
+		if maxX >= minX then
+			x = math.max(minX, math.min(maxX, position.x))
+		end
+		return Vector2(x, foothold:GetYByX(x) + self:GetPortalExitGroundYOffset())
+	end
+
+	method number GetPortalExitGroundYOffset()
+		-- Returns the small lift applied after portal foothold alignment.
+		return math.max(0, self:ReadNumber(self.PortalExitGroundYOffset, 0.12))
+	end
+
+	method number GetPortalExitGroundSearchUp()
+		-- Returns the upward margin used before portal exit raycasting.
+		return math.max(0, self:ReadNumber(self.PortalExitGroundSearchUp, 4))
+	end
+
+	method number GetPortalExitGroundSearchDown()
+		-- Returns the downward search distance used for portal exit raycasting.
+		return math.max(0.1, self:ReadNumber(self.PortalExitGroundSearchDown, 16))
 	end
 
 	method string BuildMapBoundsWarning(string mapName, Vector2 position)

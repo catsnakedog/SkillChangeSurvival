@@ -1,0 +1,94 @@
+@Logic
+script BRDamageSkinSystem extends Logic
+
+	property boolean EnableDamageSkin = true
+
+	property boolean VerboseLog = true
+
+	property string TakenDamageSkinRUID = "02c22d93421b4038b3c413b3e40b57ec"
+
+	property string AttackDamageSkinRUID = "3271c3e79bf04ecba9a107d55495970d"
+
+	property string HealDamageSkinRUID = "d58b67cf0f3a4eaf9fe1ad87c0ffac8a"
+
+	property number OffsetX = 0
+
+	property number OffsetY = 0.72
+
+	property number Scale = 1
+
+	property number PlayRate = 1
+
+	property number Alpha = 1
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		-- Preloads the default Maple damage skins before the first hit popup is needed.
+		if self.EnableDamageSkin ~= true then
+			return
+		end
+
+		self:PreloadSkin(self.TakenDamageSkinRUID, "taken")
+		self:PreloadSkin(self.AttackDamageSkinRUID, "attack")
+		self:PreloadSkin(self.HealDamageSkinRUID, "heal")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PreloadSkin(string skinRuid, string label)
+		-- Requests a client-side preload for one damage skin RUID.
+		if skinRuid == nil or skinRuid == "" then
+			return
+		end
+
+		_DamageSkinService:PreloadAsync(skinRuid, function(ok)
+			if self.VerboseLog == true then
+				log("[BRDamageSkin] preload label=" .. tostring(label) .. " ok=" .. tostring(ok))
+			end
+		end)
+	end
+
+	@ExecSpace("Client")
+	method void ShowDamage(Entity targetEntity, number rawDamage, boolean isCritical, string sourceId)
+		-- Displays the default Maple taken-hit damage skin above a damaged entity.
+		if self.EnableDamageSkin ~= true then
+			return
+		end
+		if targetEntity == nil or isvalid(targetEntity) ~= true then
+			return
+		end
+		local damage = math.floor(rawDamage)
+		if damage <= 0 then
+			return
+		end
+
+		local skinRuid = self.TakenDamageSkinRUID
+		if skinRuid == nil or skinRuid == "" then
+			return
+		end
+
+		local safeScale = math.max(0.1, self.Scale)
+		local safePlayRate = math.max(0.1, self.PlayRate)
+		local safeAlpha = math.max(0, math.min(1, self.Alpha))
+		_DamageSkinService:Play(
+			targetEntity,
+			skinRuid,
+			0,
+			{ damage },
+			DamageSkinTweenType.Default,
+			isCritical == true,
+			Vector2(self.OffsetX, self.OffsetY),
+			Vector2(safeScale, safeScale),
+			safePlayRate,
+			safeAlpha,
+			LitMode.Default
+		)
+
+		if self.VerboseLog == true then
+			log("[BRDamageSkin] show target=" .. targetEntity.Name
+				.. " damage=" .. tostring(damage)
+				.. " critical=" .. tostring(isCritical == true)
+				.. " source=" .. tostring(sourceId))
+		end
+	end
+
+end

@@ -21,7 +21,7 @@ script BRSkillSystem extends Logic
 
 	property integer MaxSkillTier = 4
 
-	property number BagSlotCount = 2
+	property number BagSlotCount = 4
 
 	property number SkillFrameSeconds = 0.03
 
@@ -60,6 +60,12 @@ script BRSkillSystem extends Logic
 	property number DroppedPartSpawnYOffset = 0
 
 	property number DroppedPartSpawnXOffset = 0
+
+	property number DroppedPartGroundYOffset = 0.12
+
+	property number DroppedPartGroundSearchUp = 3
+
+	property number DroppedPartGroundSearchDown = 14
 
 	property boolean EnableSkillVisualEffects = true
 
@@ -3066,6 +3072,9 @@ script BRSkillSystem extends Logic
 			local player = targetEntity.PlayerComponent
 			player.Hp = math.max(0, player.Hp - damage)
 			self:Log("damage player user=" .. self:ReadString(context.UserId, "") .. " target=" .. self:ReadString(player.UserId, "") .. " amount=" .. tostring(damage) .. " hp=" .. tostring(player.Hp) .. " critical=" .. tostring(critical))
+			if _BRDamageSkinSystem ~= nil then
+				_BRDamageSkinSystem:ShowDamage(targetEntity, damage, critical == true, self:ReadString(sourceId, "skill"))
+			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attackerEntity, targetEntity, sourceId)
 			end
@@ -3226,6 +3235,9 @@ script BRSkillSystem extends Logic
 			local player = target.PlayerComponent
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("meso coin damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
+			if _BRDamageSkinSystem ~= nil then
+				_BRDamageSkinSystem:ShowDamage(target, dmg, false, "meso")
+			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attacker, target, "meso")
 			end
@@ -3706,6 +3718,9 @@ script BRSkillSystem extends Logic
 			local player = target.PlayerComponent
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("throw star damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
+			if _BRDamageSkinSystem ~= nil then
+				_BRDamageSkinSystem:ShowDamage(target, dmg, false, "throwstar")
+			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attacker, target, "throwstar")
 			end
@@ -5450,7 +5465,8 @@ script BRSkillSystem extends Logic
 			return nil
 		end
 		local name = "DroppedSkillPart_" .. tostring(math.floor(self:ReadNumber(part.InstanceId, 0))) .. "_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000))
-		local dropEntity = self:SpawnDroppedPartEntity(name, spawnPosition, mapEntity)
+		local groundPosition = self:ResolveDroppedPartGroundPosition(mapEntity, spawnPosition)
+		local dropEntity = self:SpawnDroppedPartEntity(name, groundPosition, mapEntity)
 		if dropEntity == nil then
 			return nil
 		end
@@ -5475,6 +5491,43 @@ script BRSkillSystem extends Logic
 			)
 		end
 		return dropEntity
+	end
+
+	method Vector3 ResolveDroppedPartGroundPosition(Entity mapEntity, Vector3 spawnPosition)
+		-- Places dropped skill parts on the nearest foothold like Maple item drops.
+		if spawnPosition == nil then
+			return Vector3(0, 0, 0)
+		end
+		local x = self:ReadNumber(spawnPosition.x, 0)
+		local y = self:ReadNumber(spawnPosition.y, 0)
+		local z = self:ReadNumber(spawnPosition.z, 0)
+		if mapEntity == nil or mapEntity.FootholdComponent == nil then
+			return Vector3(x, y, z)
+		end
+
+		local searchUp = self:GetDroppedPartGroundSearchUp()
+		local searchDown = self:GetDroppedPartGroundSearchDown()
+		local rayStart = Vector2(x, y + searchUp)
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchUp + searchDown)
+		if foothold == nil then
+			foothold = mapEntity.FootholdComponent:GetNearestFootholdByPoint(Vector2(x, y), searchUp + searchDown)
+		end
+		if foothold == nil or foothold:IsVertical() == true then
+			return Vector3(x, y, z)
+		end
+
+		local startPoint = foothold.StartPoint
+		local endPoint = foothold.EndPoint
+		if startPoint == nil or endPoint == nil then
+			return Vector3(x, y, z)
+		end
+		local minX = math.min(startPoint.x, endPoint.x) + 0.05
+		local maxX = math.max(startPoint.x, endPoint.x) - 0.05
+		local alignedX = x
+		if maxX >= minX then
+			alignedX = math.max(minX, math.min(maxX, x))
+		end
+		return Vector3(alignedX, foothold:GetYByX(alignedX) + self:GetDroppedPartGroundYOffset(), z)
 	end
 
 	method Entity SpawnDroppedPartEntity(string name, Vector3 spawnPosition, Entity mapEntity)
@@ -6235,7 +6288,7 @@ script BRSkillSystem extends Logic
 
 	method number GetBagSlotCount()
 		-- Returns the number of visible spare inventory slots.
-		return math.max(1, math.floor(self:ReadNumber(self.BagSlotCount, 2)))
+		return math.max(1, math.floor(self:ReadNumber(self.BagSlotCount, 4)))
 	end
 
 	method number GetDroppedPartSpawnYOffset()
@@ -6246,6 +6299,21 @@ script BRSkillSystem extends Logic
 	method number GetDroppedPartSpawnXOffset()
 		-- Returns the horizontal offset used to place dropped parts in front of the player.
 		return math.max(0, self:ReadNumber(self.DroppedPartSpawnXOffset, 0))
+	end
+
+	method number GetDroppedPartGroundYOffset()
+		-- Returns the small vertical lift applied after landing on a foothold.
+		return math.max(0, self:ReadNumber(self.DroppedPartGroundYOffset, 0.12))
+	end
+
+	method number GetDroppedPartGroundSearchUp()
+		-- Returns the upward margin used before raycasting downward for dropped parts.
+		return math.max(0, self:ReadNumber(self.DroppedPartGroundSearchUp, 3))
+	end
+
+	method number GetDroppedPartGroundSearchDown()
+		-- Returns the downward search range used to land dropped parts on footholds.
+		return math.max(0.1, self:ReadNumber(self.DroppedPartGroundSearchDown, 14))
 	end
 
 	method number GetPlayerDropDirection(Entity playerEntity)

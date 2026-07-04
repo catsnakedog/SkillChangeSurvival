@@ -232,6 +232,7 @@ script BRRoomGraphGenerator extends Logic
 			Connections = {},
 			PortalLinks = {},
 			PortalLinkByKey = {},
+			PortalPairIssueCount = 0,
 			PhysicalRooms = {},
 			PhysicalRoomByName = {},
 			AssignmentSuccess = false,
@@ -431,7 +432,14 @@ script BRRoomGraphGenerator extends Logic
 			return false
 		end
 
-		if fromRoom.Links[direction] ~= nil then
+		if fromRoom.Links[direction] ~= nil or toRoom.Links[opposite] ~= nil then
+			if fromRoom.Links[direction] ~= toRoom.Key or toRoom.Links[opposite] ~= fromRoom.Key then
+				self:Log("connection conflict from=" .. fromRoom.Key .. ":" .. direction
+					.. " to=" .. toRoom.Key .. ":" .. opposite
+					.. " existingFrom=" .. self:ReadString(fromRoom.Links[direction], "")
+					.. " existingTo=" .. self:ReadString(toRoom.Links[opposite], ""))
+				return false
+			end
 			self:MarkVisited(graph, fromRoom.Row, fromRoom.Column)
 			self:MarkVisited(graph, toRoom.Row, toRoom.Column)
 			return true
@@ -858,6 +866,7 @@ script BRRoomGraphGenerator extends Logic
 				self:AddAssignedPortalLink(graph, toRoom, connection.ToDirection, fromRoom, connection.FromDirection)
 			end
 		end
+		graph.PortalPairIssueCount = self:ValidateAssignedPortalLinks(graph)
 	end
 
 	method void AddAssignedPortalLink(any graph, any fromRoom, string fromDirection, any toRoom, string toDirection)
@@ -867,11 +876,17 @@ script BRRoomGraphGenerator extends Logic
 		end
 		local key = fromRoom.AssignedRoomName .. ":" .. fromDirection
 		local pairedKey = toRoom.AssignedRoomName .. ":" .. toDirection
+		if graph.PortalLinkByKey[key] ~= nil then
+			self:Log("portal link duplicate key=" .. key .. " pair=" .. pairedKey .. " skipped")
+			return
+		end
 		local link = {
 			Key = key,
 			FromPortalKey = key,
 			ToPortalKey = pairedKey,
 			PairKey = pairedKey,
+			ReversePortalKey = pairedKey,
+			ArrivalPortalKey = pairedKey,
 			LogicalFromKey = fromRoom.Key,
 			LogicalToKey = toRoom.Key,
 			FromRoomName = fromRoom.AssignedRoomName,
@@ -881,6 +896,43 @@ script BRRoomGraphGenerator extends Logic
 		}
 		table.insert(graph.PortalLinks, link)
 		graph.PortalLinkByKey[key] = link
+	end
+
+	method number ValidateAssignedPortalLinks(any graph)
+		-- Confirms that every generated directed portal has one explicit reverse link.
+		if graph == nil or graph.PortalLinks == nil or graph.PortalLinkByKey == nil then
+			return 0
+		end
+
+		local issueCount = 0
+		for index, link in ipairs(graph.PortalLinks) do
+			if link ~= nil then
+				local key = self:ReadString(link.FromPortalKey, self:ReadString(link.Key, ""))
+				local pairedKey = self:ReadString(link.ToPortalKey, self:ReadString(link.PairKey, ""))
+				local pairedLink = graph.PortalLinkByKey[pairedKey]
+				if key == "" or pairedKey == "" or pairedLink == nil then
+					issueCount = issueCount + 1
+					if issueCount <= 5 then
+						self:Log("portal pair issue missing key=" .. key .. " pair=" .. pairedKey)
+					end
+				else
+					local reverseKey = self:ReadString(pairedLink.ToPortalKey, self:ReadString(pairedLink.PairKey, ""))
+					if reverseKey ~= key then
+						issueCount = issueCount + 1
+						if issueCount <= 5 then
+							self:Log("portal pair issue asymmetric key=" .. key .. " pair=" .. pairedKey .. " reverse=" .. reverseKey)
+						end
+					end
+				end
+			end
+		end
+
+		if issueCount == 0 then
+			self:Log("portal pairs validated links=" .. tostring(#graph.PortalLinks))
+		else
+			self:Log("portal pairs issueCount=" .. tostring(issueCount) .. " links=" .. tostring(#graph.PortalLinks))
+		end
+		return issueCount
 	end
 
 	method number InstallGraphPortals(any graph)
@@ -1226,7 +1278,7 @@ script BRRoomGraphGenerator extends Logic
 		end
 
 		if portal.PolygonRendererComponent ~= nil then
-			portal.PolygonRendererComponent.Enable = open == true
+			portal.PolygonRendererComponent.Enable = open == true and customControlled ~= true
 		end
 		portal:SetVisible(open == true)
 		return true

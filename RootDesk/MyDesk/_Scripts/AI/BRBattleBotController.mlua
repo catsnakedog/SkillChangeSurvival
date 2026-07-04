@@ -262,6 +262,9 @@ script BRBattleBotController extends Component
 		self:FlashHit()
 		self:UpdateNameTag()
 		log("[BRBot] hit id=" .. self.BotId .. " damage=" .. tostring(damage) .. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()) .. " source=" .. self:ReadString(source, "skill"))
+		if _BRDamageSkinSystem ~= nil then
+			_BRDamageSkinSystem:ShowDamage(self.Entity, damage, false, self:ReadString(source, "skill"))
+		end
 
 		if self.CurrentHp <= 0 then
 			self:HandleFatalDamage(attackerEntity, source)

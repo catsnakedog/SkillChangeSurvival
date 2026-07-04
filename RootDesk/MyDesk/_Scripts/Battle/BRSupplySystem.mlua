@@ -5,7 +5,11 @@ script BRSupplySystem extends Logic
 
 	property string SupplyChildName = "SupplyBox"
 
-	property string FallbackSupplyChildNames = "SupplyBox,SupplyPoint,SkillPartBox,PartBox"
+	property string FallbackSupplyChildNames = "SupplyBox,SupplyPoint,SkillPartBox,skillPart,SkillPart,PartBox"
+
+	property string RuntimeSupplyNamePrefix = "RuntimeSupplyBox"
+
+	property string RuntimeSupplyBoxModelId = "skillpartbox"
 
 	property number MaxSuppliesPerDrop = 0
 
@@ -439,40 +443,22 @@ script BRSupplySystem extends Logic
 			return false
 		end
 		for index, supply in ipairs(group.Supplies) do
-			if supply ~= nil and isvalid(supply) == true and supply.Enable == true then
-				local component = supply:GetComponent("script.BRPartBox")
-				if component == nil then
-					component = supply:GetComponent("BRPartBox")
-				end
-				if component == nil then
-					return true
-				end
-				---@type BRPartBox
-				local partBox = component
-				if partBox.available == true then
-					return true
-				end
+			local runtimeSupply = self:GetRuntimeSupplyForAnchor(supply)
+			if self:IsRuntimeSupplyActive(runtimeSupply) == true then
+				return true
 			end
 		end
 		return false
 	end
 
 	method boolean IsSupplyEmpty(Entity supply)
-		-- Checks whether a supply anchor is currently free to receive a chest.
+		-- Checks whether a supply anchor is currently free to receive a runtime chest.
 		if supply == nil or isvalid(supply) ~= true then
 			return false
 		end
-		if supply.Enable == true then
-			local component = supply:GetComponent("script.BRPartBox")
-			if component == nil then
-				component = supply:GetComponent("BRPartBox")
-			end
-			if component == nil then
-				return false
-			end
-			---@type BRPartBox
-			local partBox = component
-			return partBox.available ~= true
+		local runtimeSupply = self:GetRuntimeSupplyForAnchor(supply)
+		if runtimeSupply ~= nil then
+			return self:IsRuntimeSupplyActive(runtimeSupply) ~= true
 		end
 		return true
 	end
@@ -689,7 +675,7 @@ script BRSupplySystem extends Logic
 	end
 
 	method void CollectRoomSupplyChildren(Entity room, any candidates, any seenSupply)
-		-- Adds direct supply children from one room.
+		-- Adds supply anchors from one room. Anchors may be nested inside copied room prefabs.
 		if room == nil then
 			return
 		end
@@ -703,10 +689,36 @@ script BRSupplySystem extends Logic
 			self:AddSupplyCandidate(candidates, seenSupply, child)
 		end
 
-		local children = room.Children:ToTable()
+		if room.Children ~= nil then
+			local children = room.Children:ToTable()
+			for index, child in ipairs(children) do
+				if child ~= nil and self:IsSupplyChildName(child.Name) == true then
+					self:AddSupplyCandidate(candidates, seenSupply, child)
+				end
+			end
+		end
+		self:CollectSupplyChildrenRecursive(room, candidates, seenSupply, 0)
+	end
+
+	method void CollectSupplyChildrenRecursive(Entity entity, any candidates, any seenSupply, number depth)
+		-- Finds nested skillPart markers without requiring every room prefab to keep them as direct children.
+		if entity == nil then
+			return
+		end
+		local safeDepth = math.floor(self:ReadNumber(depth, 0))
+		if safeDepth > 16 then
+			return
+		end
+		if entity.Children == nil then
+			return
+		end
+		local children = entity.Children:ToTable()
 		for index, child in ipairs(children) do
-			if child ~= nil and self:IsSupplyChildName(child.Name) == true then
-				self:AddSupplyCandidate(candidates, seenSupply, child)
+			if child ~= nil then
+				if self:IsSupplyChildName(child.Name) == true then
+					self:AddSupplyCandidate(candidates, seenSupply, child)
+				end
+				self:CollectSupplyChildrenRecursive(child, candidates, seenSupply, safeDepth + 1)
 			end
 		end
 	end
@@ -732,31 +744,182 @@ script BRSupplySystem extends Logic
 	end
 
 	method boolean SetSupplyRuntimeActiveWithKind(Entity supply, boolean active, string kind)
-		-- Toggles one supply prefab and configures its BRPartBox behavior.
+		-- Uses the placed supply entity only as a spawn anchor, then toggles a runtime box at that position.
 		if supply == nil or isvalid(supply) ~= true then
 			return false
 		end
 
+		self:EnsureRuntime()
+		self:HideSupplyAnchor(supply)
+		if active == true then
+			local runtimeSupply = self:GetRuntimeSupplyForAnchor(supply)
+			if runtimeSupply == nil then
+				runtimeSupply = self:SpawnRuntimeSupplyForAnchor(supply, kind)
+				self:SetRuntimeSupplyForAnchor(supply, runtimeSupply)
+			end
+			return self:ConfigureRuntimeSupplyBox(runtimeSupply, true, kind)
+		else
+			local runtimeSupply = self:GetRuntimeSupplyForAnchor(supply)
+			self:ConfigureRuntimeSupplyBox(runtimeSupply, false, kind)
+		end
+		return true
+	end
+
+	method void HideSupplyAnchor(Entity supply)
+		-- Keeps map-authored skillPart/SupplyBox objects as invisible spawn markers only.
+		if supply == nil or isvalid(supply) ~= true then
+			return
+		end
 		local component = supply:GetComponent("script.BRPartBox")
 		if component == nil then
 			component = supply:GetComponent("BRPartBox")
 		end
+		if component ~= nil then
+			---@type BRPartBox
+			local partBox = component
+			partBox:ConfigureAsSpawnMarker()
+		end
+		self:SetSupplyAnchorVisibleRecursive(supply, false, 0)
+	end
+
+	method void SetSupplyAnchorVisibleRecursive(Entity entity, boolean visible, number depth)
+		-- Fully hides copied marker objects and their render-only children while preserving their transform as an anchor.
+		if entity == nil or isvalid(entity) ~= true then
+			return
+		end
+		local safeDepth = math.floor(self:ReadNumber(depth, 0))
+		if safeDepth > 16 then
+			return
+		end
+		entity:SetVisible(visible == true)
+		entity.Visible = visible == true
+		self:SetEntityRendererVisible(entity, visible == true)
+		if entity.Children == nil then
+			return
+		end
+		local children = entity.Children:ToTable()
+		for index, child in ipairs(children) do
+			self:SetSupplyAnchorVisibleRecursive(child, visible == true, safeDepth + 1)
+		end
+	end
+
+	method void SetEntityRendererVisible(Entity entity, boolean visible)
+		-- Disables common renderer components so an anchor cannot remain visible as an old polygon/model.
+		if entity == nil then
+			return
+		end
+		if entity.SpriteRendererComponent ~= nil then
+			entity.SpriteRendererComponent.Enable = visible == true
+			if visible ~= true then
+				entity.SpriteRendererComponent:SetAlpha(0)
+			end
+		end
+		if entity.PolygonRendererComponent ~= nil then
+			entity.PolygonRendererComponent.Enable = visible == true
+		end
+		if entity.TextRendererComponent ~= nil then
+			entity.TextRendererComponent.Enable = visible == true
+		end
+	end
+
+	method Entity GetRuntimeSupplyForAnchor(Entity supply)
+		-- Returns the spawned runtime box associated with one map-authored anchor.
+		self:EnsureRuntime()
+		local key = self:GetEntityKey(supply)
+		if key == "" then
+			return nil
+		end
+		local runtimeSupply = self._T.runtimeSupplyByAnchor[key]
+		if runtimeSupply ~= nil and isvalid(runtimeSupply) == true then
+			return runtimeSupply
+		end
+		self._T.runtimeSupplyByAnchor[key] = nil
+		return nil
+	end
+
+	method void SetRuntimeSupplyForAnchor(Entity supply, Entity runtimeSupply)
+		-- Stores the runtime box created from a spawn anchor.
+		self:EnsureRuntime()
+		local key = self:GetEntityKey(supply)
+		if key == "" then
+			return
+		end
+		if runtimeSupply ~= nil and isvalid(runtimeSupply) == true then
+			self._T.runtimeSupplyByAnchor[key] = runtimeSupply
+		else
+			self._T.runtimeSupplyByAnchor[key] = nil
+		end
+	end
+
+	method Entity SpawnRuntimeSupplyForAnchor(Entity supply, string kind)
+		-- Spawns a real runtime box at the anchor position while the authored entity remains a pure spawn point.
+		if supply == nil or isvalid(supply) ~= true then
+			return nil
+		end
+		local mapEntity = self:GetSupplyAnchorMapEntity(supply)
+		if mapEntity == nil then
+			self:Log("runtime supply skipped reason=noMap anchor=" .. self:ReadString(supply.Name, ""))
+			return nil
+		end
+		local position = self:GetSupplyAnchorPosition(supply)
+		local runtimeName = self:GetRuntimeSupplyName(kind)
+		local modelId = self:GetRuntimeSupplyBoxModelId()
+		local runtimeSupply = nil
+		if modelId ~= "" then
+			runtimeSupply = _SpawnService:SpawnByModelId(modelId, runtimeName, position, mapEntity)
+			if runtimeSupply == nil then
+				self:Log("runtime model spawn failed modelId=" .. modelId .. " anchor=" .. self:ReadString(supply.Name, "")
+					.. " kind=" .. self:ReadString(kind, "skill") .. " fallback=clone")
+			end
+		end
+		if runtimeSupply == nil then
+			if modelId == "" then
+				self:Log("runtime model id empty anchor=" .. self:ReadString(supply.Name, "")
+					.. " kind=" .. self:ReadString(kind, "skill") .. " fallback=clone")
+			end
+			runtimeSupply = _SpawnService:SpawnByEntity(supply, runtimeName, position, mapEntity, false)
+		end
+		if runtimeSupply == nil then
+			self:Log("runtime supply spawn failed anchor=" .. self:ReadString(supply.Name, "") .. " kind=" .. self:ReadString(kind, "skill"))
+			return nil
+		end
+		self:EnsureRuntimeSupplyVisualComponents(runtimeSupply)
+		runtimeSupply:SetEnable(true)
+		runtimeSupply:SetVisible(true)
+		self:Log("runtime supply spawned anchor=" .. self:ReadString(supply.Name, "")
+			.. " box=" .. self:ReadString(runtimeSupply.Name, "")
+			.. " modelId=" .. modelId)
+		return runtimeSupply
+	end
+
+	method boolean ConfigureRuntimeSupplyBox(Entity runtimeSupply, boolean active, string kind)
+		-- Applies box behavior and the previously supplied Maple resource RUIDs to a runtime supply entity.
+		if runtimeSupply == nil or isvalid(runtimeSupply) ~= true then
+			return false
+		end
+		self:EnsureRuntimeSupplyVisualComponents(runtimeSupply)
+		local component = runtimeSupply:GetComponent("script.BRPartBox")
+		if component == nil then
+			component = runtimeSupply:GetComponent("BRPartBox")
+		end
 		if component == nil and active == true then
-			component = supply:AddComponent("script.BRPartBox")
+			component = runtimeSupply:AddComponent("script.BRPartBox")
 		end
 		if active == true then
-			supply:SetEnable(true)
-			supply:SetVisible(true)
+			runtimeSupply:SetEnable(true)
+			runtimeSupply:SetVisible(true)
 			if component ~= nil then
 				---@type BRPartBox
 				local partBox = component
-				partBox:ConfigureSupplyKind(self:ReadString(kind, "skill"))
-				if string.lower(self:ReadString(kind, "skill")) == "supply" then
+				local safeKind = self:ReadString(kind, "skill")
+				partBox:ConfigureSupplyKind(safeKind)
+				if string.lower(safeKind) == "supply" then
 					partBox.DropCount = self:GetSupplyChestDropCount()
-				elseif string.lower(self:ReadString(kind, "skill")) == "skill" then
+				elseif string.lower(safeKind) == "skill" then
 					partBox.DropCount = self:GetSkillChestDropCount()
 				end
 				partBox:SetRuntimeActive(true)
+				self:ForceRuntimeSupplyVisual(runtimeSupply, partBox)
 			end
 		else
 			if component ~= nil then
@@ -764,10 +927,117 @@ script BRSupplySystem extends Logic
 				local partBox = component
 				partBox:SetRuntimeActive(false)
 			end
-			supply:SetVisible(false)
-			supply:SetEnable(false)
+			runtimeSupply:SetVisible(false)
+			runtimeSupply:SetEnable(false)
 		end
 		return true
+	end
+
+	method void ForceRuntimeSupplyVisual(Entity runtimeSupply, any partBox)
+		-- Immediately paints the spawned runtime model with the intended box sprite/animation.
+		if runtimeSupply == nil or isvalid(runtimeSupply) ~= true or partBox == nil then
+			return
+		end
+		---@type BRPartBox
+		local boxComponent = partBox
+		if runtimeSupply.SpriteRendererComponent == nil then
+			runtimeSupply:AddComponent("SpriteRendererComponent")
+		end
+		if runtimeSupply.PolygonRendererComponent ~= nil then
+			runtimeSupply.PolygonRendererComponent.Enable = false
+		end
+		if runtimeSupply.SpriteRendererComponent ~= nil then
+			local standRuid = boxComponent:GetStandRUID()
+			if standRuid ~= "" then
+				runtimeSupply.SpriteRendererComponent.SpriteRUID = standRuid
+			end
+			runtimeSupply.SpriteRendererComponent.Enable = true
+			runtimeSupply.SpriteRendererComponent.SortingLayer = "MapLayer0"
+			runtimeSupply.SpriteRendererComponent.OrderInLayer = 35
+			runtimeSupply.SpriteRendererComponent.IgnoreMapLayerCheck = true
+			runtimeSupply.SpriteRendererComponent:SetAlpha(1)
+		end
+		if runtimeSupply.TransformComponent ~= nil then
+			local visualScale = boxComponent:GetVisualScale()
+			runtimeSupply.TransformComponent.Scale = Vector3(visualScale, visualScale, 1)
+		end
+		runtimeSupply:SetVisible(true)
+		runtimeSupply:SetEnable(true)
+	end
+
+	method void EnsureRuntimeSupplyVisualComponents(Entity runtimeSupply)
+		-- Ensures old polygon-only anchors produce real sprite boxes after runtime spawn.
+		if runtimeSupply == nil or isvalid(runtimeSupply) ~= true then
+			return
+		end
+		if runtimeSupply.SpriteRendererComponent == nil then
+			runtimeSupply:AddComponent("SpriteRendererComponent")
+		end
+		if runtimeSupply.PolygonRendererComponent ~= nil then
+			runtimeSupply.PolygonRendererComponent.Enable = false
+		end
+	end
+
+	method boolean IsRuntimeSupplyActive(Entity runtimeSupply)
+		-- Checks whether a spawned box currently occupies its anchor.
+		if runtimeSupply == nil or isvalid(runtimeSupply) ~= true then
+			return false
+		end
+		if runtimeSupply.Enable ~= true then
+			return false
+		end
+		local component = runtimeSupply:GetComponent("script.BRPartBox")
+		if component == nil then
+			component = runtimeSupply:GetComponent("BRPartBox")
+		end
+		if component == nil then
+			return runtimeSupply.Visible == true
+		end
+		---@type BRPartBox
+		local partBox = component
+		return partBox.EnablePartBox == true and partBox.available == true
+	end
+
+	method Entity GetSupplyAnchorMapEntity(Entity supply)
+		-- Resolves the map parent used by SpawnService for a supply anchor.
+		if supply == nil then
+			return nil
+		end
+		if supply.CurrentMap ~= nil then
+			return supply.CurrentMap
+		end
+		local mapName = self:ReadString(supply.CurrentMapName, "")
+		if mapName ~= "" then
+			return _EntityService:GetEntityByPath("/maps/" .. mapName)
+		end
+		return nil
+	end
+
+	method Vector3 GetSupplyAnchorPosition(Entity supply)
+		-- Reads the anchor world position used for runtime box placement.
+		if supply ~= nil and supply.TransformComponent ~= nil then
+			local position = supply.TransformComponent.WorldPosition
+			return Vector3(position.x, position.y, position.z)
+		end
+		return Vector3(0, 0, 0)
+	end
+
+	method string GetRuntimeSupplyName(string kind)
+		-- Builds a unique runtime box name that never collides with authored anchor names.
+		local prefix = self:ReadString(self.RuntimeSupplyNamePrefix, "RuntimeSupplyBox")
+		local safeKind = self:ReadString(kind, "skill")
+		local tick = tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000))
+		local randomPart = tostring(_UtilLogic:RandomIntegerRange(1000, 9999))
+		return prefix .. "_" .. safeKind .. "_" .. tick .. "_" .. randomPart
+	end
+
+	method string GetRuntimeSupplyBoxModelId()
+		-- Returns the model id used for real boxes spawned from map-authored anchors.
+		local modelId = string.lower(self:ReadString(self.RuntimeSupplyBoxModelId, "skillpartbox"))
+		if modelId == "" then
+			return "skillpartbox"
+		end
+		return modelId
 	end
 
 	method Entity GetPhysicalRoomRoot(string mapName)
@@ -824,18 +1094,21 @@ script BRSupplySystem extends Logic
 		if value == "" then
 			return false
 		end
-		if value == self:GetSupplyChildName() then
+		local lowerValue = string.lower(value)
+		if lowerValue == string.lower(self:GetSupplyChildName()) then
 			return true
 		end
 
 		local fallbackNames = self:GetFallbackSupplyNames()
 		for index, fallbackName in ipairs(fallbackNames) do
-			if value == fallbackName then
+			if lowerValue == string.lower(fallbackName) then
 				return true
 			end
 		end
 
-		return string.sub(value, 1, 6) == "Supply"
+		return string.sub(lowerValue, 1, 6) == "supply"
+			or string.find(lowerValue, "skillpart", 1, true) ~= nil
+			or string.find(lowerValue, "partbox", 1, true) ~= nil
 	end
 
 	method any GetFallbackSupplyNames()
@@ -951,6 +1224,9 @@ script BRSupplySystem extends Logic
 		end
 		if self._T.phaseEvents == nil then
 			self._T.phaseEvents = {}
+		end
+		if self._T.runtimeSupplyByAnchor == nil then
+			self._T.runtimeSupplyByAnchor = {}
 		end
 	end
 

@@ -25,6 +25,14 @@ script BRMatchFlowUI extends Component
 
 	property number CenterEffectBaseHeight = 300
 
+	property number CenterCountdownBaseWidth = 420
+
+	property number CenterCountdownBaseHeight = 420
+
+	property number CenterStartBaseWidth = 760
+
+	property number CenterStartBaseHeight = 300
+
 	property any closeHandler = nil
 
 	@ExecSpace("ClientOnly")
@@ -102,14 +110,14 @@ script BRMatchFlowUI extends Component
 		self:SetEntityActive("StartSequence", true)
 		self:SetEntityActive("StartSequence/CenterEffect", false)
 		self:SetSpriteRUIDByPath("StartSequence/CenterEffect", safeRuid)
-		self:ResizeCenterEffect(scale)
+		self:ResizeCenterEffect(safeRuid, scale, self:ReadString(phase, "start"))
 		self:SetEntityActive("StartSequence/CenterEffect", true)
 
 		local duration = math.max(0, self:ReadNumber(seconds, 0))
 		if duration > 0 then
 			self.effectTimerId = _TimerService:SetTimerOnce(function() self:HideStartSequence() end, duration)
 		end
-		log("[BRMatchFlowUI] center effect phase=" .. self:ReadString(phase, "start") .. " ruid=" .. safeRuid .. " duration=" .. tostring(duration))
+		log("[BRMatchFlowUI] center effect phase=" .. self:ReadString(phase, "start") .. " ruid=" .. safeRuid .. " duration=" .. tostring(duration) .. " scale=" .. tostring(scale))
 	end
 
 	@ExecSpace("Client")
@@ -188,7 +196,7 @@ script BRMatchFlowUI extends Component
 		entity.UITransformComponent.anchoredPosition = Vector2(baseX - travel * cycle, baseY + bob)
 	end
 
-	method void ResizeCenterEffect(number scale)
+	method void ResizeCenterEffect(string animationRuid, number scale, string phase)
 		-- Applies the requested presentation scale to the center animation slot.
 		local entity = self:GetEntity("StartSequence/CenterEffect")
 		if entity == nil or entity.UITransformComponent == nil then
@@ -196,9 +204,32 @@ script BRMatchFlowUI extends Component
 		end
 
 		local safeScale = math.max(0.05, self:ReadNumber(scale, 1))
-		local width = math.max(1, self:ReadNumber(self.CenterEffectBaseWidth, 760) * safeScale)
-		local height = math.max(1, self:ReadNumber(self.CenterEffectBaseHeight, 300) * safeScale)
+		local baseSize = self:GetCenterEffectBaseSize(animationRuid, phase)
+		local width = math.max(1, baseSize.x * safeScale)
+		local height = math.max(1, baseSize.y * safeScale)
 		entity.UITransformComponent.RectSize = Vector2(width, height)
+	end
+
+	method Vector2 GetCenterEffectBaseSize(string animationRuid, string phase)
+		-- Countdown digits are square-ish, while START is a wide title clip.
+		local safePhase = self:ReadString(phase, "")
+		local safeRuid = self:ResolveAnimationClipRUID(self:ReadString(animationRuid, ""))
+		if safePhase == "countdown" or safeRuid == "3b765e2b2a68476996ea77b2e5b8bcb4" then
+			return Vector2(
+				math.max(1, self:ReadNumber(self.CenterCountdownBaseWidth, 420)),
+				math.max(1, self:ReadNumber(self.CenterCountdownBaseHeight, 420))
+			)
+		end
+		if safePhase == "start" or safeRuid == "1dea1763a5fb4c5da2e06411183dbca8" then
+			return Vector2(
+				math.max(1, self:ReadNumber(self.CenterStartBaseWidth, 760)),
+				math.max(1, self:ReadNumber(self.CenterStartBaseHeight, 300))
+			)
+		end
+		return Vector2(
+			math.max(1, self:ReadNumber(self.CenterEffectBaseWidth, 760)),
+			math.max(1, self:ReadNumber(self.CenterEffectBaseHeight, 300))
+		)
 	end
 
 	method void SetSpriteRUIDByPath(string relativePath, string ruid)

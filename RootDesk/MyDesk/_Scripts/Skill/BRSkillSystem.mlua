@@ -238,9 +238,25 @@ script BRSkillSystem extends Logic
 	method void ValidateSkillDataCatalogs()
 		-- Logs broken CSV/DataSet references early so silent skill failures are visible.
 		self:Log("data loaded skills=" .. tostring(self:GetTableCount(self._T.skillRuntimeCatalog)) .. " parts=" .. tostring(self:GetTableCount(self._T.catalog)) .. " events=" .. tostring(self:GetTableCount(self._T.skillEventCatalog)) .. " actions=" .. tostring(self:GetTableCount(self._T.skillActionCatalog)) .. " hitboxes=" .. tostring(self:GetTableCount(self._T.skillHitboxCatalog)))
+		self:ValidateMesoStarterClassification()
 		self:ValidateSkillTimelineEvents()
 		self:ValidateSkillEventDefinitions()
 		self:ValidateSkillActionDefinitions()
+	end
+
+	method void ValidateMesoStarterClassification()
+		-- Logs the synthetic starter classification for Meso Explosion.
+		local skillKey = self:GetMesoExplosionSkillKey()
+		local category = ""
+		if self._T.skillRuntimeCatalog ~= nil and self._T.skillRuntimeCatalog[skillKey] ~= nil then
+			category = self:ReadString(self._T.skillRuntimeCatalog[skillKey].SkillCategory, "")
+		end
+		local partId = self:GetPartIdForSkillKey(skillKey)
+		local starter = false
+		if partId ~= "" and self._T.catalog ~= nil and self._T.catalog[partId] ~= nil then
+			starter = self:SkillPartHasTrigger(self._T.catalog[partId], 1)
+		end
+		self:Log("meso starter classification category=" .. self:ReadString(category, "") .. " part=" .. partId .. " starter=" .. tostring(starter == true))
 	end
 
 	method void ValidateSkillTimelineEvents()
@@ -739,10 +755,13 @@ script BRSkillSystem extends Logic
 	end
 
 	method boolean IsSkillPartCategory(string category)
-		-- Only skill-chain parts are rollable parts; basic skills are direct casts.
+		-- Treats rollable chain entries, including trigger/starters, as skill parts.
 		local safeCategory = self:ReadString(category, "")
 		if safeCategory == "기본 스킬" or safeCategory == "basic" or safeCategory == "basic_skill" then
 			return false
+		end
+		if safeCategory == "트리거" or safeCategory == "시동기" or safeCategory == "trigger" or safeCategory == "starter" then
+			return true
 		end
 		if safeCategory == "스킬 파츠" or safeCategory == "part" or safeCategory == "skill_part" then
 			return true
@@ -1489,7 +1508,7 @@ script BRSkillSystem extends Logic
 					table.insert(result.Steps, step)
 				end
 			end
-			if self:ReadString(group.SkillKey, "") == self:GetMesoExplosionSkillKey() then
+			if self:IsMesoExplosionSkillKey(self:ReadString(group.SkillKey, "")) == true then
 				pendingMesoCount = self:CoinCountForTier(group.Tier)
 			end
 		end
@@ -1576,7 +1595,7 @@ script BRSkillSystem extends Logic
 	end
 
 	method boolean SkillPartHasTrigger(any part, number tier)
-		-- Resolves a part to the tiered skill definition and checks for trigger actions.
+		-- Resolves a part to the tiered skill definition and checks for trigger/starter behavior.
 		if part == nil then
 			return false
 		end
@@ -1584,6 +1603,9 @@ script BRSkillSystem extends Logic
 		local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
 		if skillKey == "" or self._T.skillRuntimeCatalog == nil then
 			return false
+		end
+		if self:IsMesoExplosionSkillKey(skillKey) == true then
+			return true
 		end
 		local tieredSkillKey = self:GetTieredSkillKey(skillKey, tier)
 		local skillDef = self._T.skillRuntimeCatalog[tieredSkillKey]
@@ -1724,7 +1746,7 @@ script BRSkillSystem extends Logic
 			Cancelled = false
 		}
 		table.insert(self._T.activeCasts, cast)
-		if cast.IsVirtualCaster ~= true and self:ReadString(cast.SkillKey, "") == self:GetMesoExplosionSkillKey() then
+		if cast.IsVirtualCaster ~= true and self:IsMesoExplosionSkillKey(self:ReadString(cast.SkillKey, "")) == true then
 			self:PlayCasterMesoEffect(casterEntity)
 			self:ArmActiveMesoFollowUps(cast.UserId, self:CoinCountForTier(cast.Tier), casterEntity)
 		end
@@ -3195,7 +3217,7 @@ script BRSkillSystem extends Logic
 			player.Hp = math.max(0, player.Hp - damage)
 			self:Log("damage player user=" .. self:ReadString(context.UserId, "") .. " target=" .. self:ReadString(player.UserId, "") .. " amount=" .. tostring(damage) .. " hp=" .. tostring(player.Hp) .. " critical=" .. tostring(critical))
 			if _BRDamageSkinSystem ~= nil then
-				_BRDamageSkinSystem:ShowDamage(targetEntity, damage, critical == true, self:ReadString(sourceId, "skill"))
+				_BRDamageSkinSystem:ShowEnemyDamage(targetEntity, damage, critical == true, self:ReadString(sourceId, "skill"))
 			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attackerEntity, targetEntity, sourceId)
@@ -3264,6 +3286,11 @@ script BRSkillSystem extends Logic
 	method string GetMesoExplosionSkillKey()
 		-- Returns the reserved skill key that arms meso follow-up coins.
 		return "메소 익스플로전"
+	end
+
+	method boolean IsMesoExplosionSkillKey(string skillKey)
+		-- Returns true for the synthetic meso trigger/starter skill.
+		return self:ReadString(skillKey, "") == self:GetMesoExplosionSkillKey()
 	end
 
 	method string GetMesoCoinModelId()
@@ -3358,7 +3385,7 @@ script BRSkillSystem extends Logic
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("meso coin damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
 			if _BRDamageSkinSystem ~= nil then
-				_BRDamageSkinSystem:ShowDamage(target, dmg, false, "meso")
+				_BRDamageSkinSystem:ShowEnemyDamage(target, dmg, false, "meso")
 			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attacker, target, "meso")
@@ -3841,7 +3868,7 @@ script BRSkillSystem extends Logic
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("throw star damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
 			if _BRDamageSkinSystem ~= nil then
-				_BRDamageSkinSystem:ShowDamage(target, dmg, false, "throwstar")
+				_BRDamageSkinSystem:ShowEnemyDamage(target, dmg, false, "throwstar")
 			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attacker, target, "throwstar")
@@ -4557,11 +4584,11 @@ script BRSkillSystem extends Logic
 		if skillDef == nil then
 			return 0
 		end
-		-- Meso Explosion is a follow-up "charge" that only enhances the NEXT chain skill (arms meso
-		-- coins). It performs no attack itself, so it gets no recovery delay / freeze / attack swing —
+		-- Meso Explosion is a trigger/starter charge that only enhances the NEXT chain skill (arms meso
+		-- coins). It performs no attack itself, so it gets no recovery delay / freeze / attack swing -
 		-- the enhanced skill fires immediately after.
 		local id = self:ReadString(skillDef.BaseSkillKey, self:ReadString(skillDef.SkillKey, ""))
-		if id == self:GetMesoExplosionSkillKey() then
+		if self:IsMesoExplosionSkillKey(id) == true then
 			return 0
 		end
 		return 0.35

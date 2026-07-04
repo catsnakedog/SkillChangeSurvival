@@ -1030,7 +1030,7 @@ script BRBattleLogic extends Component
 		self._T.invincibleUntil[targetPlayer.UserId] = now + self:GetHitInvincibleSeconds()
 		self:LockPortalUse(targetPlayer.UserId, now)
 		if _BRDamageSkinSystem ~= nil then
-			_BRDamageSkinSystem:ShowDamage(targetEntity, damage, false, "battle-basic")
+			_BRDamageSkinSystem:ShowEnemyDamage(targetEntity, damage, false, "battle-basic")
 		end
 		
 		if targetPlayer.Hp <= 0 then
@@ -2521,6 +2521,9 @@ script BRBattleLogic extends Component
 		end
 		if self:IsActiveMatchReady() ~= true then
 			return false
+		end
+		if _BRBattleLauncher ~= nil then
+			return _BRBattleLauncher:IsBattleGameplayStartedForMap(self:GetBattleMapName()) == true
 		end
 		if _BRBattleTimerSystem == nil then
 			return true

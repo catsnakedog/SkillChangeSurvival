@@ -65,7 +65,7 @@ script BRTrainingDummy extends Component
 			.. " damage=" .. tostring(damage)
 			.. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()))
 		if _BRDamageSkinSystem ~= nil then
-			_BRDamageSkinSystem:ShowDamage(self.Entity, damage, false, self:ReadString(source, "unknown"))
+			_BRDamageSkinSystem:ShowEnemyDamage(self.Entity, damage, false, self:ReadString(source, "unknown"))
 		end
 
 		if self.CurrentHp <= 0 then

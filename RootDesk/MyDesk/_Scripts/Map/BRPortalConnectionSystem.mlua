@@ -129,6 +129,7 @@ script BRPortalConnectionSystem extends Logic
 		self._T.graphsByMap[safeMapName] = nil
 		self._T.cooldownUntil = {}
 		self._T.arrivalPortalKeyByUser = {}
+		self._T.arrivalPortalBlockUntilByUser = {}
 		self:Log("cleared map=" .. safeMapName)
 	end
 
@@ -601,8 +602,11 @@ script BRPortalConnectionSystem extends Logic
 		local exitPosition = self:ResolvePortalExitPosition(mapName, destinationPortal, arrivalDirection)
 		local boundsWarning = self:BuildMapBoundsWarning(mapName, exitPosition)
 		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
-		self._T.cooldownUntil[userId] = self:Now() + self:GetReuseCooldownSeconds()
+		local now = self:Now()
+		local portalReuseAt = now + self:GetReuseCooldownSeconds()
+		self._T.cooldownUntil[userId] = portalReuseAt
 		self._T.arrivalPortalKeyByUser[userId] = arrivalPortalKey
+		self._T.arrivalPortalBlockUntilByUser[userId] = portalReuseAt
 		self:SetPlayerWorldPosition(playerEntity, exitPosition)
 		self:ApplyLocalPortalPosition(exitPosition, "portal", userId)
 
@@ -1034,7 +1038,7 @@ script BRPortalConnectionSystem extends Logic
 	end
 
 	method boolean IsWaitingForArrivalPortalExit(any graph, Entity root, string userId, Vector2 playerPosition)
-		-- Blocks only the arrival portal until the player leaves its trigger box.
+		-- Blocks the arrival portal only for the short post-teleport reuse lock.
 		local safeUserId = self:ReadString(userId, "")
 		if safeUserId == "" then
 			return false
@@ -1043,31 +1047,17 @@ script BRPortalConnectionSystem extends Logic
 		if blockedKey == "" then
 			return false
 		end
-
-		local blockedLink = {}
-		local hasBlockedLink = false
-		local mapName = ""
-		if graph ~= nil and graph.PortalLinkByKey ~= nil then
-			mapName = self:ReadString(graph.MapName, "")
-			local candidateLink = graph.PortalLinkByKey[blockedKey]
-			if candidateLink ~= nil then
-				blockedLink = candidateLink
-				hasBlockedLink = true
+		local blockUntil = self:ReadNumber(self._T.arrivalPortalBlockUntilByUser[safeUserId], 0)
+		if blockUntil > 0 then
+			if self:Now() < blockUntil then
+				return true
 			end
-		end
-		if hasBlockedLink == false then
 			self._T.arrivalPortalKeyByUser[safeUserId] = nil
+			self._T.arrivalPortalBlockUntilByUser[safeUserId] = nil
 			return false
 		end
-
-		local blockedRoomName = self:ReadString(blockedLink["FromRoomName"], "")
-		local blockedDirection = self:ReadString(blockedLink["FromDirection"], "")
-		local blockedPortal = self:GetPhysicalPortal(mapName, root, blockedRoomName, blockedDirection)
-		if self:IsPlayerInsidePortal(playerPosition, blockedPortal, blockedDirection) == true then
-			return true
-		end
-
 		self._T.arrivalPortalKeyByUser[safeUserId] = nil
+		self._T.arrivalPortalBlockUntilByUser[safeUserId] = nil
 		return false
 	end
 
@@ -1132,6 +1122,9 @@ script BRPortalConnectionSystem extends Logic
 		end
 		if self._T.arrivalPortalKeyByUser == nil then
 			self._T.arrivalPortalKeyByUser = {}
+		end
+		if self._T.arrivalPortalBlockUntilByUser == nil then
+			self._T.arrivalPortalBlockUntilByUser = {}
 		end
 	end
 

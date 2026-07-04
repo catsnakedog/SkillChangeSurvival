@@ -71,6 +71,20 @@ script BRBattleTimerSystem extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
+	method void PrepareTimer(number durationSeconds, string mapName, string timerLabel)
+		-- Shows the timer at its initial value without advancing it yet.
+		local duration = self:NormalizeDuration(durationSeconds)
+		self.DurationSeconds = duration
+		self.RemainingSeconds = duration
+		self.remainingPrecise = duration
+		self.TimerMapName = self:ReadString(mapName, self:ReadString(self.DefaultTimerMapName, ""))
+		self.TimerLabel = self:ReadString(timerLabel, self:ReadString(self.DefaultTimerLabel, "BOSS"))
+		self.TimerVisible = true
+		self.TimerRunning = false
+		self:Log("prepared map=" .. self.TimerMapName .. " label=" .. self.TimerLabel .. " duration=" .. tostring(duration) .. " running=false")
+	end
+
+	@ExecSpace("ServerOnly")
 	method void StopTimer()
 		-- Stops and hides the active battle timer.
 		self:ResetTimerState()

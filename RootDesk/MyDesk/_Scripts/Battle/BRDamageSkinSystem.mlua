@@ -50,6 +50,18 @@ script BRDamageSkinSystem extends Logic
 	@ExecSpace("Client")
 	method void ShowDamage(Entity targetEntity, number rawDamage, boolean isCritical, string sourceId)
 		-- Displays the default Maple taken-hit damage skin above a damaged entity.
+		self:ShowDamageWithSkin(targetEntity, rawDamage, isCritical, sourceId, self.TakenDamageSkinRUID, "taken")
+	end
+
+	@ExecSpace("Client")
+	method void ShowEnemyDamage(Entity targetEntity, number rawDamage, boolean isCritical, string sourceId)
+		-- Displays the yellow Maple attack damage skin above an enemy or attack target.
+		self:ShowDamageWithSkin(targetEntity, rawDamage, isCritical, sourceId, self.AttackDamageSkinRUID, "enemy")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ShowDamageWithSkin(Entity targetEntity, number rawDamage, boolean isCritical, string sourceId, string damageSkinRuid, string skinLabel)
+		-- Central client-side renderer for Maple damage skin popups.
 		if self.EnableDamageSkin ~= true then
 			return
 		end
@@ -61,7 +73,7 @@ script BRDamageSkinSystem extends Logic
 			return
 		end
 
-		local skinRuid = self.TakenDamageSkinRUID
+		local skinRuid = self:ReadString(damageSkinRuid, "")
 		if skinRuid == nil or skinRuid == "" then
 			return
 		end
@@ -87,8 +99,16 @@ script BRDamageSkinSystem extends Logic
 			log("[BRDamageSkin] show target=" .. targetEntity.Name
 				.. " damage=" .. tostring(damage)
 				.. " critical=" .. tostring(isCritical == true)
+				.. " skin=" .. self:ReadString(skinLabel, "")
 				.. " source=" .. tostring(sourceId))
 		end
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
 	end
 
 end

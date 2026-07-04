@@ -821,7 +821,7 @@ script BRSkillChainUI extends Component
 			local common = self:GetChainEntity("Panel/Chain/Common_" .. tostring(commonIndex))
 			if self:IsScreenPointInsideEntity(screenPoint, common) == true then
 				local skillKey = self:GetCommonSkillKey(commonIndex)
-				if skillKey ~= "" then
+				if self:IsCommonSkillAvailable(skillKey) == true then
 					return {
 						Kind = "COMMON",
 						Index = commonIndex,
@@ -1005,6 +1005,17 @@ script BRSkillChainUI extends Component
 			return "Nimbus"
 		end
 		return ""
+	end
+
+	method boolean IsCommonSkillAvailable(string skillKey)
+		local key = self:ReadString(skillKey, "")
+		if key == "" then
+			return false
+		end
+		if _BRSkillSystem == nil then
+			return true
+		end
+		return _BRSkillSystem:HasSkillDefinition(key) == true
 	end
 
 	method number GetSkillTooltipWidth()
@@ -1265,11 +1276,7 @@ script BRSkillChainUI extends Component
 		local borderColor = self:GetSlotBorderColor(safeTier, occupied == true, isLeadSlot == true)
 		local iconColor = self:GetSlotIconDisplayColor(skillKey, safeTier, occupied == true, isLeadSlot == true, useSolidIcon)
 
-		if self:HasAuthoredBattleHudLayout() == true and safeRootKind == "CHAIN" then
-			self:SetVisualSpriteColor(safeRootKind, safeBasePath, Color(1, 1, 1, 1))
-		else
-			self:SetVisualSpriteColor(safeRootKind, safeBasePath, baseColor)
-		end
+		self:SetVisualSpriteColor(safeRootKind, safeBasePath, baseColor)
 		local iconPath = self:ApplySlotIconVisual(safeRootKind, safeBasePath, iconRuid, iconColor)
 		if iconPath ~= "" then
 			self:SetVisualEntityEnabled(safeRootKind, iconPath, true)
@@ -1541,7 +1548,7 @@ script BRSkillChainUI extends Component
 	end
 
 	method boolean ShouldShowRightConnect(number slotIndex, any record)
-		-- Trigger parts always show the right connector by role, regardless of adjacency.
+		-- Trigger/starter parts always show the right connector by role, regardless of adjacency.
 		if self:IsOccupiedChainSlotRecord(record) ~= true then
 			return false
 		end
@@ -1557,7 +1564,7 @@ script BRSkillChainUI extends Component
 	end
 
 	method boolean IsTriggerStarterChainSlot(number slotIndex, any record)
-		-- Returns true for a chain part whose skill data contains a trigger action.
+		-- Returns true for a chain part marked by the server as a trigger/starter.
 		if self:IsOccupiedChainSlotRecord(record) ~= true then
 			return false
 		end
@@ -1593,7 +1600,7 @@ script BRSkillChainUI extends Component
 	end
 
 	method boolean SkillRecordHasTrigger(number slotIndex, any record)
-		-- Reads the server-provided trigger marker for a rendered chain slot.
+		-- Reads the server-provided trigger/starter marker for a rendered chain slot.
 		if self:IsOccupiedChainSlotRecord(record) ~= true then
 			return false
 		end
@@ -2808,9 +2815,24 @@ script BRSkillChainUI extends Component
 		if self.EnableBattleHudLayout ~= true then
 			return
 		end
-		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Common_1", self:GetCommonSkillKey(1), 1, true, false, false)
-		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Common_2", self:GetCommonSkillKey(2), 1, true, false, false)
-		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Common_3", self:GetCommonSkillKey(3), 1, true, false, false)
+		for index = 1, self:GetCommonSkillSlotCount() do
+			local path = "Panel/Chain/Common_" .. tostring(index)
+			local skillKey = self:GetCommonSkillKey(index)
+			local occupied = self:IsCommonSkillAvailable(skillKey) == true
+			if occupied == true then
+				self:SetSkillSlotVisual("CHAIN", path, skillKey, 1, true, false, false)
+			else
+				self:SetSkillSlotVisual("CHAIN", path, "Default", 0, false, false, false)
+				self:SetSlotFrameColor("CHAIN", path, Color(0.28, 0.34, 0.43, 0.42))
+			end
+		end
+		for index = self:GetCommonSkillSlotCount() + 1, 6 do
+			local path = "Panel/Chain/Common_" .. tostring(index)
+			if self:GetChainEntity(path) ~= nil then
+				self:SetSkillSlotVisual("CHAIN", path, "Default", 0, false, false, false)
+				self:SetSlotFrameColor("CHAIN", path, Color(0.28, 0.34, 0.43, 0.42))
+			end
+		end
 		if _BRCommonSkillSystem ~= nil and _BRCommonSkillSystem:IsLocalNimbusActive() == true then
 			self:SetSlotFrameColor("CHAIN", "Panel/Chain/Common_3", Color(0.42, 0.95, 1.0, 1.0))
 		end

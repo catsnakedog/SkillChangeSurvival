@@ -305,7 +305,7 @@ script BRPartBox extends Component
 			.. " damage=" .. tostring(damage)
 			.. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()))
 		if _BRDamageSkinSystem ~= nil then
-			_BRDamageSkinSystem:ShowDamage(self.Entity, damage, false, self:ReadString(source, "skill"))
+			_BRDamageSkinSystem:ShowEnemyDamage(self.Entity, damage, false, self:ReadString(source, "skill"))
 		end
 		if self.CurrentHp <= 0 then
 			self:BreakBox(attackerEntity, source)

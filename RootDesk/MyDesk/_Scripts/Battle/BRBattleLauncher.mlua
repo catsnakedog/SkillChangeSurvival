@@ -53,7 +53,7 @@ script BRBattleLauncher extends Logic
 
 	property number BattleStartEffectSeconds = 1
 
-	property number BattleStartEffectScale = 1.2
+	property number BattleStartEffectScale = 0.7
 
 	property number BattleStartEffectOrderInLayer = 120
 
@@ -308,6 +308,7 @@ script BRBattleLauncher extends Logic
 
 		entry["LoadingTimerId"] = 0
 		entry["StartSequenceStarted"] = true
+		self:PrepareBattleTimer(entry["MatchRoom"], entry["Owner"], entry["TargetMapName"])
 		self:NotifyBattleStartCountdown(entry["MatchRoom"])
 
 		local delay = self:GetBattleStartCountdownSeconds(entry["Owner"])
@@ -335,6 +336,7 @@ script BRBattleLauncher extends Logic
 
 		entry["LoadingTimerId"] = 0
 		self:NotifyMatchStarted(entry["MatchRoom"])
+		self:StartBattleTimer(entry["MatchRoom"], entry["Owner"], entry["TargetMapName"])
 
 		local delay = self:GetBattleStartEffectSeconds(entry["Owner"])
 		if delay <= 0 then
@@ -361,7 +363,6 @@ script BRBattleLauncher extends Logic
 
 		entry["LoadingTimerId"] = 0
 		entry["Started"] = true
-		self:StartBattleTimer(entry["MatchRoom"], entry["Owner"], entry["TargetMapName"])
 		self:StartMagneticZone(entry["MatchRoom"], entry["Owner"], entry["TargetMapName"])
 		self:MarkMatchPlaying(entry["MatchRoom"], entry["Owner"])
 		self:NotifyBattleGameplayOpened(entry["MatchRoom"])
@@ -1087,8 +1088,18 @@ script BRBattleLauncher extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
+	method void PrepareBattleTimer(any matchRoom, any owner, string targetMapName)
+		-- Shows the synchronized timer before START, but keeps it frozen.
+		if _BRBattleTimerSystem == nil then
+			log("[BRBattleLauncher] timer prepare skipped: timer system missing")
+			return
+		end
+		_BRBattleTimerSystem:PrepareTimer(self:GetBattleTimerSeconds(owner), self:ReadString(targetMapName, ""), self:GetBattleTimerLabel(owner))
+	end
+
+	@ExecSpace("ServerOnly")
 	method void StartBattleTimer(any matchRoom, any owner, string targetMapName)
-		-- Starts the synchronized boss timer for the launched battle.
+		-- Starts the synchronized boss timer when the START presentation appears.
 		if _BRBattleTimerSystem == nil then
 			log("[BRBattleLauncher] timer skipped: timer system missing")
 			return
@@ -1190,7 +1201,7 @@ script BRBattleLauncher extends Logic
 		if owner ~= nil and owner.BattleStartEffectScale ~= nil then
 			value = owner.BattleStartEffectScale
 		end
-		return math.max(0.05, self:ReadNumber(value, 1.2))
+		return math.max(0.05, self:ReadNumber(value, 0.7))
 	end
 
 	method number GetResultPopupDelaySeconds()
@@ -1235,7 +1246,7 @@ script BRBattleLauncher extends Logic
 		-- Shows the 3-2-1 effect while keeping local controls locked.
 		self:SetLocalPlayerInputEnabled(false)
 		self:PlayBattleStartPresentationEffect(animationRuid, scale, seconds, "countdown")
-		log("[BRBattleLauncher] local countdown effect ruid=" .. self:ReadString(animationRuid, "") .. " seconds=" .. tostring(seconds))
+		log("[BRBattleLauncher] local countdown effect ruid=" .. self:ReadString(animationRuid, "") .. " seconds=" .. tostring(seconds) .. " scale=" .. tostring(scale))
 	end
 
 	@ExecSpace("Client")
@@ -1243,7 +1254,7 @@ script BRBattleLauncher extends Logic
 		-- Shows the START effect while controls remain locked until the server opens gameplay.
 		self:SetLocalPlayerInputEnabled(false)
 		self:PlayBattleStartPresentationEffect(animationRuid, scale, self:GetBattleStartEffectSeconds(nil), "start")
-		log("[BRBattleLauncher] local start effect ruid=" .. self:ReadString(animationRuid, ""))
+		log("[BRBattleLauncher] local start effect ruid=" .. self:ReadString(animationRuid, "") .. " scale=" .. tostring(scale))
 	end
 
 	@ExecSpace("Client")

@@ -1,4 +1,4 @@
-action_id,status_id,duration_frames,damage_taken_rate,chance_percent,heal_max_hp_percent
+action_id,status_id,duration_frames,damage_taken_rate,chance_percent,heal_max_hp_percent,attack_power_rate
 에픽 어드벤처/데미지버프,epic_adventure,2000,1,100,0
 메이플 용사/스탯버프,maple_hero,8000,1,100,0
 용사의 의지/면역,will_immunity,100,1,100,0
@@ -14,3 +14,4 @@ action_id,status_id,duration_frames,damage_taken_rate,chance_percent,heal_max_hp
 슬럼버/슬로우패시브,slumber_passive,8000,1,100,0
 럭키 다이스/버프,lucky_dice,6000,1,100,0
 반격의 슈터/반격버프,counter_shooter,8000,1,100,0
+디바인스윙4/공버프,divine4_atk,100,1,100,0,1.7

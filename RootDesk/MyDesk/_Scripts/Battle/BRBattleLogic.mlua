@@ -79,6 +79,8 @@ script BRBattleLogic extends Component
 
 	property number RoomBottomOutOfBoundsPadding = 0.1
 
+	property number OutOfBoundsFootholdSearchDistance = 28
+
 	property boolean VerboseBattleLog = false
 
 	property boolean LogPhysicsStateOnRegister = false
@@ -1507,11 +1509,15 @@ script BRBattleLogic extends Component
 	end
 
 	method any GetOutOfBoundsReturnPosition(Entity playerEntity, Vector2 fromPosition, any preferredRoom)
-		-- Returns the player to the active room, falling back to the nearest room and then map center.
+		-- Returns the player to a nearby foothold, falling back to room respawn and then map center.
 		local graph = self:GetLatestRoomGraph()
 		local targetRoom = preferredRoom
 		if targetRoom == nil and playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
 			targetRoom = self:GetOutOfBoundsReturnLogicalRoom(graph, self:ReadString(playerEntity.PlayerComponent.UserId, ""), fromPosition)
+		end
+		local footholdPosition = self:GetNearestOutOfBoundsFootholdPosition(playerEntity, fromPosition, targetRoom)
+		if footholdPosition ~= nil then
+			return footholdPosition
 		end
 		if targetRoom ~= nil then
 			local graphPosition = self:GetRespawnPositionForLogicalRoom(graph, targetRoom)
@@ -1520,6 +1526,137 @@ script BRBattleLogic extends Component
 			end
 		end
 		return self:GetMapCenterReturnPosition(playerEntity)
+	end
+
+	method any GetNearestOutOfBoundsFootholdPosition(Entity playerEntity, Vector2 fromPosition, any targetRoom)
+		-- Finds a usable foothold near the out-of-bounds position while keeping the player in the owning room.
+		if playerEntity == nil then
+			return nil
+		end
+		if fromPosition == nil then
+			fromPosition = self:GetEntityPosition2(playerEntity)
+		end
+
+		local mapName = self:ReadString(playerEntity.CurrentMapName, self:GetBattleMapName())
+		if mapName == "" then
+			mapName = self:GetBattleMapName()
+		end
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
+		if mapEntity == nil then
+			mapEntity = playerEntity.CurrentMap
+		end
+		if mapEntity == nil or mapEntity.FootholdComponent == nil then
+			return nil
+		end
+
+		local graph = self:GetLatestRoomGraph()
+		local bounds = self:GetPhysicalRoomBoundsForLogicalRoom(graph, targetRoom)
+		if bounds == nil then
+			bounds = self:GetMapBoundsForEntity(playerEntity)
+		end
+
+		local point = Vector2(fromPosition.x, fromPosition.y)
+		if bounds ~= nil then
+			point = Vector2(
+				self:ClampNumber(point.x, bounds.Left + 0.25, bounds.Right - 0.25),
+				self:ClampNumber(point.y, bounds.Bottom + 0.25, bounds.Top - 0.25)
+			)
+		end
+
+		local searchDistance = self:GetOutOfBoundsFootholdSearchDistance()
+		local foothold = mapEntity.FootholdComponent:GetNearestFootholdByPoint(point, searchDistance)
+		local landing = self:GetFootholdLandingPosition(foothold, point.x, bounds)
+		if landing ~= nil then
+			return landing
+		end
+
+		local rayStart = Vector2(point.x, point.y + searchDistance * 0.5)
+		local rayDistance = searchDistance
+		if bounds ~= nil then
+			rayStart = Vector2(point.x, bounds.Top + 1)
+			rayDistance = math.max(searchDistance, bounds.Top - bounds.Bottom + 2)
+		end
+		foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), rayDistance)
+		return self:GetFootholdLandingPosition(foothold, point.x, bounds)
+	end
+
+	method any GetPhysicalRoomBoundsForLogicalRoom(any graph, any logicalRoom)
+		-- Converts a logical room assignment into a world-space rectangle.
+		if _BRRoomGraphGenerator == nil or graph == nil or logicalRoom == nil then
+			return nil
+		end
+		local roomName = self:GetAssignedPhysicalRoomName(logicalRoom)
+		if roomName == "" then
+			return nil
+		end
+		local mapName = self:ResolveGraphMapName(graph)
+		if mapName == "" then
+			return nil
+		end
+		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(mapName)
+		local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(mapName, root, roomName)
+		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(mapName)
+		if center == nil or halfSize == nil then
+			return nil
+		end
+		return {
+			Left = center.x - halfSize.x,
+			Bottom = center.y - halfSize.y,
+			Right = center.x + halfSize.x,
+			Top = center.y + halfSize.y,
+			MapName = mapName,
+			RoomName = roomName
+		}
+	end
+
+	method any GetFootholdLandingPosition(any foothold, number requestedX, any bounds)
+		-- Converts a foothold hit into a safe standing point.
+		if foothold == nil then
+			return nil
+		end
+		if foothold:IsVertical() == true then
+			return nil
+		end
+
+		local x = self:ReadNumber(requestedX, 0)
+		local startPoint = foothold.StartPoint
+		local endPoint = foothold.EndPoint
+		if startPoint ~= nil and endPoint ~= nil then
+			local minX = math.min(startPoint.x, endPoint.x) + 0.03
+			local maxX = math.max(startPoint.x, endPoint.x) - 0.03
+			if maxX < minX then
+				minX = math.min(startPoint.x, endPoint.x)
+				maxX = math.max(startPoint.x, endPoint.x)
+			end
+			x = self:ClampNumber(x, minX, maxX)
+		end
+		if bounds ~= nil then
+			x = self:ClampNumber(x, bounds.Left + 0.25, bounds.Right - 0.25)
+		end
+
+		local position = Vector2(x, foothold:GetYByX(x) + self:GetLifeRespawnFloorOffsetY())
+		if bounds ~= nil then
+			if position.x < bounds.Left - 0.05 or position.x > bounds.Right + 0.05 then
+				return nil
+			end
+			if position.y < bounds.Bottom - 0.1 or position.y > bounds.Top + 1 then
+				return nil
+			end
+		end
+		return position
+	end
+
+	method number ClampNumber(number value, number minimum, number maximum)
+		-- Clamps numbers while tolerating inverted ranges from tiny rooms.
+		local safeValue = self:ReadNumber(value, 0)
+		local minValue = self:ReadNumber(minimum, safeValue)
+		local maxValue = self:ReadNumber(maximum, safeValue)
+		if maxValue < minValue then
+			local middle = (minValue + maxValue) * 0.5
+			minValue = middle
+			maxValue = middle
+		end
+		return math.max(minValue, math.min(maxValue, safeValue))
 	end
 
 	method any GetOutOfBoundsReturnLogicalRoom(any graph, string userId, Vector2 fromPosition)
@@ -1571,13 +1708,17 @@ script BRBattleLogic extends Component
 			return nil
 		end
 
-		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(graph.MapName)
-		local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(graph.MapName, root, roomName)
+		local mapName = self:ResolveGraphMapName(graph)
+		if mapName == "" then
+			return nil
+		end
+		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(mapName)
+		local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(mapName, root, roomName)
 		if center == nil then
 			return nil
 		end
 
-		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(graph.MapName)
+		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(mapName)
 		if halfSize == nil then
 			return nil
 		end
@@ -1618,15 +1759,22 @@ script BRBattleLogic extends Component
 			return nil
 		end
 
-		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(graph.MapName)
-		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(graph.MapName)
+		local mapName = self:ResolveGraphMapName(graph)
+		if mapName == "" then
+			return nil
+		end
+		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(mapName)
+		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(mapName)
+		if halfSize == nil then
+			return nil
+		end
 		local bestRoom = nil
 		local bestDistance = nil
 		for index, room in ipairs(graph.Rooms) do
 			if room ~= nil and room.Visited == true then
 				local roomName = self:GetAssignedPhysicalRoomName(room)
 				if roomName ~= "" then
-					local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(graph.MapName, root, roomName)
+					local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(mapName, root, roomName)
 					if center ~= nil then
 						local dx = math.max(0, math.abs(position.x - center.x) - halfSize.x)
 						local dy = math.max(0, math.abs(position.y - center.y) - halfSize.y)
@@ -1815,15 +1963,27 @@ script BRBattleLogic extends Component
 			return nil
 		end
 
-		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(graph.MapName)
-		local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(graph.MapName, root, roomName)
+		local mapName = self:ResolveGraphMapName(graph)
+		if mapName == "" then
+			return nil
+		end
+		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(mapName)
+		local center = _BRRoomGraphGenerator:GetPhysicalRoomCenter(mapName, root, roomName)
 		if center == nil then
 			return nil
 		end
 
-		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(graph.MapName)
+		local halfSize = _BRRoomGraphGenerator:GetRoomHalfSize(mapName)
+		if halfSize == nil then
+			return nil
+		end
 		local rawPosition = Vector2(center.x, center.y - halfSize.y + self:GetLifeRespawnFloorOffsetY())
-		return self:GetFootholdAlignedRespawnPosition(graph.MapName, rawPosition, halfSize.y * 2)
+		return self:GetFootholdAlignedRespawnPosition(mapName, rawPosition, halfSize.y * 2)
+	end
+
+	method string ResolveGraphMapName(any graph)
+		local mapName = self:ReadString(self:GetBattleMapName(), "")
+		return mapName
 	end
 
 	method Vector2 GetFootholdAlignedRespawnPosition(string mapName, Vector2 rawPosition, number roomHeight)
@@ -2278,6 +2438,10 @@ script BRBattleLogic extends Component
 
 	method number GetRoomBottomOutOfBoundsPadding()
 		return math.max(0, self:ReadNumber(self.RoomBottomOutOfBoundsPadding, 0.1))
+	end
+
+	method number GetOutOfBoundsFootholdSearchDistance()
+		return math.max(2, self:ReadNumber(self.OutOfBoundsFootholdSearchDistance, 28))
 	end
 
 	method number GetAliveBotCount()

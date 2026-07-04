@@ -1252,7 +1252,7 @@ script BRBattleLauncher extends Logic
 			log("[BRBattleLauncher] physical grid sync skipped: grid tool missing map=" .. self:ReadString(targetMapName, ""))
 			return
 		end
-		gridTool:SyncGeneratedGrid(true, false, "launch grid")
+		gridTool:PrepareGeneratedGridForRuntime("launch grid")
 	end
 
 	@ExecSpace("ServerOnly")

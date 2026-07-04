@@ -245,9 +245,10 @@ script BRSkillChainUI extends Component
 
 		if _BRCommonSkillSystem ~= nil then
 			local hotkeySlots = {
-				{ Path = "Panel/Chain/Common_1", Action = "unique" },
+				{ Path = "Panel/Chain/Common_1", Action = "basic" },
 				{ Path = "Panel/Chain/Common_2", Action = "blink" },
 				{ Path = "Panel/Chain/Common_3", Action = "nimbus" },
+				{ Path = "Panel/Chain/Common_4", Action = "unique" },
 				{ Path = self:GetRepresentativeChainSlotPath(), Action = "attack" }
 			}
 			for _, slot in ipairs(hotkeySlots) do
@@ -316,9 +317,10 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void ConnectHotkeyRebindSlots()
-		self:ConnectHotkeyRebindSlot("Panel/Chain/Common_1", "unique")
+		self:ConnectHotkeyRebindSlot("Panel/Chain/Common_1", "basic")
 		self:ConnectHotkeyRebindSlot("Panel/Chain/Common_2", "blink")
 		self:ConnectHotkeyRebindSlot("Panel/Chain/Common_3", "nimbus")
+		self:ConnectHotkeyRebindSlot("Panel/Chain/Common_4", "unique")
 		self:ConnectHotkeyRebindSlot(self:GetRepresentativeChainSlotPath(), "attack")
 		self:ConnectHotkeyRebindSlot("Panel/Chain/Sobie_1", "consumable")
 	end
@@ -658,11 +660,13 @@ script BRSkillChainUI extends Component
 	method string GetCommonHotkeyActionId(number index)
 		local safeIndex = math.floor(self:ReadNumber(index, 0))
 		if safeIndex == 1 then
-			return "unique"
+			return "basic"
 		elseif safeIndex == 2 then
 			return "blink"
 		elseif safeIndex == 3 then
 			return "nimbus"
+		elseif safeIndex == 4 then
+			return "unique"
 		end
 		return ""
 	end
@@ -1216,17 +1220,34 @@ script BRSkillChainUI extends Component
 	method string GetCommonSkillKey(number index)
 		local safeIndex = math.floor(self:ReadNumber(index, 0))
 		if safeIndex == 1 then
+			return self:GetLocalBasicSkillKeyForHud()
+		elseif safeIndex == 2 then
+			return "Blink"
+		elseif safeIndex == 3 then
+			return "Nimbus"
+		elseif safeIndex == 4 then
 			local uniqueSkillKey = "Unique"
 			if _BRCharacterSystem ~= nil then
 				uniqueSkillKey = self:ReadString(_BRCharacterSystem:GetLocalUniqueSkillKey(), uniqueSkillKey)
 			end
 			return uniqueSkillKey
-		elseif safeIndex == 2 then
-			return "Blink"
-		elseif safeIndex == 3 then
-			return "Nimbus"
 		end
 		return ""
+	end
+
+	method string GetLocalBasicSkillKeyForHud()
+		-- Uses the class-fixed basic attack icon, falling back to the class basic skill if needed.
+		local basicSkillKey = ""
+		if _BRCharacterSystem ~= nil then
+			basicSkillKey = self:ReadString(_BRCharacterSystem:GetLocalBasicAttackKey(), "")
+			if basicSkillKey == "" then
+				basicSkillKey = self:ReadString(_BRCharacterSystem:GetLocalBasicSkillKey(), "")
+			end
+		end
+		if basicSkillKey == "" and _BRSkillSystem ~= nil then
+			basicSkillKey = self:ReadString(_BRSkillSystem:GetDefaultBasicSkillId(), "")
+		end
+		return basicSkillKey
 	end
 
 	method boolean IsCommonSkillAvailable(string skillKey)
@@ -1322,7 +1343,7 @@ script BRSkillChainUI extends Component
 		end
 		self:SetChainTextByPath(representativePath .. "/Label", "")
 		self:SetChainTextByPath(representativePath .. "/Tier", "")
-		self:SetSkillSlotVisual("CHAIN", representativePath, skillKey, displayTier, occupied, true, false)
+		self:SetSkillSlotVisualWithIcon("CHAIN", representativePath, skillKey, displayTier, occupied, true, false, self:GetRecordIconRUID(record))
 		self:SetSlotFrameColor("CHAIN", representativePath, Color(1.0, 0.86, 0.24, 1.0))
 	end
 
@@ -1531,6 +1552,7 @@ script BRSkillChainUI extends Component
 				iconEntity.SpriteGUIRendererComponent.Type = ImageType.Simple
 				iconEntity.SpriteGUIRendererComponent.FillAmount = 1
 			end
+			self:LogBattleHudIconAssignment(safeRootKind, safeBasePath, iconPath, skillKey, safeTier, occupied == true, iconRuid)
 		elseif self:ShouldUseBattleHudIconChildOnly(safeRootKind, safeBasePath) ~= true then
 			self:SetVisualSpriteImage(safeRootKind, safeBasePath, iconRuid)
 			local baseEntity = self:GetVisualEntity(safeRootKind, safeBasePath)
@@ -1543,8 +1565,48 @@ script BRSkillChainUI extends Component
 			else
 				self:SetVisualSpriteColor(safeRootKind, safeBasePath, baseColor)
 			end
+			self:LogBattleHudIconAssignment(safeRootKind, safeBasePath, safeBasePath, skillKey, safeTier, occupied == true, iconRuid)
 		end
 		self:SetSlotFrameColor(safeRootKind, safeBasePath, borderColor)
+	end
+
+	method void LogBattleHudIconAssignment(string rootKind, string basePath, string iconPath, string skillKey, number tier, boolean occupied, string iconRuid)
+		-- Logs BattleHub skill icon assignment once per changed slot for verification.
+		if self:ReadString(rootKind, "CHAIN") ~= "CHAIN" then
+			return
+		end
+		if self:HasAuthoredBattleHudLayout() ~= true then
+			return
+		end
+		if occupied ~= true then
+			return
+		end
+		local safeBasePath = self:ReadString(basePath, "")
+		if safeBasePath == "" then
+			return
+		end
+		local hubPath = self:GetAuthoredBattleHudContainerPath()
+		local isBattleHudIcon = safeBasePath == "Panel/Chain/Representative"
+			or self:StartsWith(safeBasePath, hubPath .. "/ChainPart_") == true
+			or self:StartsWith(safeBasePath, hubPath .. "/Common_") == true
+			or self:StartsWith(safeBasePath, "Panel/Chain/Common_") == true
+			or self:StartsWith(safeBasePath, "Panel/Chain/Slot_") == true
+		if isBattleHudIcon ~= true then
+			return
+		end
+		self:EnsureRuntime()
+		if self._T.lastBattleHudIconSummary == nil then
+			self._T.lastBattleHudIconSummary = {}
+		end
+		local summary = self:ReadString(iconPath, "")
+			.. ":" .. self:ReadString(skillKey, "Default")
+			.. ":" .. tostring(math.floor(self:ReadNumber(tier, 1)))
+			.. ":" .. self:ReadString(iconRuid, self:GetFallbackIconRUID())
+		if self._T.lastBattleHudIconSummary[safeBasePath] == summary then
+			return
+		end
+		self._T.lastBattleHudIconSummary[safeBasePath] = summary
+		self:Log("battle hud icon path=" .. safeBasePath .. " surface=" .. self:ReadString(iconPath, "") .. " skill=" .. self:ReadString(skillKey, "Default") .. " tier=" .. tostring(math.floor(self:ReadNumber(tier, 1))) .. " ruid=" .. self:ReadString(iconRuid, ""))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -2119,10 +2181,10 @@ script BRSkillChainUI extends Component
 	end
 
 	method string GetInternalChainSlotPath(number slotIndex)
-		-- In the authored HUD, Slot_1 is reserved for the representative image alias.
+		-- Authored BattleHud internal slots are direct ChainPart_N entities.
 		local safeSlotIndex = math.max(1, math.floor(self:ReadNumber(slotIndex, 1)))
 		if self:HasAuthoredBattleHudLayout() == true then
-			return "Panel/Chain/Slot_" .. tostring(safeSlotIndex + 1)
+			return self:GetAuthoredBattleHudContainerPath() .. "/ChainPart_" .. tostring(safeSlotIndex)
 		end
 		return "Panel/Chain/Slot_" .. tostring(safeSlotIndex)
 	end
@@ -3151,10 +3213,7 @@ script BRSkillChainUI extends Component
 			local token = safePrefix .. tostring(index)
 			if self:StartsWith(safePath, token) == true then
 				local suffix = string.sub(safePath, string.len(token) + 1)
-				if index == 1 then
-					return hubPath .. "/SkillChain_5" .. suffix
-				end
-				return hubPath .. "/ChainPart_" .. tostring(index - 1) .. suffix
+				return hubPath .. "/ChainPart_" .. tostring(index) .. suffix
 			end
 		end
 		return ""
@@ -3431,11 +3490,13 @@ script BRSkillChainUI extends Component
 			local occupied = self:IsCommonSkillAvailable(skillKey) == true
 			local actionId = ""
 			if index == 1 then
-				actionId = "unique"
+				actionId = "basic"
 			elseif index == 2 then
 				actionId = "blink"
 			elseif index == 3 then
 				actionId = "nimbus"
+			elseif index == 4 then
+				actionId = "unique"
 			end
 			if occupied == true then
 				self:SetSkillSlotVisual("CHAIN", path, skillKey, 1, true, false, false)
@@ -3532,9 +3593,10 @@ script BRSkillChainUI extends Component
 
 		if _BRCommonSkillSystem ~= nil then
 			local labels = {
-				{ Path = "Panel/Chain/Common_1", Action = "unique" },
+				{ Path = "Panel/Chain/Common_1", Action = "basic" },
 				{ Path = "Panel/Chain/Common_2", Action = "blink" },
 				{ Path = "Panel/Chain/Common_3", Action = "nimbus" },
+				{ Path = "Panel/Chain/Common_4", Action = "unique" },
 				{ Path = representativePath, Action = "attack" },
 				{ Path = "Panel/Chain/Sobie_1", Action = "consumable" }
 			}
@@ -3554,7 +3616,7 @@ script BRSkillChainUI extends Component
 				end
 			end
 		end
-		local unusedTextEntity = self:GetChainEntity("Panel/Chain/Common_4/UIText")
+		local unusedTextEntity = self:GetChainEntity("Panel/Chain/Common_5/UIText")
 		if unusedTextEntity ~= nil then
 			if unusedTextEntity.TextComponent ~= nil then
 				unusedTextEntity.TextComponent.Text = ""
@@ -3588,12 +3650,12 @@ script BRSkillChainUI extends Component
 		if _BRCommonSkillSystem == nil then
 			return
 		end
-		self:SetHotkeyLabel("Panel/Chain/Common_1", "unique")
+		self:SetHotkeyLabel("Panel/Chain/Common_1", "basic")
 		self:SetHotkeyLabel("Panel/Chain/Common_2", "blink")
 		self:SetHotkeyLabel("Panel/Chain/Common_3", "nimbus")
+		self:SetHotkeyLabel("Panel/Chain/Common_4", "unique")
 		self:SetHotkeyLabel(self:GetRepresentativeChainSlotPath(), "attack")
 		self:SetHotkeyLabel("Panel/Chain/Sobie_1", "consumable")
-		self:SetHotkeyText("Panel/Chain/Common_4", "")
 	end
 
 	@ExecSpace("ClientOnly")
@@ -3937,7 +3999,7 @@ script BRSkillChainUI extends Component
 	end
 
 	method number GetCommonSkillSlotCount()
-		return 3
+		return 4
 	end
 
 	method number GetHudPanelWidth()

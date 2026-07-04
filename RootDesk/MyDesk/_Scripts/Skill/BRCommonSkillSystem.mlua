@@ -96,6 +96,8 @@ script BRCommonSkillSystem extends Logic
 
 	property number localNextUniqueAt = 0
 
+	property number localNextBasicAt = 0
+
 	property number localNextBlinkAt = 0
 
 	property number localNextNimbusToggleAt = 0
@@ -103,6 +105,12 @@ script BRCommonSkillSystem extends Logic
 	property number localNextChainVisualAt = 0
 
 	property number localNextConsumableAt = 0
+
+	property number localBasicCooldownSeconds = 0
+
+	property number localUniqueCooldownSeconds = 0
+
+	property number localChainCooldownSeconds = 0
 
 	property boolean localNimbusActive = false
 
@@ -195,9 +203,10 @@ script BRCommonSkillSystem extends Logic
 					"/ui/BRBattleHudGroup/Bg"
 				}
 				local slots = {
-					{ Name = "Common_1", Action = "unique" },
+					{ Name = "Common_1", Action = "basic" },
 					{ Name = "Common_2", Action = "blink" },
 					{ Name = "Common_3", Action = "nimbus" },
+					{ Name = "Common_4", Action = "unique" },
 					{ Name = "SkillChain_5", Action = "attack" }
 				}
 				for _, rootPath in ipairs(roots) do
@@ -232,7 +241,7 @@ script BRCommonSkillSystem extends Logic
 							end
 						end
 					end
-					local unusedTextEntity = _EntityService:GetEntityByPath(rootPath .. "/Common_4/UIText")
+					local unusedTextEntity = _EntityService:GetEntityByPath(rootPath .. "/Common_5/UIText")
 					if unusedTextEntity ~= nil then
 						if unusedTextEntity.TextComponent ~= nil then
 							unusedTextEntity.TextComponent.Text = ""
@@ -391,6 +400,49 @@ script BRCommonSkillSystem extends Logic
 			log("[BRCommonSkill] unique request user=" .. userId .. " skill=" .. uniqueSkillKey)
 		else
 			log("[BRCommonSkill] unique skipped reason=noSkillSystem")
+		end
+	end
+
+	@ExecSpace("Client")
+	method void ApplyActionCooldownClient(string userId, string actionId, number remainingSeconds, number durationSeconds)
+		-- Receives server-authoritative skill cooldown for the local BattleHub icon.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return
+		end
+		if self:ReadString(userId, "") ~= self:ReadString(localPlayer.PlayerComponent.UserId, "") then
+			return
+		end
+		self:ApplyLocalActionCooldown(actionId, remainingSeconds, durationSeconds, "server")
+	end
+
+	method void ApplyLocalActionCooldown(string actionId, number remainingSeconds, number durationSeconds, string reason)
+		-- Stores one local cooldown clock used by BattleHub FillAmount.
+		local id = self:NormalizeActionId(actionId)
+		if id == "" then
+			return
+		end
+		local remaining = math.max(0, self:ReadNumber(remainingSeconds, 0))
+		local duration = math.max(0.05, self:ReadNumber(durationSeconds, remaining))
+		local readyAt = _UtilLogic.ElapsedSeconds + remaining
+		if id == "basic" then
+			self.localNextBasicAt = readyAt
+			self.localBasicCooldownSeconds = duration
+		elseif id == "unique" then
+			self.localNextUniqueAt = readyAt
+			self.localUniqueCooldownSeconds = duration
+		elseif id == "attack" then
+			self.localNextChainVisualAt = readyAt
+			self.localChainCooldownSeconds = duration
+		elseif id == "blink" then
+			self.localNextBlinkAt = readyAt
+		elseif id == "nimbus" then
+			self.localNextNimbusToggleAt = readyAt
+		elseif id == "consumable" then
+			self.localNextConsumableAt = readyAt
+		end
+		if self.VerboseLog == true and (id == "basic" or id == "unique" or id == "attack") then
+			log("[BRCommonSkill] cooldown sync action=" .. id .. " remaining=" .. tostring(remaining) .. " duration=" .. tostring(duration) .. " reason=" .. self:ReadString(reason, ""))
 		end
 	end
 
@@ -1968,7 +2020,13 @@ script BRCommonSkillSystem extends Logic
 	method number GetActionCooldownDurationSeconds(string actionId)
 		-- Returns the cooldown duration for a local hotkey action.
 		local id = self:NormalizeActionId(actionId)
-		if id == "unique" then
+		if id == "basic" then
+			return math.max(0.05, self:ReadNumber(self.localBasicCooldownSeconds, 0))
+		elseif id == "unique" then
+			local syncedUnique = self:ReadNumber(self.localUniqueCooldownSeconds, 0)
+			if syncedUnique > 0 then
+				return math.max(0.05, syncedUnique)
+			end
 			return self:GetUniqueCooldownSeconds()
 		elseif id == "blink" then
 			return self:GetBlinkCooldownSeconds()
@@ -1977,6 +2035,10 @@ script BRCommonSkillSystem extends Logic
 		elseif id == "consumable" then
 			return self:GetConsumableUseCooldownSeconds()
 		elseif id == "attack" then
+			local syncedChain = self:ReadNumber(self.localChainCooldownSeconds, 0)
+			if syncedChain > 0 then
+				return math.max(0.05, syncedChain)
+			end
 			return self:GetChainSkillVisualCooldownSeconds()
 		end
 		return 0
@@ -1986,7 +2048,9 @@ script BRCommonSkillSystem extends Logic
 		-- Returns remaining client-side cooldown seconds for a local hotkey action.
 		local id = self:NormalizeActionId(actionId)
 		local readyAt = 0
-		if id == "unique" then
+		if id == "basic" then
+			readyAt = self:ReadNumber(self.localNextBasicAt, 0)
+		elseif id == "unique" then
 			readyAt = self:ReadNumber(self.localNextUniqueAt, 0)
 		elseif id == "blink" then
 			readyAt = self:ReadNumber(self.localNextBlinkAt, 0)
@@ -2088,7 +2152,10 @@ script BRCommonSkillSystem extends Logic
 
 	method integer GetActionKeyCode(string actionId)
 		local id = self:NormalizeActionId(actionId)
-		if id == "unique" then
+		if id == "basic" then
+			self:EnsureBasicAttackKeyDiscovered()
+			return math.floor(self:ReadNumber(self.BasicAttackKeyCode, 0))
+		elseif id == "unique" then
 			return self:GetUniqueKeyCode()
 		elseif id == "blink" then
 			return self:GetBlinkKeyCode()
@@ -2112,7 +2179,9 @@ script BRCommonSkillSystem extends Logic
 
 	method string GetActionLabel(string actionId)
 		local id = self:NormalizeActionId(actionId)
-		if id == "unique" then
+		if id == "basic" then
+			return "기본 스킬"
+		elseif id == "unique" then
 			return "유니크 스킬"
 		elseif id == "blink" then
 			return "블링크"
@@ -2128,7 +2197,7 @@ script BRCommonSkillSystem extends Logic
 
 	method string NormalizeActionId(string actionId)
 		local id = string.lower(self:ReadString(actionId, ""))
-		if id == "unique" or id == "blink" or id == "nimbus" or id == "consumable" or id == "attack" then
+		if id == "basic" or id == "unique" or id == "blink" or id == "nimbus" or id == "consumable" or id == "attack" then
 			return id
 		end
 		return ""
@@ -2178,6 +2247,12 @@ script BRCommonSkillSystem extends Logic
 		if safeId == "" then
 			return
 		end
+		if safeId == "basic" then
+			self.selectingHudRebindSlot = false
+			self.rebindStatusText = "기본 스킬 키는 기본 공격 키를 사용합니다"
+			log("[BRCommonSkill] rebind skipped action=basic reason=nativeAttack")
+			return
+		end
 		self.selectingHudRebindSlot = false
 		self.ignoreMouseCaptureUntil = _UtilLogic.ElapsedSeconds + 0.2
 		self:BeginRebind(safeId)
@@ -2188,6 +2263,11 @@ script BRCommonSkillSystem extends Logic
 		-- Arms capture for one action; the next key press routes through HandleRebindCapture.
 		local safeId = self:NormalizeActionId(actionId)
 		if safeId == "" then
+			return
+		end
+		if safeId == "basic" then
+			self.rebindStatusText = "기본 스킬 키는 기본 공격 키를 사용합니다"
+			log("[BRCommonSkill] rebind skipped action=basic reason=nativeAttack")
 			return
 		end
 		self.selectingHudRebindSlot = false

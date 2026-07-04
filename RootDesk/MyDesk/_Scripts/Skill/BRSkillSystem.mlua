@@ -1540,9 +1540,11 @@ script BRSkillSystem extends Logic
 		local runtime = self:GetBasicAttackRuntime(userId)
 		local now = self:Now()
 		if now < self:ReadNumber(runtime.NextCastAt, 0) then
+			self:PushLocalActionCooldown(userId, "basic", math.max(0, self:ReadNumber(runtime.NextCastAt, 0) - now), self:ReadNumber(runtime.CooldownSeconds, self:GetSkillCooldownSeconds(skillDef)))
 			return true
 		end
 
+		local cooldownSeconds = self:GetSkillCooldownSeconds(skillDef)
 		local step = {
 			SlotIndex = 0,
 			EndSlotIndex = 0,
@@ -1557,7 +1559,9 @@ script BRSkillSystem extends Logic
 			EndTier = 0
 		}
 		self:StartSkillCast(casterEntity, userId, step, false, nil, nil)
-		runtime.NextCastAt = now + self:GetSkillCooldownSeconds(skillDef)
+		runtime.CooldownSeconds = cooldownSeconds
+		runtime.NextCastAt = now + cooldownSeconds
+		self:PushLocalActionCooldown(userId, "basic", cooldownSeconds, cooldownSeconds)
 		self:Log("basic attack cast user=" .. userId .. " skill=" .. safeSkillKey .. " cooldown=" .. tostring(runtime.NextCastAt - now))
 		return true
 	end
@@ -1591,9 +1595,11 @@ script BRSkillSystem extends Logic
 		local runtime = self:GetUniqueRuntime(userId)
 		local now = self:Now()
 		if now < self:ReadNumber(runtime.NextCastAt, 0) then
+			self:PushLocalActionCooldown(userId, "unique", math.max(0, self:ReadNumber(runtime.NextCastAt, 0) - now), self:ReadNumber(runtime.CooldownSeconds, math.max(self:GetUniqueSkillCooldownSeconds(), self:GetSkillCooldownSeconds(skillDef))))
 			return true
 		end
 
+		local cooldownSeconds = math.max(self:GetUniqueSkillCooldownSeconds(), self:GetSkillCooldownSeconds(skillDef))
 		local step = {
 			SlotIndex = 0,
 			EndSlotIndex = 0,
@@ -1608,7 +1614,9 @@ script BRSkillSystem extends Logic
 			EndTier = 0
 		}
 		self:StartSkillCast(casterEntity, userId, step, false, nil, nil)
-		runtime.NextCastAt = now + math.max(self:GetUniqueSkillCooldownSeconds(), self:GetSkillCooldownSeconds(skillDef))
+		runtime.CooldownSeconds = cooldownSeconds
+		runtime.NextCastAt = now + cooldownSeconds
+		self:PushLocalActionCooldown(userId, "unique", cooldownSeconds, cooldownSeconds)
 		self:Log("unique cast user=" .. userId .. " skill=" .. safeSkillKey .. " cooldown=" .. tostring(runtime.NextCastAt - now))
 		return true
 	end
@@ -1728,9 +1736,11 @@ script BRSkillSystem extends Logic
 		local runtime = self:GetChainRuntime(userId)
 		local now = self:Now()
 		if self:ReadNumber(runtime.ActiveCastCount, 0) > 0 or self:HasPendingChainSteps(runtime) == true then
+			self:PushLocalActionCooldown(userId, "attack", math.max(0, self:ReadNumber(runtime.NextCastAt, 0) - now), self:ReadNumber(runtime.CooldownSeconds, self:ReadNumber(runtime.PendingCooldownSeconds, self:GetChainCastCooldownSeconds())))
 			return true
 		end
 		if now < self:ReadNumber(runtime.NextCastAt, 0) then
+			self:PushLocalActionCooldown(userId, "attack", math.max(0, self:ReadNumber(runtime.NextCastAt, 0) - now), self:ReadNumber(runtime.CooldownSeconds, self:ReadNumber(runtime.PendingCooldownSeconds, self:GetChainCastCooldownSeconds())))
 			return true
 		end
 
@@ -1762,8 +1772,10 @@ script BRSkillSystem extends Logic
 		runtime.PendingStepCount = castCount
 		runtime.PendingSummary = skillSummary
 		runtime.PendingCooldownSeconds = maxCooldown
+		runtime.CooldownSeconds = maxCooldown
 		runtime.NextCastAt = now + maxCooldown
 		runtime.ResetAt = now + self:GetSkillChainResetSeconds()
+		self:PushLocalActionCooldown(userId, "attack", maxCooldown, maxCooldown)
 
 		-- Lock movement + jump for the entire chain sequence (until every step finishes / is cancelled).
 		self:ApplyCasterChainLock(casterEntity, userId)
@@ -2112,7 +2124,8 @@ script BRSkillSystem extends Logic
 				PendingStepIndex = 1,
 				PendingStepCount = 0,
 				PendingSummary = "",
-				PendingCooldownSeconds = 0
+				PendingCooldownSeconds = 0,
+				CooldownSeconds = 0
 			}
 		end
 		return self._T.chainRuntimeByUser[safeUserId]
@@ -2124,7 +2137,8 @@ script BRSkillSystem extends Logic
 		local safeUserId = self:ReadString(userId, "")
 		if self._T.uniqueRuntimeByUser[safeUserId] == nil then
 			self._T.uniqueRuntimeByUser[safeUserId] = {
-				NextCastAt = 0
+				NextCastAt = 0,
+				CooldownSeconds = 0
 			}
 		end
 		return self._T.uniqueRuntimeByUser[safeUserId]
@@ -2136,10 +2150,19 @@ script BRSkillSystem extends Logic
 		local safeUserId = self:ReadString(userId, "")
 		if self._T.basicAttackRuntimeByUser[safeUserId] == nil then
 			self._T.basicAttackRuntimeByUser[safeUserId] = {
-				NextCastAt = 0
+				NextCastAt = 0,
+				CooldownSeconds = 0
 			}
 		end
 		return self._T.basicAttackRuntimeByUser[safeUserId]
+	end
+
+	method void PushLocalActionCooldown(string userId, string actionId, number remainingSeconds, number durationSeconds)
+		-- Sends the actual server skill cooldown to the local BattleHub HUD.
+		if _BRCommonSkillSystem == nil then
+			return
+		end
+		_BRCommonSkillSystem:ApplyActionCooldownClient(self:ReadString(userId, ""), self:ReadString(actionId, ""), math.max(0, self:ReadNumber(remainingSeconds, 0)), math.max(0.05, self:ReadNumber(durationSeconds, remainingSeconds)))
 	end
 
 	method void StartSkillCast(Entity casterEntity, string userId, any step, boolean isVirtualCaster, number fixedX, number fixedY)
@@ -7522,9 +7545,15 @@ script BRSkillSystem extends Logic
 			else
 				_BRCommonSkillSystem:StopNimbusEffect()
 			end
+			_BRCommonSkillSystem.localNextBasicAt = 0
 			_BRCommonSkillSystem.localNextUniqueAt = 0
 			_BRCommonSkillSystem.localNextBlinkAt = 0
 			_BRCommonSkillSystem.localNextNimbusToggleAt = 0
+			_BRCommonSkillSystem.localNextChainVisualAt = 0
+			_BRCommonSkillSystem.localNextConsumableAt = 0
+			_BRCommonSkillSystem.localBasicCooldownSeconds = 0
+			_BRCommonSkillSystem.localUniqueCooldownSeconds = 0
+			_BRCommonSkillSystem.localChainCooldownSeconds = 0
 			log("[BRSkillSystem] local common cooldown reset reason=" .. self:ReadString(reason, "reset"))
 		end
 	end

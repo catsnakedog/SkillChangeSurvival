@@ -1,0 +1,23 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "directory://ac48ec85fc4240a9af8c4f87c1916e2e",
+  "ContentType": "x-mod/directory",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.5.0.0",
+  "StudioVersion": "",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "entry_id": "directory://ac48ec85fc4240a9af8c4f87c1916e2e",
+      "name": "Sprite",
+      "lock": false,
+      "folding": false,
+      "nameEditable": true
+    }
+  }
+}

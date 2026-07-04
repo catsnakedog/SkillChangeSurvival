@@ -23,11 +23,13 @@ script BRGridMapEditorTool extends Component
 
 	property boolean AllowRuntimeRoomCloning = false
 
-	property boolean RefreshGeneratedRoomPhysicsOnSync = true
+	property boolean RefreshGeneratedRoomPhysicsOnSync = false
 
 	property number GeneratedRoomPhysicsNudgeAmount = 0.25
 
 	property number GeneratedRoomPhysicsRestoreDelaySeconds = 0.12
+
+	property boolean ApplyRoomTransformOnRuntimeLaunch = false
 
 	property boolean RemoveGeneratedRoomFloorFootholds = true
 
@@ -42,7 +44,7 @@ script BRGridMapEditorTool extends Component
 	method void OnBeginPlay()
 		-- Logs the current grid authoring settings when the tool entity loads.
 		self:EnsureRuntimeTables()
-		self:Log("ready grid=" .. tostring(self:GetColumns()) .. "x" .. tostring(self:GetRows()) .. " parts=" .. tostring(self:GetMapPartCount()) .. " fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. " pool=" .. tostring(self:GetPoolPartCount()) .. " room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. ") gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. ") number=" .. self:GetPartRangeText() .. " runtimeClone=" .. tostring(self:IsRuntimeRoomCloningAllowed()))
+		self:Log("ready grid=" .. tostring(self:GetColumns()) .. "x" .. tostring(self:GetRows()) .. " parts=" .. tostring(self:GetMapPartCount()) .. " fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. " pool=" .. tostring(self:GetPoolPartCount()) .. " room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. ") gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. ") number=" .. self:GetPartRangeText() .. " runtimeClone=" .. tostring(self:IsRuntimeRoomCloningAllowed()) .. " physicsRefresh=" .. tostring(self.RefreshGeneratedRoomPhysicsOnSync) .. " physicsNudge=" .. tostring(self:GetGeneratedRoomPhysicsNudgeAmount()) .. " runtimeLaunchTransform=" .. tostring(self.ApplyRoomTransformOnRuntimeLaunch))
 		local root = self:GetGeneratedRoot()
 		self:ClearGeneratedRoomFloorFootholds(root, "begin play")
 		self:RefreshGeneratedRoomPhysics(root, "begin play")
@@ -266,6 +268,47 @@ script BRGridMapEditorTool extends Component
 		local summary = "grid=" .. tostring(columns) .. "x" .. tostring(rows) .. ", parts=" .. tostring(self:GetMapPartCount()) .. ", fixedCorners=" .. tostring(self:GetFixedCornerCount()) .. ", pool=" .. tostring(self:GetPoolPartCount()) .. ", number=" .. self:GetPartRangeText() .. ", room=(" .. tostring(self:GetRoomWidth()) .. "," .. tostring(self:GetRoomHeight()) .. "), gap=(" .. tostring(self:GetGapX()) .. "," .. tostring(self:GetGapY()) .. "), runtimeClone=" .. tostring(allowRuntimeClone) .. ", reused=" .. tostring(reusedCount) .. ", created=" .. tostring(createdCount) .. ", missing=" .. tostring(missingCount)
 		self:Log(self:ReadString(actionName, "synced") .. " " .. summary .. ", hiddenOutOfRange=" .. tostring(hiddenOutOfRange) .. ", floorFootholdsCleared=" .. tostring(clearedFloorFootholds) .. ", bounds=" .. boundsText)
 		self:RefreshGeneratedRoomPhysics(root, self:ReadString(actionName, "synced"))
+	end
+
+	method void PrepareGeneratedGridForRuntime(string actionName)
+		-- Preserves authored room transforms so baked FootholdComponent points stay aligned at play time.
+		local safeAction = self:ReadString(actionName, "runtime grid")
+		if self.ApplyRoomTransformOnRuntimeLaunch == true or self:IsRuntimeRoomCloningAllowed() == true then
+			self:SyncGeneratedGrid(true, false, safeAction)
+			return
+		end
+
+		local root = self:GetGeneratedRoot()
+		if root == nil then
+			self:Log(safeAction .. " skipped: root missing")
+			return
+		end
+
+		local template = self:GetRoomTemplate()
+		if template ~= nil then
+			template:SetEnable(false)
+			template:SetVisible(false)
+		end
+
+		local reusedCount = 0
+		local missingCount = 0
+		local updatedCount = 0
+		for partSlot = 1, self:GetMapPartCount() do
+			local roomName = self:GetRoomNameByNumber(partSlot)
+			local room = root:GetChildByName(roomName, false)
+			if room ~= nil then
+				reusedCount = reusedCount + 1
+				room:SetEnable(true)
+				room:SetVisible(true)
+				updatedCount = updatedCount + 1
+			else
+				missingCount = missingCount + 1
+			end
+		end
+
+		local boundsText = self:SyncMapBoundsFromGrid()
+		local clearedFloorFootholds = self:ClearGeneratedRoomFloorFootholds(root, safeAction)
+		self:Log(safeAction .. " runtime grid prepared transform=preserved, parts=" .. tostring(self:GetMapPartCount()) .. ", reused=" .. tostring(reusedCount) .. ", missing=" .. tostring(missingCount) .. ", updated=" .. tostring(updatedCount) .. ", floorFootholdsCleared=" .. tostring(clearedFloorFootholds) .. ", bounds=" .. boundsText)
 	end
 
 	method number ClearGeneratedRoomFloorFootholds(Entity root, string reason)

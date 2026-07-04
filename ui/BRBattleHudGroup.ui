@@ -207,6 +207,23 @@
               "InventoryRootPath": "/ui/BRBattleHudGroup",
               "RootPath": "/ui/BRBattleHudGroup",
               "VerboseLog": true
+            },
+            {
+              "@type": "script.BRSkillChainUI",
+              "Enable": true,
+              "ChainRootPath": "/ui/BRBattleHudGroup",
+              "InventoryRootPath": "/ui/BRBattleHudGroup",
+              "RootPath": "/ui/BRBattleHudGroup",
+              "RefreshSeconds": 0.15,
+              "RequestSeconds": 0.75,
+              "ChainSlotCount": 5.0,
+              "BagSlotCount": 4.0,
+              "AttachInventoryPanel": false,
+              "EnableChainEditing": true,
+              "ShowSkillInventoryPanel": false,
+              "VerboseLog": true,
+              "EnableBattleHudLayout": true,
+              "ShowBattleHudStatus": true
             }
           ],
           "@version": 1

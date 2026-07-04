@@ -7475,108 +7475,6 @@
         }
       },
       {
-        "id": "7721d934-7a55-4cda-84fd-17f3ff60ab3a",
-        "path": "/maps/StartMap/npc-3012",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.StateComponent,MOD.Core.ChatBalloonComponent,MOD.Core.StateAnimationComponent,MOD.Core.NameTagComponent",
-        "jsonString": {
-          "name": "npc-3012",
-          "path": "/maps/StartMap/npc-3012",
-          "nameEditable": true,
-          "enable": true,
-          "visible": true,
-          "localize": false,
-          "displayOrder": 62,
-          "pathConstraints": "///",
-          "revision": 1,
-          "origin": {
-            "type": "Model",
-            "entry_id": "StaticNPC",
-            "sub_entity_id": null,
-            "root_entity_id": "7721d934-7a55-4cda-84fd-17f3ff60ab3a",
-            "replaced_model_id": null
-          },
-          "modelId": "staticnpc",
-          "@components": [
-            {
-              "@type": "MOD.Core.TransformComponent",
-              "Position": {
-                "x": 1.6500001,
-                "y": -0.594999969,
-                "z": -0.001
-              },
-              "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
-              },
-              "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.SpriteRendererComponent",
-              "ActionSheet": {},
-              "EndFrameIndex": 0,
-              "RenderSetting": 1,
-              "SortingLayer": "MapLayer0",
-              "SpriteRUID": "20bc51c8323e4edf8099eab2b54c3749",
-              "StartFrameIndex": 0,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.RigidbodyComponent",
-              "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.StateComponent",
-              "IsLegacy": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.ChatBalloonComponent",
-              "ChatBalloonRUID": {
-                "DataId": "7b6bd117bd0446a5bacec8ea6831c997"
-              },
-              "ChatModeEnabled": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.StateAnimationComponent",
-              "ActionSheet": {
-                "stand": "20bc51c8323e4edf8099eab2b54c3749",
-                "move": "fa524c2dee9c4a82922b514b6bfc2f09",
-                "sleep": "c6e17d797d1444e8a3593b54e58d3497",
-                "sleep2": "066beb71c9064c619d348d402a61db97",
-                "awake": "02ea5cbdd864404a8e96e9b0188baa0c",
-                "awake2": "5aad87601e3e411ca8d61823db527279"
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.NameTagComponent",
-              "Name": "npc-3012",
-              "NameTagRUID": {
-                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
-              },
-              "Enable": true
-            }
-          ],
-          "@version": 1
-        }
-      },
-      {
         "id": "d7524fca-adac-4334-ae05-9d6de23e690d",
         "path": "/maps/StartMap/object-13906_1",
         "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent",
@@ -7587,7 +7485,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 63,
+          "displayOrder": 62,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7635,106 +7533,6 @@
         }
       },
       {
-        "id": "a9facb67-b0fd-4f39-9584-81acab782c06",
-        "path": "/maps/StartMap/npc-8640",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.StateComponent,MOD.Core.ChatBalloonComponent,MOD.Core.StateAnimationComponent,MOD.Core.NameTagComponent",
-        "jsonString": {
-          "name": "npc-8640",
-          "path": "/maps/StartMap/npc-8640",
-          "nameEditable": true,
-          "enable": true,
-          "visible": true,
-          "localize": false,
-          "displayOrder": 64,
-          "pathConstraints": "///",
-          "revision": 1,
-          "origin": {
-            "type": "Model",
-            "entry_id": "StaticNPC",
-            "sub_entity_id": null,
-            "root_entity_id": "a9facb67-b0fd-4f39-9584-81acab782c06",
-            "replaced_model_id": null
-          },
-          "modelId": "staticnpc",
-          "@components": [
-            {
-              "@type": "MOD.Core.TransformComponent",
-              "Position": {
-                "x": -1.6500001,
-                "y": -0.585,
-                "z": -0.001
-              },
-              "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
-              },
-              "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.SpriteRendererComponent",
-              "ActionSheet": {},
-              "EndFrameIndex": 0,
-              "RenderSetting": 1,
-              "SortingLayer": "MapLayer0",
-              "SpriteRUID": "7e41317a1df84d39ad4fe3f6115b087a",
-              "StartFrameIndex": 0,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.RigidbodyComponent",
-              "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.StateComponent",
-              "IsLegacy": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.ChatBalloonComponent",
-              "ChatBalloonRUID": {
-                "DataId": "7b6bd117bd0446a5bacec8ea6831c997"
-              },
-              "ChatModeEnabled": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.StateAnimationComponent",
-              "ActionSheet": {
-                "move": "9c315f6a8f08431093e0b717b215a15a",
-                "say": "91a8d71840f54d1f86bab1c6fcb4689d",
-                "eye": "8c34c77c48ed41ddaeb7900bebf3a539",
-                "stand": "7e41317a1df84d39ad4fe3f6115b087a"
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.NameTagComponent",
-              "Name": "npc-8640",
-              "NameTagRUID": {
-                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
-              },
-              "Enable": true
-            }
-          ],
-          "@version": 1
-        }
-      },
-      {
         "id": "53b2cfdc-2458-4d70-9cb4-df7ec5e5e494",
         "path": "/maps/StartMap/object-15153",
         "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent",
@@ -7745,7 +7543,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 65,
+          "displayOrder": 63,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7803,7 +7601,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 66,
+          "displayOrder": 64,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7861,7 +7659,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 67,
+          "displayOrder": 65,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7918,7 +7716,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 68,
+          "displayOrder": 66,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7975,7 +7773,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 69,
+          "displayOrder": 67,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8032,7 +7830,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 70,
+          "displayOrder": 68,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8089,7 +7887,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 71,
+          "displayOrder": 69,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8146,7 +7944,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 72,
+          "displayOrder": 70,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8204,7 +8002,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 73,
+          "displayOrder": 71,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8262,7 +8060,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 74,
+          "displayOrder": 72,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8336,7 +8134,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 75,
+          "displayOrder": 73,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8394,7 +8192,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 76,
+          "displayOrder": 74,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8468,7 +8266,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 77,
+          "displayOrder": 75,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8526,7 +8324,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 78,
+          "displayOrder": 76,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8600,7 +8398,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 79,
+          "displayOrder": 77,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8658,7 +8456,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 80,
+          "displayOrder": 78,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8732,7 +8530,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 81,
+          "displayOrder": 79,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8790,7 +8588,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 82,
+          "displayOrder": 80,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8848,7 +8646,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 83,
+          "displayOrder": 81,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8906,7 +8704,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 84,
+          "displayOrder": 82,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8980,7 +8778,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 85,
+          "displayOrder": 83,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9038,7 +8836,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 86,
+          "displayOrder": 84,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9096,7 +8894,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 87,
+          "displayOrder": 85,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9170,7 +8968,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 88,
+          "displayOrder": 86,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9228,7 +9026,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 89,
+          "displayOrder": 87,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9281,7 +9079,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 90,
+          "displayOrder": 88,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9339,7 +9137,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 91,
+          "displayOrder": 89,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9398,7 +9196,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 92,
+          "displayOrder": 90,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9456,7 +9254,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 93,
+          "displayOrder": 91,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9509,7 +9307,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 94,
+          "displayOrder": 92,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9562,7 +9360,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 95,
+          "displayOrder": 93,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9621,7 +9419,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 96,
+          "displayOrder": 94,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9849,7 +9647,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 97,
+          "displayOrder": 95,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9869,15 +9667,15 @@
                 "z": -0.001
               },
               "QuaternionRotation": {
-                "x": 0,
-                "y": 0,
-                "z": 0,
-                "w": 1
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
               },
               "Scale": {
-                "x": 1,
-                "y": 1,
-                "z": 1
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
               },
               "Enable": true
             },
@@ -9889,15 +9687,15 @@
               "FlipX": false,
               "FlipY": false,
               "OrderInLayer": 35,
-              "PlayRate": 1,
+              "PlayRate": 1.0,
               "RenderSetting": 0,
               "SpriteRUID": "fe310ca2f8e74eb18858ff45273f61e4",
               "StartFrameIndex": 0,
               "Color": {
-                "r": 1,
-                "g": 1,
-                "b": 1,
-                "a": 1
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
               },
               "Enable": true
             },
@@ -9905,14 +9703,14 @@
               "@type": "script.BRSkillPartTestNPC",
               "Enable": true,
               "InteractionKeyName": "F",
-              "InteractionRange": 2,
-              "VerboseLog": true,
+              "InteractionRange": 2.0,
               "CandyMachineStandRUID": "fe310ca2f8e74eb18858ff45273f61e4",
               "CandyMachineActionRUID": "ea9a08bfa95c4217b1796262feaa737b",
               "CandyMachineEyeRUID": "31053e533872440598525ce6a660dff2",
               "CandyMachineNeonRUID": "86ea9c13eb114bea9503ae4db05ecc6e",
-              "CandyMachineOrderInLayer": 35,
-              "CandyMachineActionPreviewSeconds": 0.6
+              "CandyMachineOrderInLayer": 35.0,
+              "CandyMachineActionPreviewSeconds": 0.6,
+              "VerboseLog": true
             }
           ],
           "@version": 1
@@ -9929,58 +9727,60 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 98,
+          "displayOrder": 0,
           "pathConstraints": "////",
           "revision": 1,
-          "modelId": "mapobject",
-          "@components": [
-            {
-              "@type": "MOD.Core.TransformComponent",
-              "Position": {
-                "x": 0,
-                "y": 0,
-                "z": 0
-              },
-              "QuaternionRotation": {
-                "x": 0,
-                "y": 0,
-                "z": 0,
-                "w": 1
-              },
-              "Scale": {
-                "x": 1,
-                "y": 1,
-                "z": 1
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.SpriteRendererComponent",
-              "SpriteRUID": "31053e533872440598525ce6a660dff2",
-              "Color": {
-                "r": 1,
-                "g": 1,
-                "b": 1,
-                "a": 1
-              },
-              "DrawMode": 0,
-              "FlipX": false,
-              "FlipY": false,
-              "PlayRate": 1,
-              "OrderInLayer": 36,
-              "StartFrameIndex": 0,
-              "EndFrameIndex": 2147483647,
-              "Enable": true
-            }
-          ],
-          "@version": 1,
           "origin": {
             "type": "Model",
             "entry_id": "mapobject",
             "sub_entity_id": null,
             "root_entity_id": "2b0880ec-6392-42d8-a1f9-025f88098fc0",
             "replaced_model_id": null
-          }
+          },
+          "modelId": "mapobject",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Scale": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "ActionSheet": {},
+              "DrawMode": 0,
+              "EndFrameIndex": 2147483647,
+              "FlipX": false,
+              "FlipY": false,
+              "OrderInLayer": 36,
+              "PlayRate": 1.0,
+              "RenderSetting": 0,
+              "SpriteRUID": "31053e533872440598525ce6a660dff2",
+              "StartFrameIndex": 0,
+              "Color": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "Enable": true
+            }
+          ],
+          "@version": 1
         }
       },
       {
@@ -9994,58 +9794,60 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 99,
+          "displayOrder": 1,
           "pathConstraints": "////",
           "revision": 1,
-          "modelId": "mapobject",
-          "@components": [
-            {
-              "@type": "MOD.Core.TransformComponent",
-              "Position": {
-                "x": 0,
-                "y": 0,
-                "z": 0
-              },
-              "QuaternionRotation": {
-                "x": 0,
-                "y": 0,
-                "z": 0,
-                "w": 1
-              },
-              "Scale": {
-                "x": 1,
-                "y": 1,
-                "z": 1
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.SpriteRendererComponent",
-              "SpriteRUID": "86ea9c13eb114bea9503ae4db05ecc6e",
-              "Color": {
-                "r": 1,
-                "g": 1,
-                "b": 1,
-                "a": 1
-              },
-              "DrawMode": 0,
-              "FlipX": false,
-              "FlipY": false,
-              "PlayRate": 1,
-              "OrderInLayer": 37,
-              "StartFrameIndex": 0,
-              "EndFrameIndex": 2147483647,
-              "Enable": true
-            }
-          ],
-          "@version": 1,
           "origin": {
             "type": "Model",
             "entry_id": "mapobject",
             "sub_entity_id": null,
             "root_entity_id": "909caf14-c3d3-4b6b-88fd-cb55e4e1a41f",
             "replaced_model_id": null
-          }
+          },
+          "modelId": "mapobject",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Scale": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "ActionSheet": {},
+              "DrawMode": 0,
+              "EndFrameIndex": 2147483647,
+              "FlipX": false,
+              "FlipY": false,
+              "OrderInLayer": 37,
+              "PlayRate": 1.0,
+              "RenderSetting": 0,
+              "SpriteRUID": "86ea9c13eb114bea9503ae4db05ecc6e",
+              "StartFrameIndex": 0,
+              "Color": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "Enable": true
+            }
+          ],
+          "@version": 1
         }
       }
     ]

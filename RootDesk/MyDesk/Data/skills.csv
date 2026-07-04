@@ -5,7 +5,7 @@ PirateMonkeySummon,서포트 몽키 트윈스,스킬 파츠,7eccbe7a08c7461fb8bf
 PirateMonkeySummon2,서포트 몽키 트윈스-인핸스,기본 스킬,c39efca7b20e4a009ad7fee611d394d1,광화된 고정형 원숭이를 소환한다,,8,0:PirateMonkeySummon2/summon,0.18,,bd4d02e24598439e9638ecf1ee90bd7c,56e391b8b3a247bb820004c5a42993c4,,,
 PirateMonkeySummon3,스페셜 몽키 에스코트,기본 스킬,a1ea28f4c1e347cb82589427248daee6,고정형 원숭이 3마리를 좁은 간격으로 소환한다,,8,0:PirateMonkeySummon3/summon,0.18,dba6979e4ebf4971a20670af2883238e,d7f87d11c9524615b326c5b4e250e77d,c474f2961692487b8ca4f34e6143c1e8,,,
 PirateMonkeySummon4,배틀쉽 봄버,기본 스킬,6b5fc4c1887c4044a92c4f9f1ab5772a,전방을 포격하는 배틀쉽 봄버를 소환한다,,8,0:PirateMonkeySummon4/summon,0.18,0084f979e1794d1c984b431056fc39ce,953346e14c0b4e9ebff9fe9276e0faca,ebdd648edcbb4ab9b42951ecfce51737,,,
-메소 익스플로전,메소 익스플로전,스킬 파츠,thumbnail://644458b8c91949b4b4b84ff949eba8ca,후속타 메소 장전,메소 익스플로전/effect,12,,0.5,,,,,,
+메소 익스플로전,메소 익스플로전,스킬 파츠,0784bfbeea6545e3a1dbbbe2aebfa2b2,후속타 메소 장전,메소 익스플로전/effect,1,,0.5,,,,,,
 브랜디쉬,브랜디쉬,스킬 파츠,429228115d56462ab0f65e7294a51609,범위 내 적에게 80% 2회 타격,브랜디쉬/effect,12,5:브랜디쉬/타격,0.18,f0c0c4016cf04d0d98886227cab56561,42f273aedaa347d19b9f77b475ba25af,f01f2a399af5468cabccba2eb25ed523,,,
 브랜디쉬2,레이징 블로우,기본 스킬,acedd37044c746c5b932cc61c4359de4,범위 내 적에게 120% 2회 타격,브랜디쉬2/effect,12,5:브랜디쉬2/타격,0.18,d3df4514828f4159a509a7e15a5d5bb2,716beb69f05a4282a352b4b7239e93c0,2987491f5bfe4fd196945f888ef35c4d,,,
 브랜디쉬3,레이징 블로우,기본 스킬,644fc39bcc684c209264eb9d9a4cd6f8,범위 내 적에게 100% 4회 타격,브랜디쉬3/effect,12,5:브랜디쉬3/타격,0.18,d3df4514828f4159a509a7e15a5d5bb2,136363d8cffd43a5a01a1de4db2b5db7,1a2369b54b7946ffbfeac7057f3cc165,,,

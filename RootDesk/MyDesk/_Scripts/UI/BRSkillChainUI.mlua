@@ -3,7 +3,7 @@ script BRSkillChainUI extends Component
 
 	property string ChainRootPath = "/ui/BRBattleHudGroup"
 
-	property string InventoryRootPath = "/ui/BRSkillInventoryGroup"
+	property string InventoryRootPath = "/ui/BRBattleHudGroup"
 
 	property string RootPath = "/ui/BRBattleHudGroup"
 
@@ -101,7 +101,7 @@ script BRSkillChainUI extends Component
 
 	property number HudSlotSpacing = 58
 
-	property number BattleHudScale = 0.72
+	property number BattleHudScale = 1
 
 	property number AuthoredHudGaugeWidth = 243
 
@@ -175,6 +175,23 @@ script BRSkillChainUI extends Component
 		self._T.bagParts = self:ParseBagText(_BRSkillSystem:GetLocalBagText())
 		self:RenderChain()
 		self:RefreshCommonSkillSlots()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestImmediateRefresh(string reason, number version)
+		-- Server snapshots can arrive between timer ticks; render them immediately.
+		if self.runtimeDisabled == true then
+			return
+		end
+		self:EnsureRuntime()
+		local now = _UtilLogic.ElapsedSeconds
+		self.nextRequestAt = math.max(self.nextRequestAt, now + self:GetRequestSeconds())
+		self.lastSnapshotVersion = -1
+		self:Refresh()
+		if self._T.immediateRefreshLogged ~= true then
+			self._T.immediateRefreshLogged = true
+			self:Log("immediate refresh ready reason=" .. self:ReadString(reason, "snapshot") .. " version=" .. tostring(math.floor(self:ReadNumber(version, 0))))
+		end
 	end
 
 	@ExecSpace("ClientOnly")
@@ -687,8 +704,12 @@ script BRSkillChainUI extends Component
 	@ExecSpace("ClientOnly")
 	method number GetBagIndexAtScreenPoint(Vector2 screenPoint)
 		for bagIndex = 1, self:GetBagSlotCount() do
-			local tile = self:GetInventoryEntity("Panel/Inventory/Item_" .. tostring(bagIndex))
+			local tile = self:GetBagTouchEntity(bagIndex)
 			if self:IsScreenPointInsideEntity(screenPoint, tile) == true then
+				return bagIndex
+			end
+			local visual = self:GetInventoryEntity("Panel/Inventory/Item_" .. tostring(bagIndex))
+			if visual ~= tile and self:IsScreenPointInsideEntity(screenPoint, visual) == true then
 				return bagIndex
 			end
 		end
@@ -829,8 +850,20 @@ script BRSkillChainUI extends Component
 		end
 
 		for bagIndex = 1, self:GetBagSlotCount() do
-			local bag = self:GetInventoryEntity("Panel/Inventory/Item_" .. tostring(bagIndex))
+			local bag = self:GetBagTouchEntity(bagIndex)
 			if self:IsScreenPointInsideEntity(screenPoint, bag) == true then
+				local part = self:GetBagPart(bagIndex)
+				if part ~= nil and self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0) > 0 then
+					return {
+						Kind = "BAG",
+						Index = bagIndex,
+						SkillKey = self:GetRecordSkillKey(part),
+						Tier = math.max(1, math.floor(self:ReadNumber(self:ReadRecordValue(part, "Tier"), 1)))
+					}
+				end
+			end
+			local visual = self:GetInventoryEntity("Panel/Inventory/Item_" .. tostring(bagIndex))
+			if visual ~= bag and self:IsScreenPointInsideEntity(screenPoint, visual) == true then
 				local part = self:GetBagPart(bagIndex)
 				if part ~= nil and self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0) > 0 then
 					return {
@@ -1008,6 +1041,8 @@ script BRSkillChainUI extends Component
 		local slots = self._T.chainSlots
 		local lockedCount = 0
 		local effectCount = 0
+		local leftConnectCount = 0
+		local rightConnectCount = 0
 		self:RenderChainRepresentativeVisual(slots)
 		for slotIndex = 1, self:GetChainSlotCount() do
 			local basePath = self:GetInternalChainSlotPath(slotIndex)
@@ -1025,10 +1060,16 @@ script BRSkillChainUI extends Component
 				if self:IsLeadChainSlot(slotIndex, record) == true and self:GetChainDisplayTier(slotIndex, record) > 1 then
 					effectCount = effectCount + 1
 				end
+				if self:ShouldShowLeftConnect(slotIndex, record) == true then
+					leftConnectCount = leftConnectCount + 1
+				end
+				if self:ShouldShowRightConnect(slotIndex, record) == true then
+					rightConnectCount = rightConnectCount + 1
+				end
 			end
 			self:RenderChainSlotVisual(slotIndex, record)
 		end
-		self:LogChainDecorationSummary(lockedCount, effectCount)
+		self:LogChainDecorationSummary(lockedCount, effectCount, leftConnectCount, rightConnectCount)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1081,6 +1122,7 @@ script BRSkillChainUI extends Component
 		local locked = self:IsLockedChainSlotRecord(record)
 		self:SetChainSlotLockVisual(safeSlotIndex, locked)
 		self:SetChainSlotChainEffectVisual(safeSlotIndex, 0, false)
+		self:SetChainSlotConnectVisual(safeSlotIndex, false, false)
 		if locked == true then
 			self:SetSkillSlotVisual("CHAIN", basePath, "Default", 0, false, false, false)
 			self:SetVisualSpriteColor("CHAIN", basePath, Color(0.035, 0.04, 0.055, 0.82))
@@ -1100,6 +1142,7 @@ script BRSkillChainUI extends Component
 		end
 		self:SetSkillSlotVisual("CHAIN", basePath, skillKey, displayTier, occupied, isLeadSlot, false)
 		self:SetChainSlotChainEffectVisual(safeSlotIndex, displayTier, occupied == true and isLeadSlot == true and displayTier > 1)
+		self:SetChainSlotConnectVisual(safeSlotIndex, self:ShouldShowLeftConnect(safeSlotIndex, record), self:ShouldShowRightConnect(safeSlotIndex, record))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1130,9 +1173,25 @@ script BRSkillChainUI extends Component
 		end
 	end
 
-	method void LogChainDecorationSummary(number lockedCount, number effectCount)
+	@ExecSpace("ClientOnly")
+	method void SetChainSlotConnectVisual(number slotIndex, boolean leftActive, boolean rightActive)
+		-- Authored HUD slots expose LeftConnect/RightConnect children for trigger links.
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlotIndex <= 0 then
+			return
+		end
+		local basePath = self:GetInternalChainSlotPath(safeSlotIndex)
+		self:SetChainEntityEnabled(basePath .. "/LeftConnect", leftActive == true)
+		self:SetChainEntityEnabled(basePath .. "/RightConnect", rightActive == true)
+		self:SetChainEntityEnabled(basePath .. "/RightConect", rightActive == true)
+	end
+
+	method void LogChainDecorationSummary(number lockedCount, number effectCount, number leftConnectCount, number rightConnectCount)
 		self:EnsureRuntime()
-		local summary = "locked=" .. tostring(math.floor(self:ReadNumber(lockedCount, 0))) .. " effects=" .. tostring(math.floor(self:ReadNumber(effectCount, 0)))
+		local summary = "locked=" .. tostring(math.floor(self:ReadNumber(lockedCount, 0)))
+			.. " effects=" .. tostring(math.floor(self:ReadNumber(effectCount, 0)))
+			.. " left=" .. tostring(math.floor(self:ReadNumber(leftConnectCount, 0)))
+			.. " right=" .. tostring(math.floor(self:ReadNumber(rightConnectCount, 0)))
 		if self._T.lastChainDecorationSummary == summary then
 			return
 		end
@@ -1200,6 +1259,7 @@ script BRSkillChainUI extends Component
 		-- Assigns a UI sprite RUID through the correct root group.
 		local entity = self:GetVisualEntity(rootKind, relativePath)
 		if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
+			entity.Enable = true
 			entity.SpriteGUIRendererComponent.ImageRUID = DataRef(self:ReadString(ruid, self:GetFallbackIconRUID()))
 		end
 	end
@@ -1345,6 +1405,13 @@ script BRSkillChainUI extends Component
 		return self:GetBaseSkillKey(self:GetRecordSkillKey(previous)) ~= self:GetBaseSkillKey(self:GetRecordSkillKey(record))
 	end
 
+	method boolean IsOccupiedChainSlotRecord(any record)
+		if record == nil or self:IsLockedChainSlotRecord(record) == true then
+			return false
+		end
+		return self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0
+	end
+
 	method number GetChainDisplayTier(number slotIndex, any record)
 		-- Uses the final folded tier on a run's first slot, and the local tier on follower slots.
 		if record == nil then
@@ -1396,6 +1463,162 @@ script BRSkillChainUI extends Component
 	method boolean IsChainSlotLocked(number slotIndex)
 		-- Checks whether the local snapshot marks one chain slot as locked.
 		return self:IsLockedChainSlotRecord(self:GetChainSlot(slotIndex))
+	end
+
+	method boolean ShouldShowRightConnect(number slotIndex, any record)
+		-- Trigger parts always show the right connector by role, regardless of adjacency.
+		if self:IsOccupiedChainSlotRecord(record) ~= true then
+			return false
+		end
+		return self:SkillRecordHasTrigger(slotIndex, record)
+	end
+
+	method boolean ShouldShowLeftConnect(number slotIndex, any record)
+		-- Non-trigger parts always show the left connector as follow-up-capable chain parts.
+		if self:IsOccupiedChainSlotRecord(record) ~= true then
+			return false
+		end
+		return self:SkillRecordHasTrigger(slotIndex, record) ~= true
+	end
+
+	method boolean IsTriggerStarterChainSlot(number slotIndex, any record)
+		-- Returns true for a chain part whose skill data contains a trigger action.
+		if self:IsOccupiedChainSlotRecord(record) ~= true then
+			return false
+		end
+		return self:SkillRecordHasTrigger(slotIndex, record)
+	end
+
+	method boolean IsLinkedChainSlotRecord(number slotIndex, any record)
+		-- Returns true for a non-trigger chain part that can be consumed as a follow-up.
+		if self:IsOccupiedChainSlotRecord(record) ~= true then
+			return false
+		end
+		return self:SkillRecordHasTrigger(slotIndex, record) ~= true
+	end
+
+	method boolean IsLinkedChainGroup(number groupStartSlot)
+		-- Mirrors runtime chain resolution: a linked end group cannot trigger another group.
+		local safeGroupStartSlot = math.floor(self:ReadNumber(groupStartSlot, 0))
+		if safeGroupStartSlot <= 0 then
+			return false
+		end
+		local previousEndSlot = self:GetPreviousChainGroupEndSlot(safeGroupStartSlot)
+		if previousEndSlot <= 0 then
+			return false
+		end
+		local previousStartSlot = self:GetCurrentChainGroupStartSlot(previousEndSlot)
+		if previousStartSlot <= 0 then
+			return false
+		end
+		if self:IsLinkedChainGroup(previousStartSlot) == true then
+			return false
+		end
+		return self:SkillRecordHasTrigger(previousEndSlot, self:GetChainSlot(previousEndSlot))
+	end
+
+	method boolean SkillRecordHasTrigger(number slotIndex, any record)
+		-- Reads the server-provided trigger marker for a rendered chain slot.
+		if self:IsOccupiedChainSlotRecord(record) ~= true then
+			return false
+		end
+		local value = self:ReadRecordValue(record, "HasTrigger")
+		if value == true then
+			return true
+		end
+		local text = string.lower(tostring(value))
+		return text == "1" or text == "true" or text == "yes"
+	end
+
+	method number GetCurrentChainGroupStartSlot(number slotIndex)
+		-- Finds the first slot in the contiguous same-skill group containing slotIndex.
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		local currentRecord = self:GetChainSlot(safeSlotIndex)
+		if self:IsOccupiedChainSlotRecord(currentRecord) ~= true then
+			return 0
+		end
+		local currentBaseKey = self:GetBaseSkillKey(self:GetRecordSkillKey(currentRecord))
+		local startSlot = safeSlotIndex
+		for cursor = safeSlotIndex - 1, 1, -1 do
+			local cursorRecord = self:GetChainSlot(cursor)
+			if self:IsOccupiedChainSlotRecord(cursorRecord) ~= true then
+				break
+			end
+			if self:GetBaseSkillKey(self:GetRecordSkillKey(cursorRecord)) ~= currentBaseKey then
+				break
+			end
+			startSlot = cursor
+		end
+		return startSlot
+	end
+
+	method number GetCurrentChainGroupEndSlot(number slotIndex)
+		-- Finds the last slot in the contiguous same-skill group containing slotIndex.
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		local currentRecord = self:GetChainSlot(safeSlotIndex)
+		if self:IsOccupiedChainSlotRecord(currentRecord) ~= true then
+			return 0
+		end
+		local currentBaseKey = self:GetBaseSkillKey(self:GetRecordSkillKey(currentRecord))
+		local endSlot = safeSlotIndex
+		for cursor = safeSlotIndex + 1, self:GetChainSlotCount() do
+			local cursorRecord = self:GetChainSlot(cursor)
+			if self:IsOccupiedChainSlotRecord(cursorRecord) ~= true then
+				break
+			end
+			if self:GetBaseSkillKey(self:GetRecordSkillKey(cursorRecord)) ~= currentBaseKey then
+				break
+			end
+			endSlot = cursor
+		end
+		return endSlot
+	end
+
+	method number GetPreviousChainGroupLeadSlot(number slotIndex)
+		-- Finds the first slot of the group immediately before slotIndex.
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlotIndex <= 1 then
+			return 0
+		end
+		local previousEndSlot = self:GetPreviousChainGroupEndSlot(safeSlotIndex)
+		if previousEndSlot <= 0 then
+			return 0
+		end
+		return self:GetCurrentChainGroupStartSlot(previousEndSlot)
+	end
+
+	method number GetPreviousChainGroupEndSlot(number slotIndex)
+		-- Finds the last slot of the group immediately before slotIndex.
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlotIndex <= 1 then
+			return 0
+		end
+		local previousSlot = safeSlotIndex - 1
+		local previousRecord = self:GetChainSlot(previousSlot)
+		if self:IsOccupiedChainSlotRecord(previousRecord) ~= true then
+			return 0
+		end
+		return self:GetCurrentChainGroupEndSlot(previousSlot)
+	end
+
+	method number GetNextChainGroupLeadSlot(number slotIndex)
+		-- Finds the first slot of the group immediately after slotIndex.
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		local currentRecord = self:GetChainSlot(safeSlotIndex)
+		if self:IsOccupiedChainSlotRecord(currentRecord) ~= true then
+			return 0
+		end
+		local currentBaseKey = self:GetBaseSkillKey(self:GetRecordSkillKey(currentRecord))
+		for cursor = safeSlotIndex + 1, self:GetChainSlotCount() do
+			local cursorRecord = self:GetChainSlot(cursor)
+			if self:IsOccupiedChainSlotRecord(cursorRecord) ~= true then
+				return 0
+			end
+			if self:GetBaseSkillKey(self:GetRecordSkillKey(cursorRecord)) ~= currentBaseKey then
+				return cursor
+			end
+		end
+		return 0
 	end
 
 	method string InferSkillKey(any shortText, any displayName)
@@ -1480,7 +1703,8 @@ script BRSkillChainUI extends Component
 					Short = self:ReadString(parts[3], "-"),
 					Tier = math.floor(self:ReadNumber(parts[4], 0)),
 					DisplayName = self:ReadString(parts[5], "-"),
-					SkillKey = self:ReadString(parts[6], self:InferSkillKey(parts[3], parts[5]))
+					SkillKey = self:ReadString(parts[6], self:InferSkillKey(parts[3], parts[5])),
+					HasTrigger = self:ReadString(parts[7], "0") == "1"
 				}
 			end
 		end
@@ -1497,6 +1721,7 @@ script BRSkillChainUI extends Component
 			local tierIndex = 4
 			local displayIndex = 5
 			local skillKeyIndex = 6
+			local triggerIndex = 7
 			if tonumber(parts[2]) ~= nil then
 				slotIndex = math.floor(self:ReadNumber(parts[1], 0))
 				instanceId = math.floor(self:ReadNumber(parts[2], 0))
@@ -1504,6 +1729,7 @@ script BRSkillChainUI extends Component
 				tierIndex = 4
 				displayIndex = 5
 				skillKeyIndex = 6
+				triggerIndex = 7
 			end
 			if instanceId > 0 then
 				result[slotIndex] = {
@@ -1512,7 +1738,8 @@ script BRSkillChainUI extends Component
 					EquippedSlot = 0,
 					Tier = math.floor(self:ReadNumber(parts[tierIndex], 0)),
 					DisplayName = self:ReadString(parts[displayIndex], "Skill"),
-					SkillKey = self:ReadString(parts[skillKeyIndex], self:InferSkillKey(parts[shortIndex], parts[displayIndex]))
+					SkillKey = self:ReadString(parts[skillKeyIndex], self:InferSkillKey(parts[shortIndex], parts[displayIndex])),
+					HasTrigger = self:ReadString(parts[triggerIndex], "0") == "1"
 				}
 			end
 		end
@@ -1930,7 +2157,8 @@ script BRSkillChainUI extends Component
 			EquippedSlot = 0,
 			Tier = 1,
 			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill"),
-			SkillKey = self:GetRecordSkillKey(part)
+			SkillKey = self:GetRecordSkillKey(part),
+			HasTrigger = self:ReadRecordValue(part, "HasTrigger") == true
 		}
 	end
 
@@ -1949,7 +2177,8 @@ script BRSkillChainUI extends Component
 			EquippedSlot = 0,
 			Tier = 1,
 			DisplayName = self:ReadString(self:ReadRecordValue(record, "DisplayName"), "Skill"),
-			SkillKey = self:GetRecordSkillKey(record)
+			SkillKey = self:GetRecordSkillKey(record),
+			HasTrigger = self:ReadRecordValue(record, "HasTrigger") == true
 		}
 	end
 
@@ -1968,7 +2197,8 @@ script BRSkillChainUI extends Component
 			Short = self:ReadString(self:ReadRecordValue(part, "Short"), "S"),
 			Tier = 1,
 			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill"),
-			SkillKey = self:GetRecordSkillKey(part)
+			SkillKey = self:GetRecordSkillKey(part),
+			HasTrigger = self:ReadRecordValue(part, "HasTrigger") == true
 		}
 	end
 
@@ -2072,7 +2302,7 @@ script BRSkillChainUI extends Component
 		if safeSlotIndex <= 0 then
 			return nil
 		end
-		return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/ChainPart_" .. tostring(safeSlotIndex))
+		return self:GetEntityFromRoot(self:GetChainRootPath(), self:GetAuthoredBattleHudContainerPath() .. "/ChainPart_" .. tostring(safeSlotIndex))
 	end
 
 	method Entity GetBagTouchEntity(number bagIndex)
@@ -2105,7 +2335,32 @@ script BRSkillChainUI extends Component
 	end
 
 	method Entity GetInventoryEntity(string relativePath)
-		return self:GetEntityFromRoot(self:GetInventoryRootPath(), relativePath)
+		local inventoryRootPath = self:GetInventoryRootPath()
+		local entity = self:GetEntityFromRoot(inventoryRootPath, relativePath)
+		if entity ~= nil then
+			return entity
+		end
+		local chainRootPath = self:GetChainRootPath()
+		if chainRootPath ~= inventoryRootPath then
+			entity = self:GetEntityFromRoot(chainRootPath, relativePath)
+			if entity ~= nil then
+				return entity
+			end
+		end
+		local aliasPath = self:GetInventoryAliasRelativePath(relativePath)
+		if aliasPath ~= "" then
+			entity = self:GetEntityFromRoot(chainRootPath, aliasPath)
+			if entity ~= nil then
+				return entity
+			end
+			if chainRootPath ~= inventoryRootPath then
+				entity = self:GetEntityFromRoot(inventoryRootPath, aliasPath)
+				if entity ~= nil then
+					return entity
+				end
+			end
+		end
+		return nil
 	end
 
 	method Entity GetEntityFromRoot(string rootPath, string relativePath)
@@ -2141,14 +2396,18 @@ script BRSkillChainUI extends Component
 		if string.sub(path, 1, 1) == "/" then
 			return ""
 		end
-		if path == "Panel" or path == "Panel/Bg" or path == "Panel/Chain" then
-			return "Bg"
+		local hubPath = self:GetAuthoredBattleHudContainerPath()
+		if path == "Panel" or path == "Panel/Chain" then
+			return ""
+		end
+		if path == "Panel/Bg" then
+			return hubPath .. "/Bg"
 		end
 		if path == "Panel/Chain/Representative" then
-			return "Bg/SkillChain_5"
+			return hubPath .. "/SkillChain_5"
 		end
 		if self:StartsWith(path, "Panel/Chain/Representative/") == true then
-			return "Bg/SkillChain_5" .. string.sub(path, string.len("Panel/Chain/Representative") + 1)
+			return hubPath .. "/SkillChain_5" .. string.sub(path, string.len("Panel/Chain/Representative") + 1)
 		end
 		if self:StartsWith(path, "Panel/Chain/SlotTouch_") == true then
 			return self:GetBattleHudSlotAlias(path, "Panel/Chain/SlotTouch_")
@@ -2157,16 +2416,16 @@ script BRSkillChainUI extends Component
 			return self:GetBattleHudSlotAlias(path, "Panel/Chain/Slot_")
 		end
 		if self:StartsWith(path, "Panel/Chain/Common_") == true then
-			return "Bg/Common_" .. string.sub(path, string.len("Panel/Chain/Common_") + 1)
+			return hubPath .. "/Common_" .. string.sub(path, string.len("Panel/Chain/Common_") + 1)
 		end
 		if path == "Panel/HudLevelText" then
-			return "Bg/HudLevelText"
+			return hubPath .. "/HudLevelText"
 		end
 		if path == "Panel/HudHpFill" or path == "Panel/HudHpBack" then
-			return "Bg/HudHpFill"
+			return hubPath .. "/HudHpFill"
 		end
 		if path == "Panel/HudExpFill" or path == "Panel/HudExpBack" then
-			return "Bg/HudExpFill"
+			return hubPath .. "/HudExpFill"
 		end
 		return ""
 	end
@@ -2174,17 +2433,83 @@ script BRSkillChainUI extends Component
 	method string GetBattleHudSlotAlias(string path, string prefix)
 		local safePath = self:ReadString(path, "")
 		local safePrefix = self:ReadString(prefix, "")
+		local hubPath = self:GetAuthoredBattleHudContainerPath()
 		for index = 7, 1, -1 do
 			local token = safePrefix .. tostring(index)
 			if self:StartsWith(safePath, token) == true then
 				local suffix = string.sub(safePath, string.len(token) + 1)
 				if index == 1 then
-					return "Bg/SkillChain_5" .. suffix
+					return hubPath .. "/SkillChain_5" .. suffix
 				end
-				return "Bg/ChainPart_" .. tostring(index - 1) .. suffix
+				return hubPath .. "/ChainPart_" .. tostring(index - 1) .. suffix
 			end
 		end
 		return ""
+	end
+
+	method string GetInventoryAliasRelativePath(string relativePath)
+		local path = self:ReadString(relativePath, "")
+		if path == "" or self:IsForSavePath(path) == true then
+			return ""
+		end
+		if string.sub(path, 1, 1) == "/" then
+			return ""
+		end
+		if path == "Panel" or path == "Panel/Inventory" or path == "Panel/Bag" then
+			return ""
+		end
+		local alias = self:GetInventorySlotAlias(path, "Panel/Inventory/ItemTouch_")
+		if alias ~= "" then
+			return alias
+		end
+		alias = self:GetInventorySlotAlias(path, "Panel/Inventory/Item_")
+		if alias ~= "" then
+			return alias
+		end
+		alias = self:GetInventorySlotAlias(path, "Panel/Bag/Part_")
+		if alias ~= "" then
+			return alias
+		end
+		alias = self:GetInventorySlotAlias(path, "Inventory_")
+		if alias ~= "" then
+			return alias
+		end
+		return self:GetInventorySlotAlias(path, "Invetory_")
+	end
+
+	method string GetInventorySlotAlias(string path, string prefix)
+		local safePath = self:ReadString(path, "")
+		local safePrefix = self:ReadString(prefix, "")
+		for index = math.floor(self:GetBagSlotCount()), 1, -1 do
+			local token = safePrefix .. tostring(index)
+			if self:StartsWith(safePath, token) == true then
+				local suffix = string.sub(safePath, string.len(token) + 1)
+				return self:GetAuthoredInventorySlotPath(index, suffix)
+			end
+		end
+		return ""
+	end
+
+	method string GetAuthoredInventorySlotPath(number slotIndex, string suffix)
+		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
+		if safeSlotIndex <= 0 then
+			return ""
+		end
+		local safeSuffix = self:ReadString(suffix, "")
+		local hubPath = self:GetAuthoredBattleHudContainerPath()
+		local primary = hubPath .. "/Inventory_" .. tostring(safeSlotIndex) .. safeSuffix
+		if self:GetEntityFromRoot(self:GetChainRootPath(), primary) ~= nil then
+			return primary
+		end
+		local typo = hubPath .. "/Invetory_" .. tostring(safeSlotIndex) .. safeSuffix
+		if self:GetEntityFromRoot(self:GetChainRootPath(), typo) ~= nil then
+			return typo
+		end
+		local legacy = "Invetory_" .. tostring(safeSlotIndex) .. safeSuffix
+		if self:GetEntityFromRoot(self:GetChainRootPath(), legacy) ~= nil then
+			return legacy
+		end
+		return primary
 	end
 
 	method boolean IsForSavePath(string path)
@@ -2258,7 +2583,7 @@ script BRSkillChainUI extends Component
 			self:EnsureCommonSkillSlots()
 			self:RefreshCommonSkillSlots()
 			self:RefreshBattleHud(_UserService.LocalPlayer)
-			self:Log("authored battle hud scale=" .. tostring(self:GetBattleHudScale()))
+			self:Log("authored battle hud scale=1")
 			return
 		end
 		self:EnsureCommonSkillSlots()
@@ -2593,6 +2918,16 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void SetChainPanelActive(boolean active)
+		-- Keeps the authored BattleHub container alive; only legacy generated panels are toggled.
+		if self:HasAuthoredBattleHudLayout() == true then
+			if active == true then
+				local hub = self:GetEntityFromRoot(self:GetChainRootPath(), self:GetAuthoredBattleHudContainerPath())
+				if hub ~= nil then
+					hub.Enable = true
+				end
+			end
+			return
+		end
 		local panel = self:GetChainEntity("Panel")
 		if panel ~= nil then
 			panel.Enable = active == true
@@ -2601,6 +2936,16 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void SetInventoryPanelActive(boolean active)
+		-- Keeps the authored BattleHub container alive; inventory slots are children of it now.
+		if self:HasAuthoredBattleHudLayout() == true then
+			if active == true then
+				local hub = self:GetEntityFromRoot(self:GetChainRootPath(), self:GetAuthoredBattleHudContainerPath())
+				if hub ~= nil then
+					hub.Enable = true
+				end
+			end
+			return
+		end
 		local panel = self:GetInventoryEntity("Panel")
 		if panel ~= nil then
 			panel.Enable = active == true
@@ -2700,7 +3045,7 @@ script BRSkillChainUI extends Component
 	end
 
 	method number GetBattleHudScale()
-		local scale = self:ReadNumber(self.BattleHudScale, 0.72)
+		local scale = self:ReadNumber(self.BattleHudScale, 1)
 		return math.max(0.25, math.min(1, scale))
 	end
 
@@ -2764,18 +3109,35 @@ script BRSkillChainUI extends Component
 		return string.sub(selfPath, 1, string.len(prefix)) == prefix
 	end
 
+	method string GetAuthoredBattleHudContainerPath()
+		local rootPath = self:GetChainRootPath()
+		if self:GetEntityFromRoot(rootPath, "BattleHub/ChainPart_1") ~= nil then
+			return "BattleHub"
+		end
+		if self:GetEntityFromRoot(rootPath, "Bg/ChainPart_1") ~= nil then
+			return "Bg"
+		end
+		return "BattleHub"
+	end
+
 	method boolean HasAuthoredBattleHudLayout()
-		local bg = self:GetEntityFromRoot(self:GetChainRootPath(), "Bg")
-		local slot = self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/ChainPart_1")
-		return bg ~= nil and slot ~= nil
+		local rootPath = self:GetChainRootPath()
+		local hubPath = self:GetAuthoredBattleHudContainerPath()
+		local hub = self:GetEntityFromRoot(rootPath, hubPath)
+		local slot = self:GetEntityFromRoot(rootPath, hubPath .. "/ChainPart_1")
+		return hub ~= nil and slot ~= nil
 	end
 
 	@ExecSpace("ClientOnly")
 	method void ApplyBattleHudScale()
-		local scaleRoot = self:GetEntityFromRoot(self:GetChainRootPath(), "Bg")
-		if scaleRoot == nil then
-			scaleRoot = self:GetEntityFromRoot(self:GetChainRootPath(), "Panel")
+		local rootPath = self:GetChainRootPath()
+		local authoredRoot = self:GetEntityFromRoot(rootPath, self:GetAuthoredBattleHudContainerPath())
+		if authoredRoot ~= nil and authoredRoot.UITransformComponent ~= nil then
+			-- Authored BattleHub already has its final size in the UI file.
+			authoredRoot.UITransformComponent.UIScale = Vector3(1, 1, 1)
+			return
 		end
+		local scaleRoot = self:GetEntityFromRoot(rootPath, "Panel")
 		if scaleRoot ~= nil and scaleRoot.UITransformComponent ~= nil then
 			local scale = self:GetBattleHudScale()
 			scaleRoot.UITransformComponent.UIScale = Vector3(scale, scale, 1)
@@ -2784,31 +3146,37 @@ script BRSkillChainUI extends Component
 
 	method Entity GetAuthoredHudTextEntity(string name)
 		local safeName = self:ReadString(name, "")
+		local hubPath = self:GetAuthoredBattleHudContainerPath()
 		if safeName == "HudLevelText" then
-			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudLevelText")
+			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudLevelText")
 		end
 		if safeName == "HudHpValue" then
-			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudHpFill/HudHpValue")
+			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpFill/HudHpValue")
 		end
 		if safeName == "HudExpValue" then
-			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudExpFill/HudExpValue")
+			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpFill/HudExpValue")
 		end
 		return nil
 	end
 
 	method Entity GetAuthoredHudGaugeFillEntity(string key)
 		local safeKey = self:ReadString(key, "")
+		local hubPath = self:GetAuthoredBattleHudContainerPath()
 		if safeKey == "Hp" then
-			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudHpFill")
+			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpFill")
 		end
 		if safeKey == "Exp" then
-			return self:GetEntityFromRoot(self:GetChainRootPath(), "Bg/HudExpFill")
+			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpFill")
 		end
 		return nil
 	end
 
 	method string GetInventoryRootPath()
-		return self:ReadString(self.InventoryRootPath, "/ui/BRSkillInventoryGroup")
+		local configuredPath = self:ReadString(self.InventoryRootPath, "")
+		if configuredPath == "" then
+			return self:GetChainRootPath()
+		end
+		return configuredPath
 	end
 
 	method string GetLocalUserId()

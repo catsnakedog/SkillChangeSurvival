@@ -13,7 +13,7 @@ script BRSkillSystem extends Logic
 
 	property number StartingSkillLevel = 1
 
-	property number BaseUnlockedChainSlots = 2
+	property number BaseUnlockedChainSlots = 1
 
 	property number ChainSlotsPerLevel = 1
 
@@ -95,7 +95,7 @@ script BRSkillSystem extends Logic
 
 	property string SummonObjectModelId = "brskillsummonobject"
 
-	property number SummonObjectYOffset = 0.15
+	property number SummonObjectYOffset = 0
 
 	property number SummonAttackVisualHoldSeconds = 0.28
 
@@ -1453,14 +1453,24 @@ script BRSkillSystem extends Logic
 						EndTier = 0
 					}
 					local nextGroup = groups[groupIndex + 1]
-					if self:SkillHasTrigger(skillDef) == true and nextGroup ~= nil and nextGroup.Part ~= nil then
+					-- Only combo (start->end trigger) when the next group is DIRECTLY ADJACENT in the chain.
+					-- A gap (empty slot) means the chain is broken there, so those skills must cast
+					-- sequentially (each as its own queued step) instead of firing together.
+					local nextAdjacent = nextGroup ~= nil and math.floor(self:ReadNumber(nextGroup.StartSlotIndex, 0)) == math.floor(self:ReadNumber(group.EndSlotIndex, 0)) + 1
+					if self:SkillHasTrigger(skillDef) == true and nextGroup ~= nil and nextGroup.Part ~= nil and nextAdjacent == true then
 						local endTier = self:ClampSkillTier(nextGroup.Tier)
-						step.Role = "start"
-						step.EndPart = nextGroup.Part
-						step.EndSkillDef = self:GetSkillDefinitionForPart(nextGroup.Part, endTier)
-						step.TriggerEndSlotIndex = math.floor(self:ReadNumber(nextGroup.EndSlotIndex, 0))
-						step.EndTier = endTier
-						consumedEndGroups[groupIndex + 1] = true
+						local endSkillDef = self:GetSkillDefinitionForPart(nextGroup.Part, endTier)
+						if self:SkillHasTrigger(endSkillDef) ~= true then
+							step.Role = "start"
+							step.EndPart = nextGroup.Part
+							step.EndSkillDef = endSkillDef
+							step.TriggerEndSlotIndex = math.floor(self:ReadNumber(nextGroup.EndSlotIndex, 0))
+							step.EndTier = endTier
+							consumedEndGroups[groupIndex + 1] = true
+						else
+							step.Role = "start"
+							self:Log("trigger link skipped user=" .. self:ReadString(state.UserId, "") .. " start=" .. self:ReadString(step.SkillKey, "") .. " next=" .. self:ReadString(endSkillDef.SkillKey, "") .. " reason=nextIsTrigger")
+						end
 					end
 					if pendingMesoCount > 0 then
 						step.MesoFollowUpCount = pendingMesoCount
@@ -1553,6 +1563,24 @@ script BRSkillSystem extends Logic
 			end
 		end
 		return false
+	end
+
+	method boolean SkillPartHasTrigger(any part, number tier)
+		-- Resolves a part to the tiered skill definition and checks for trigger actions.
+		if part == nil then
+			return false
+		end
+		self:EnsureRuntime()
+		local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
+		if skillKey == "" or self._T.skillRuntimeCatalog == nil then
+			return false
+		end
+		local tieredSkillKey = self:GetTieredSkillKey(skillKey, tier)
+		local skillDef = self._T.skillRuntimeCatalog[tieredSkillKey]
+		if skillDef == nil then
+			skillDef = self._T.skillRuntimeCatalog[skillKey]
+		end
+		return self:SkillHasTrigger(skillDef)
 	end
 
 	method boolean SkillEventHasTrigger(string eventId, any visitedEvents)
@@ -1849,7 +1877,7 @@ script BRSkillSystem extends Logic
 			cast.FrameTimer = cast.FrameTimer - frameSeconds
 			self:ProcessSkillFrame(cast, math.floor(self:ReadNumber(cast.Frame, 0)))
 			cast.Frame = math.floor(self:ReadNumber(cast.Frame, 0)) + 1
-			if cast.Frame >= self:GetSkillTotalFrames(cast.SkillDef) + self:PreDelayFramesForSkill(cast.SkillDef) then
+			if cast.Frame >= self:GetSkillTotalFrames(cast.SkillDef) + self:PreDelayFramesForSkill(cast.SkillDef) + self:PostDelayFramesForSkill(cast.SkillDef) then
 				cast.Completed = true
 			end
 		end
@@ -1873,6 +1901,12 @@ script BRSkillSystem extends Logic
 		if preFrames > 0 and frame == 0 and cast.TelegraphShown ~= true then
 			cast.TelegraphShown = true
 			self:ShowSkillTelegraph(cast)
+		end
+		-- Post-cast recovery (후딜): once every timeline event has fired, freeze the caster in place
+		-- and hold the attack motion until the cast (and this recovery window) ends.
+		local curFrame = math.floor(self:ReadNumber(frame, 0))
+		if cast.IsVirtualCaster ~= true and self:PostDelayFramesForSkill(cast.SkillDef) > 0 and curFrame >= preFrames + self:GetSkillTotalFrames(cast.SkillDef) then
+			self:ApplyCasterPostDelayFreeze(cast)
 		end
 		local eventsByFrame = cast.SkillDef.EventsByFrame
 		if eventsByFrame == nil then
@@ -1923,6 +1957,7 @@ script BRSkillSystem extends Logic
 			self:Log("skill end user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, ""))
 		end
 		if cast.IsVirtualCaster ~= true then
+			self:RestoreCasterPostDelayFreeze(cast)
 			local userId = self:ReadString(cast.UserId, "")
 			local runtime = self:GetChainRuntime(userId)
 			local activeCount = math.max(0, math.floor(self:ReadNumber(runtime.ActiveCastCount, 0)) - 1)
@@ -2157,7 +2192,7 @@ script BRSkillSystem extends Logic
 			local ruid = self:GetSkillEffectRUID(safeEventId)
 			if ruid ~= "" then
 				local scale = math.max(0.05, self:GetSkillEffectScale(safeEventId) * 0.7)
-				self:PlaySkillVisualAt(projectile, ruid, hitX, hitY + 0.35, self:GetContextDirection(projectile), scale, "projectile-hit:" .. safeEventId)
+				self:PlaySkillVisualAt(projectile, ruid, hitX, hitY, self:GetContextDirection(projectile), scale, "projectile-hit:" .. safeEventId)
 				self:Log("projectile hit visual source=" .. self:ReadString(sourceId, "projectile") .. " event=" .. safeEventId .. " ruid=" .. ruid)
 				return
 			end
@@ -2637,7 +2672,7 @@ script BRSkillSystem extends Logic
 		if ruid == "" then
 			return
 		end
-		self:PlaySkillVisualAt(summon, ruid, x, y + 0.15, self:GetContextDirection(summon), self:ReadNumber(summon.ScaleRate, 0.85), sourceId)
+		self:PlaySkillVisualAt(summon, ruid, x, y, self:GetContextDirection(summon), self:ReadNumber(summon.ScaleRate, 0.85), sourceId)
 	end
 
 	method string GetListValue(any values, number index)
@@ -2753,7 +2788,7 @@ script BRSkillSystem extends Logic
 			if self:RollActionChance(actionDef) == true and self:ApplySkillStatus(context.SourceEntity, actionDef, self:ReadString(context.UserId, ""), sourceId) == true then
 				self:ApplySkillHeal(context.SourceEntity, actionDef, sourceId)
 				local origin = self:GetContextOrigin(context)
-				self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), origin.x, origin.y + 0.35, self:GetContextDirection(context), 0.75, "buff:" .. self:ReadString(actionDef.ActionId, "buff"))
+				self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), origin.x, origin.y, self:GetContextDirection(context), 0.75, "buff:" .. self:ReadString(actionDef.ActionId, "buff"))
 			else
 				self:Log("buff skipped chance action=" .. self:ReadString(actionDef.ActionId, "buff") .. " source=" .. self:ReadString(sourceId, ""))
 			end
@@ -2763,7 +2798,7 @@ script BRSkillSystem extends Logic
 				applied = self:ApplySkillStatus(targetEntity, actionDef, self:ReadString(context.UserId, ""), sourceId)
 			end
 			if applied == true and targetEntity ~= nil then
-				self:PlaySkillHitVisual(context, triggerX, triggerY + 0.25, "debuff:" .. self:ReadString(actionDef.ActionId, "debuff"), "")
+				self:PlaySkillHitVisual(context, triggerX, triggerY, "debuff:" .. self:ReadString(actionDef.ActionId, "debuff"), "")
 			end
 			if applied == true and actionDef.CancelChain == true then
 				self:CancelTargetChain(targetEntity, self:ReadString(sourceId, "debuff"))
@@ -2773,7 +2808,7 @@ script BRSkillSystem extends Logic
 		elseif actionType == "trigger" then
 			if context.IsVirtualCaster ~= true and context.TriggerFired ~= true then
 				context.TriggerFired = true
-				self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), triggerX, triggerY + 0.25, self:GetContextDirection(context), 0.9, "trigger:" .. self:ReadString(actionDef.ActionId, "trigger"))
+				self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), triggerX, triggerY, self:GetContextDirection(context), 0.9, "trigger:" .. self:ReadString(actionDef.ActionId, "trigger"))
 				self:StartVirtualEndSkill(context, triggerX, triggerY)
 			end
 		elseif actionType == "move" then
@@ -2807,7 +2842,7 @@ script BRSkillSystem extends Logic
 		local target = Vector2(position.x + direction * distance, position.y + vertical)
 		target = self:ClampPositionToMapBounds(entity, target)
 		self:StartSmoothSkillMovement(context, actionDef, target, sourceId)
-		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), target.x, target.y + 0.25, direction, 0.65, "move:" .. self:ReadString(actionDef.ActionId, "move"))
+		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), target.x, target.y, direction, 0.65, "move:" .. self:ReadString(actionDef.ActionId, "move"))
 		self:Log("move action user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "") .. " target=(" .. tostring(target.x) .. "," .. tostring(target.y) .. ") duration=" .. tostring(self:GetSkillMoveDurationSeconds(actionDef)))
 	end
 
@@ -3975,11 +4010,12 @@ script BRSkillSystem extends Logic
 		-- Requests the CSV-mapped animation effect for a skill event.
 		local safeEventId = self:ReadString(eventId, "")
 		local direction = self:GetContextDirection(context)
+		-- Skill effect pivots sit at the target/origin Y (0 vertical offset) instead of being raised.
 		local offsetX = 0
-		local offsetY = 0.35
+		local offsetY = 0
 		if isField == true then
 			offsetX = 0
-			offsetY = 0.25
+			offsetY = 0
 		end
 		if self:IsPiercingSkillKey(self:ReadString(context.SkillKey, "")) == true then
 			-- 활(피어싱) 시전 이펙트만 지면 높이(y 오프셋 0)에서 재생. 다른 스킬은 +0.35 유지.
@@ -3998,7 +4034,7 @@ script BRSkillSystem extends Logic
 			scaleRate = 0.6
 		end
 		local ruid = self:ReadString(overrideRUID, "")
-		self:PlaySkillVisualAt(context, ruid, x, y + 0.35, self:GetContextDirection(context), scaleRate, "hit:" .. safeSourceId)
+		self:PlaySkillVisualAt(context, ruid, x, y, self:GetContextDirection(context), scaleRate, "hit:" .. safeSourceId)
 	end
 
 	method string GetSkillEffectRUID(string eventId)
@@ -4429,6 +4465,84 @@ script BRSkillSystem extends Logic
 			return 0.5
 		end
 		return 0
+	end
+
+	method number PostDelayFramesForSkill(any skillDef)
+		-- Converts a skill's post-cast recovery (후딜) into timeline frames.
+		local seconds = self:GetSkillPostDelaySeconds(skillDef)
+		if seconds <= 0 then
+			return 0
+		end
+		return math.max(0, math.floor(seconds / self:GetSkillFrameSeconds() + 0.5))
+	end
+
+	method number GetSkillPostDelaySeconds(any skillDef)
+		-- Post-cast recovery in seconds — spaces out chain steps so skills do not blur together.
+		-- TEMPORARY uniform default for all skills; TODO: move to a skills.csv column per skill.
+		if skillDef == nil then
+			return 0
+		end
+		-- Meso Explosion is a follow-up "charge" that only enhances the NEXT chain skill (arms meso
+		-- coins). It performs no attack itself, so it gets no recovery delay / freeze / attack swing —
+		-- the enhanced skill fires immediately after.
+		local id = self:ReadString(skillDef.BaseSkillKey, self:ReadString(skillDef.SkillKey, ""))
+		if id == self:GetMesoExplosionSkillKey() then
+			return 0
+		end
+		return 0.35
+	end
+
+	method void ApplyCasterPostDelayFreeze(any cast)
+		-- Holds the caster still and playing the attack motion during post-cast recovery.
+		if cast == nil or cast.CasterEntity == nil or isvalid(cast.CasterEntity) ~= true then
+			return
+		end
+		local entity = cast.CasterEntity
+		local firstFreeze = cast.PostFrozen ~= true
+		if entity.MovementComponent ~= nil then
+			-- Remember the original input speed once for restore at cast end.
+			if firstFreeze then
+				cast.FrozenInputSpeed = entity.MovementComponent.InputSpeed
+			end
+			-- Re-apply every recovery frame: the lobby/battle movement controller re-sets speed each tick.
+			entity.MovementComponent.InputSpeed = 0
+		end
+		-- Play the attack swing exactly ONCE as recovery begins. No ATTACK state is used, so the swing
+		-- is a single one-shot clip that plays and stops instead of a held/looping motion.
+		if firstFreeze then
+			cast.PostFrozen = true
+			self:PlayCasterAttackOnceClient(entity)
+		end
+	end
+
+	@ExecSpace("Client")
+	method void PlayCasterAttackOnceClient(Entity caster)
+		-- Plays a one-handed sword swing once on the avatar body (Onetime = play then stop).
+		if caster == nil or isvalid(caster) ~= true or caster.AvatarRendererComponent == nil then
+			return
+		end
+		local body = caster.AvatarRendererComponent:GetBodyEntity()
+		if body == nil or isvalid(body) ~= true then
+			return
+		end
+		local event = ActionStateChangedEvent()
+		event.CoreActionName = "swingO1"
+		event.PartsActionName = "swingO1"
+		event.PlayType = SpriteAnimClipPlayType.Onetime
+		body:SendEvent(event)
+	end
+
+	method void RestoreCasterPostDelayFreeze(any cast)
+		-- Restores caster movement after the post-cast recovery ends.
+		if cast == nil or cast.FrozenInputSpeed == nil then
+			return
+		end
+		local entity = cast.CasterEntity
+		if entity ~= nil and isvalid(entity) == true and entity.MovementComponent ~= nil then
+			entity.MovementComponent.InputSpeed = cast.FrozenInputSpeed
+		end
+		cast.FrozenInputSpeed = nil
+		cast.PostFrozen = false
 	end
 
 	method void ShowSkillTelegraph(any cast)
@@ -5984,6 +6098,42 @@ script BRSkillSystem extends Logic
 		self._T.localSkillRequiredExperience = math.max(1, math.floor(self:ReadNumber(requiredExperience, 1)))
 		self._T.localUnlockedChainSlots = math.max(1, math.floor(self:ReadNumber(unlockedSlots, self:GetBaseUnlockedChainSlots())))
 		self._T.localPanelUpdatedAt = _UtilLogic.ElapsedSeconds
+		self:RefreshLocalSkillChainUI("snapshot", self._T.localSnapshotVersion)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshLocalSkillChainUI(string reason, number version)
+		-- Wakes the authored BattleHub skill UI as soon as a fresh snapshot arrives.
+		local refreshed = 0
+		refreshed = refreshed + self:RefreshSkillChainUIRoot("/ui/BRBattleHudGroup", reason, version)
+		if refreshed <= 0 then
+			refreshed = refreshed + self:RefreshSkillChainUIRoot("/ui/BRSkillChainGroup", reason, version)
+		end
+	end
+
+	method number RefreshSkillChainUIRoot(string rootPath, string reason, number version)
+		local root = _EntityService:GetEntityByPath(self:ReadString(rootPath, ""))
+		if root == nil then
+			return 0
+		end
+		local components = root:GetChildComponentsByTypeName("script.BRSkillChainUI", true)
+		if components == nil or #components <= 0 then
+			components = root:GetChildComponentsByTypeName("BRSkillChainUI", true)
+		end
+		if components == nil then
+			return 0
+		end
+
+		local count = 0
+		for index, component in ipairs(components) do
+			if component ~= nil then
+				---@type BRSkillChainUI
+				local ui = component
+				ui:RequestImmediateRefresh(reason, version)
+				count = count + 1
+			end
+		end
+		return count
 	end
 
 	@ExecSpace("Client")
@@ -6167,7 +6317,7 @@ script BRSkillSystem extends Logic
 
 ]]
 	method string BuildChainSnapshotText(any state)
-		-- Serializes slots as slot,instanceId,short,tier,displayName,skillKey records.
+		-- Serializes slots as slot,instanceId,short,tier,displayName,skillKey,hasTrigger records.
 		local chain = self:BuildChainState(state)
 		local text = ""
 		for slotIndex = 1, self:GetChainSlotCount() do
@@ -6178,6 +6328,7 @@ script BRSkillSystem extends Logic
 			local displayName = "-"
 			local skillKey = "-"
 			local tier = math.floor(self:ReadNumber(chain.Tiers[slotIndex], 0))
+			local hasTrigger = "0"
 			if locked == true then
 				instanceId = 0
 				shortText = "LOCK"
@@ -6188,17 +6339,20 @@ script BRSkillSystem extends Logic
 				shortText = self:GetPartShortText(part)
 				displayName = self:SanitizeRecordText(self:GetSkillName(part))
 				skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
+				if self:SkillPartHasTrigger(part, tier) == true then
+					hasTrigger = "1"
+				end
 			end
 			if text ~= "" then
 				text = text .. ";"
 			end
-			text = text .. tostring(slotIndex) .. "," .. tostring(instanceId) .. "," .. shortText .. "," .. tostring(tier) .. "," .. displayName .. "," .. skillKey
+			text = text .. tostring(slotIndex) .. "," .. tostring(instanceId) .. "," .. shortText .. "," .. tostring(tier) .. "," .. displayName .. "," .. skillKey .. "," .. hasTrigger
 		end
 		return text
 	end
 
 	method string BuildBagSnapshotText(any state)
-		-- Serializes explicit spare bag slots as slot,instanceId,short,tier,displayName,skillKey records.
+		-- Serializes explicit spare bag slots as slot,instanceId,short,tier,displayName,skillKey,hasTrigger records.
 		self:NormalizeUserState(state)
 		local text = ""
 		for bagSlot = 1, self:GetBagSlotCount() do
@@ -6211,11 +6365,15 @@ script BRSkillSystem extends Logic
 			local displayName = "-"
 			local skillKey = "-"
 			local tier = 0
+			local hasTrigger = "0"
 			if part ~= nil then
 				shortText = self:GetPartShortText(part)
 				displayName = self:SanitizeRecordText(self:GetSkillName(part))
 				skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
 				tier = 1
+				if self:SkillPartHasTrigger(part, tier) == true then
+					hasTrigger = "1"
+				end
 			end
 			if text ~= "" then
 				text = text .. ";"
@@ -6226,6 +6384,7 @@ script BRSkillSystem extends Logic
 				.. "," .. tostring(tier)
 				.. "," .. displayName
 				.. "," .. skillKey
+				.. "," .. hasTrigger
 		end
 		return text
 	end
@@ -6918,7 +7077,7 @@ script BRSkillSystem extends Logic
 
 	method number GetBaseUnlockedChainSlots()
 		-- Returns how many chain slots are available at the starting level.
-		return math.max(1, math.min(self:GetChainSlotCount(), math.floor(self:ReadNumber(self.BaseUnlockedChainSlots, 2))))
+		return math.max(1, math.min(self:GetChainSlotCount(), math.floor(self:ReadNumber(self.BaseUnlockedChainSlots, 1))))
 	end
 
 	method number GetChainSlotsPerLevel()

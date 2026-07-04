@@ -113,20 +113,26 @@
   "hotPaths": [
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\Skill\\BRSkillSystem.mlua",
-      "accessCount": 122,
-      "lastAccessed": 1783141502825,
+      "accessCount": 185,
+      "lastAccessed": 1783152389138,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Skill\\BRCommonSkillSystem.mlua",
+      "accessCount": 23,
+      "lastAccessed": 1783151687279,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\Data\\skills.csv",
+      "accessCount": 23,
+      "lastAccessed": 1783152942799,
       "type": "file"
     },
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRMagneticZoneUI.mlua",
       "accessCount": 18,
       "lastAccessed": 1783109970197,
-      "type": "file"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\Data\\skills.csv",
-      "accessCount": 18,
-      "lastAccessed": 1783132555763,
       "type": "file"
     },
     {
@@ -154,9 +160,21 @@
       "type": "file"
     },
     {
+      "path": "RootDesk\\MyDesk\\_Scripts",
+      "accessCount": 9,
+      "lastAccessed": 1783147074497,
+      "type": "directory"
+    },
+    {
       "path": "RootDesk\\MyDesk\\Data\\events.csv",
       "accessCount": 8,
       "lastAccessed": 1783132570615,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Skill\\BRCharacterSystem.mlua",
+      "accessCount": 8,
+      "lastAccessed": 1783149180341,
       "type": "file"
     },
     {
@@ -164,12 +182,6 @@
       "accessCount": 7,
       "lastAccessed": 1783136547870,
       "type": "file"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\_Scripts",
-      "accessCount": 6,
-      "lastAccessed": 1783137466205,
-      "type": "directory"
     },
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRGridMapEditorTool.mlua",
@@ -370,12 +382,6 @@
       "type": "file"
     },
     {
-      "path": "RootDesk\\MyDesk\\_Scripts\\Skill\\BRCommonSkillSystem.mlua",
-      "accessCount": 1,
-      "lastAccessed": 1783111331438,
-      "type": "file"
-    },
-    {
       "path": "RootDesk\\MyDesk\\Data\\skill_chains.csv",
       "accessCount": 1,
       "lastAccessed": 1783111367071,
@@ -397,12 +403,6 @@
       "path": "RootDesk\\MyDesk\\Data\\character_default_skills.csv",
       "accessCount": 1,
       "lastAccessed": 1783111369784,
-      "type": "file"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\_Scripts\\Skill\\BRCharacterSystem.mlua",
-      "accessCount": 1,
-      "lastAccessed": 1783111402615,
       "type": "file"
     },
     {

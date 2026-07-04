@@ -1,0 +1,109 @@
+{
+  "updatedAt": "2026-07-04T08:04:19.370Z",
+  "missions": [
+    {
+      "id": "session:69f48154-04b7-4774-a600-4d019cf6a50d:none",
+      "source": "session",
+      "name": "none",
+      "objective": "Session mission",
+      "createdAt": "2026-07-04T07:13:55.106Z",
+      "updatedAt": "2026-07-04T08:04:19.370Z",
+      "status": "done",
+      "workerCount": 1,
+      "taskCounts": {
+        "total": 1,
+        "pending": 0,
+        "blocked": 0,
+        "inProgress": 0,
+        "completed": 1,
+        "failed": 0
+      },
+      "agents": [
+        {
+          "name": "fork:afork-d",
+          "role": "fork",
+          "ownership": "afork-dd9ea5238f7d75e8",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-07-04T08:04:19.370Z"
+        }
+      ],
+      "timeline": [
+        {
+          "id": "session-stop:ab4557375fd0dc01f:2026-07-04T07:28:00.220Z",
+          "at": "2026-07-04T07:28:00.220Z",
+          "kind": "completion",
+          "agent": "fork:afork-d",
+          "detail": "completed",
+          "sourceKey": "session-stop:ab4557375fd0dc01f"
+        },
+        {
+          "id": "session-stop:afork-dd9ea5238f7d75e8:2026-07-04T07:28:14.601Z",
+          "at": "2026-07-04T07:28:14.601Z",
+          "kind": "completion",
+          "agent": "fork:afork-d",
+          "detail": "completed",
+          "sourceKey": "session-stop:afork-dd9ea5238f7d75e8"
+        },
+        {
+          "id": "session-start:afork-dd9ea5238f7d75e8:2026-07-04T07:35:17.852Z",
+          "at": "2026-07-04T07:35:17.852Z",
+          "kind": "update",
+          "agent": "fork:afork-d",
+          "detail": "started fork:afork-d",
+          "sourceKey": "session-start:afork-dd9ea5238f7d75e8"
+        },
+        {
+          "id": "session-stop:ab70233a7d55dfef9:2026-07-04T07:35:54.006Z",
+          "at": "2026-07-04T07:35:54.006Z",
+          "kind": "completion",
+          "agent": "fork:afork-d",
+          "detail": "completed",
+          "sourceKey": "session-stop:ab70233a7d55dfef9"
+        },
+        {
+          "id": "session-stop:afork-dd9ea5238f7d75e8:2026-07-04T07:36:03.689Z",
+          "at": "2026-07-04T07:36:03.689Z",
+          "kind": "completion",
+          "agent": "fork:afork-d",
+          "detail": "completed",
+          "sourceKey": "session-stop:afork-dd9ea5238f7d75e8"
+        },
+        {
+          "id": "session-stop:a68d9051af47f7851:2026-07-04T07:38:13.291Z",
+          "at": "2026-07-04T07:38:13.291Z",
+          "kind": "completion",
+          "agent": "fork:afork-d",
+          "detail": "completed",
+          "sourceKey": "session-stop:a68d9051af47f7851"
+        },
+        {
+          "id": "session-stop:a5e14be9979debaf0:2026-07-04T07:41:47.228Z",
+          "at": "2026-07-04T07:41:47.228Z",
+          "kind": "completion",
+          "agent": "fork:afork-d",
+          "detail": "completed",
+          "sourceKey": "session-stop:a5e14be9979debaf0"
+        },
+        {
+          "id": "session-stop:a9014d609c778f81b:2026-07-04T07:55:42.027Z",
+          "at": "2026-07-04T07:55:42.027Z",
+          "kind": "completion",
+          "agent": "fork:afork-d",
+          "detail": "completed",
+          "sourceKey": "session-stop:a9014d609c778f81b"
+        },
+        {
+          "id": "session-stop:a37f770bd3010293f:2026-07-04T08:04:19.370Z",
+          "at": "2026-07-04T08:04:19.370Z",
+          "kind": "completion",
+          "agent": "fork:afork-d",
+          "detail": "completed",
+          "sourceKey": "session-stop:a37f770bd3010293f"
+        }
+      ]
+    }
+  ]
+}

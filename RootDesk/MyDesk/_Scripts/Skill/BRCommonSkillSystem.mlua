@@ -69,7 +69,7 @@ script BRCommonSkillSystem extends Logic
 
 	property number NimbusEffectLocalX = 0
 
-	property number NimbusEffectLocalY = -0.34
+	property number NimbusEffectLocalY = 0
 
 	property number NimbusEffectScale = 0.68
 
@@ -78,6 +78,13 @@ script BRCommonSkillSystem extends Logic
 	property number NimbusEffectPlayRate = 1.0
 
 	property integer NimbusEffectOrderInLayer = 20
+
+	-- The Nimbus/repeat clip is frames 0-7 = cloud forming, 8-22 = steady ride. Looping the whole clip
+	-- snaps 22->0 (full size -> tiny) which reads as a repeated appear/disappear, so loop only the
+	-- steady-ride frames for a seamless cloud. Cancel still plays the separate Nimbus/end disappear.
+	property integer NimbusEffectLoopStartFrame = 8
+
+	property integer NimbusEffectLoopEndFrame = 22
 
 	property any inputKeyDownHandler = nil
 
@@ -743,6 +750,10 @@ script BRCommonSkillSystem extends Logic
 		options["Alpha"] = alpha
 		options["PlayRate"] = math.max(0.1, self:ReadNumber(self.NimbusEffectPlayRate, 1.0))
 		options["IgnoreMapLayerCheck"] = true
+		-- Loop only the steady-ride frames (skip the 0-7 form-in and the 22->0 snap) so the attached
+		-- cloud stays seamless instead of re-appearing/disappearing every loop cycle.
+		options["StartFrameIndex"] = math.max(0, math.floor(self:ReadNumber(self.NimbusEffectLoopStartFrame, 8)))
+		options["EndFrameIndex"] = math.max(0, math.floor(self:ReadNumber(self.NimbusEffectLoopEndFrame, 22)))
 
 		local serial = _EffectService:PlayEffectAttached(
 			ruid,

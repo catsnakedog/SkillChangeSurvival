@@ -1870,6 +1870,7 @@ script BRSkillSystem extends Logic
 		end
 
 		local pendingMesoCount = 0
+		local pendingMesoFromSlot = 0
 		for groupIndex, group in ipairs(groups) do
 			if consumedEndGroups[groupIndex] ~= true then
 				local part = group.Part
@@ -1910,14 +1911,21 @@ script BRSkillSystem extends Logic
 						end
 					end
 					if pendingMesoCount > 0 then
-						step.MesoFollowUpCount = pendingMesoCount
+						-- Meso Explosion enhances ONLY the skill in the slot directly to its right. A gap
+						-- (empty slot) or a non-adjacent group breaks the link, so the charge is dropped and
+						-- nothing downstream is enhanced.
+						if math.floor(self:ReadNumber(group.StartSlotIndex, 0)) == pendingMesoFromSlot + 1 then
+							step.MesoFollowUpCount = pendingMesoCount
+						end
 						pendingMesoCount = 0
+						pendingMesoFromSlot = 0
 					end
 					table.insert(result.Steps, step)
 				end
 			end
 			if self:IsMesoExplosionSkillKey(self:ReadString(group.SkillKey, "")) == true then
 				pendingMesoCount = self:CoinCountForTier(group.Tier)
+				pendingMesoFromSlot = math.floor(self:ReadNumber(group.EndSlotIndex, 0))
 			end
 		end
 		result.Count = #result.Steps
@@ -2167,8 +2175,11 @@ script BRSkillSystem extends Logic
 		}
 		table.insert(self._T.activeCasts, cast)
 		if cast.IsVirtualCaster ~= true and self:IsMesoExplosionSkillKey(self:ReadString(cast.SkillKey, "")) == true then
+			-- Only the caster's meso burst VFX plays here. The enhancement is deliberately NOT armed onto
+			-- already-active effects (that would buff earlier / unconnected skills). It flows solely to the
+			-- skill directly to the right via step.MesoFollowUpCount, set in BuildResolvedChain — so with no
+			-- adjacent right skill, Meso Explosion does nothing.
 			self:PlayCasterMesoEffect(casterEntity)
-			self:ArmActiveMesoFollowUps(cast.UserId, self:CoinCountForTier(cast.Tier), casterEntity)
 		end
 		if cast.IsVirtualCaster ~= true then
 			self:HandleShadowDashCast(cast)

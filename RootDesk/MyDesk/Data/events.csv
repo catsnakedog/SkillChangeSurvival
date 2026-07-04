@@ -3,16 +3,19 @@ PirateMonkeySummon/summon,action,,PirateMonkeySummon/summon
 PirateMonkeySummon2/summon,action,,PirateMonkeySummon2/summon
 PirateMonkeySummon3/summon,action,,PirateMonkeySummon3/summon
 PirateMonkeySummon4/summon,action,,PirateMonkeySummon4/summon
-PirateProjectileTrigger/fire,action,,PirateProjectileTrigger/projectile
-PirateProjectileTrigger/hit,action,,PirateProjectileTrigger/damage|PirateProjectileTrigger/trigger
-PirateProjectileTrigger2/fire,action,,PirateProjectileTrigger2/projectile
-PirateProjectileTrigger2/hit,action,,PirateProjectileTrigger2/damage|PirateProjectileTrigger2/trigger
-PirateProjectileTrigger3/fire,action,,PirateProjectileTrigger3/projectile
-PirateProjectileTrigger3/hit,action,,PirateProjectileTrigger3/damage|PirateProjectileTrigger3/trigger
-PirateProjectileTrigger4/fire,action,,PirateProjectileTrigger4/projectile
-PirateProjectileTrigger4/hit,action,,PirateProjectileTrigger4/damage|PirateProjectileTrigger4/trigger
-크루얼 스텝/타격,area,크루얼 스텝/범위,
 브랜디쉬/타격,area,브랜디쉬/범위,
 브랜디쉬2/타격,area,브랜디쉬2/범위,
 브랜디쉬3/타격,area,브랜디쉬3/범위,
 브랜디쉬4/타격,area,브랜디쉬4/범위,
+디바인스윙/타격,area,디바인스윙/범위,
+디바인스윙2/타격,area,디바인스윙2/범위,
+디바인스윙3/타격,area,디바인스윙3/범위,
+디바인스윙4/타격,area,디바인스윙4/범위,
+디바인스윙4/버프,action,,디바인스윙4/공버프
+피어싱/발사,action,,피어싱/투사체
+피어싱/타격,action,,피어싱/피해
+피어싱/소멸,action,,피어싱/트리거
+샤프 슬래시/타격,area,샤프 슬래시/범위,
+샤프 슬래시2/타격,area,샤프 슬래시2/범위,
+샤프 슬래시3/타격,area,샤프 슬래시3/범위,
+샤프 슬래시4/타격,area,샤프 슬래시4/범위

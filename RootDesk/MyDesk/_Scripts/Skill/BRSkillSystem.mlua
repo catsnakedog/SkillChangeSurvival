@@ -63,6 +63,30 @@ script BRSkillSystem extends Logic
 
 	property boolean EnableSkillVisualEffects = true
 
+	property number ShadowDashDistance = 5.0
+
+	property number ShadowDashFlightTime = 0.35
+
+	property number ShadowDashFollowDelay = 1.0
+
+	property number ShadowDashSoundVolume = 0.9
+
+	property number IntoDarknessRange = 6.0
+
+	property number IntoDarknessBehindDistance = 0.7
+
+	property number IntoDarknessSoundVolume = 0.9
+
+	property number ThrowStarMaxRange = 7
+
+	property number ThrowStarSpeed = 12
+
+	property number ThrowStarAcquireRange = 7
+
+	property number ThrowStarFollowupDelay = 0.15
+
+	property number ThrowStarSoundVolume = 0.9
+
 	property number SkillEffectScale = 1.0
 
 	property number SkillEffectAlpha = 1.0
@@ -92,6 +116,8 @@ script BRSkillSystem extends Logic
 	property number HitboxDebugAlpha = 0.22
 
 	property integer HitboxDebugOrderInLayer = 85
+
+	property integer TelegraphOrderInLayer = 500
 
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
@@ -1047,6 +1073,7 @@ script BRSkillSystem extends Logic
 				actionDef.DamageTakenRate = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "damage_taken_rate", "1"), 1))
 				actionDef.ChancePercent = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "chance_percent", "100"), 100))
 				actionDef.HealMaxHpPercent = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "heal_max_hp_percent", "0"), 0))
+				actionDef.AttackPowerRate = math.max(0, self:ReadNumber(self:GetDataCell(data, row, "attack_power_rate", "1"), 1))
 			end
 		end
 	end
@@ -1117,6 +1144,10 @@ script BRSkillSystem extends Logic
 
 		local userId = self:GetUserIdFromPlayer(casterEntity)
 		if userId == "" then
+			return false
+		end
+		if self:IsCasterControlBlocked(casterEntity) == true then
+			self:Log("unique cast blocked user=" .. userId .. " reason=controlStatus")
 			return false
 		end
 
@@ -1238,6 +1269,10 @@ script BRSkillSystem extends Logic
 
 		local userId = self:GetUserIdFromPlayer(casterEntity)
 		if userId == "" then
+			return false
+		end
+		if self:IsCasterControlBlocked(casterEntity) == true then
+			self:Log("chain cast blocked user=" .. userId .. " reason=controlStatus")
 			return false
 		end
 
@@ -1676,6 +1711,12 @@ script BRSkillSystem extends Logic
 			self:ArmActiveMesoFollowUps(cast.UserId, self:CoinCountForTier(cast.Tier), casterEntity)
 		end
 		if cast.IsVirtualCaster ~= true then
+			self:HandleShadowDashCast(cast)
+		end
+		if cast.IsVirtualCaster ~= true then
+			self:HandleThrowStarCast(cast)
+		end
+		if cast.IsVirtualCaster ~= true then
 			local runtime = self:GetChainRuntime(cast.UserId)
 			runtime.ActiveCastCount = math.max(0, math.floor(self:ReadNumber(runtime.ActiveCastCount, 0))) + 1
 			local expectedEndAt = self:Now() + self:GetSkillDurationSeconds(step.SkillDef)
@@ -1737,25 +1778,40 @@ script BRSkillSystem extends Logic
 			cast.FrameTimer = cast.FrameTimer - frameSeconds
 			self:ProcessSkillFrame(cast, math.floor(self:ReadNumber(cast.Frame, 0)))
 			cast.Frame = math.floor(self:ReadNumber(cast.Frame, 0)) + 1
-			if cast.Frame >= self:GetSkillTotalFrames(cast.SkillDef) then
+			if cast.Frame >= self:GetSkillTotalFrames(cast.SkillDef) + self:PreDelayFramesForSkill(cast.SkillDef) then
 				cast.Completed = true
 			end
 		end
 	end
 
 	method void ProcessSkillFrame(any cast, number frame)
-		-- Executes all events assigned to one skill frame.
+		-- Executes all events on one skill frame, shifted later by the skill's pre-cast wind-up (선딜레이).
 		if cast == nil or cast.SkillDef == nil then
 			return
 		end
 		if frame == 0 then
 			self:Log("skill frame0 user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(cast.Tier, 1)))) .. " virtual=" .. tostring(cast.IsVirtualCaster == true))
+			if cast.IsVirtualCaster ~= true and cast.MainEffectPlayed ~= true then
+				local mainOrigin = self:GetContextOrigin(cast)
+				self:PlaySkillVisualForEvent(cast, "", mainOrigin.x, mainOrigin.y, false)
+				cast.MainEffectPlayed = true
+			end
+		end
+		local preFrames = self:PreDelayFramesForSkill(cast.SkillDef)
+		-- Telegraph the incoming hit area once at the very start of the wind-up.
+		if preFrames > 0 and frame == 0 and cast.TelegraphShown ~= true then
+			cast.TelegraphShown = true
+			self:ShowSkillTelegraph(cast)
 		end
 		local eventsByFrame = cast.SkillDef.EventsByFrame
 		if eventsByFrame == nil then
 			return
 		end
-		local eventIds = eventsByFrame[frame]
+		local effectiveFrame = math.floor(self:ReadNumber(frame, 0)) - preFrames
+		if effectiveFrame < 0 then
+			return
+		end
+		local eventIds = eventsByFrame[effectiveFrame]
 		if eventIds == nil then
 			return
 		end
@@ -1851,11 +1907,14 @@ script BRSkillSystem extends Logic
 			SeenTargets = {},
 			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0))),
 			MesoAttacker = context.MesoAttacker,
-			MesoSeenTargets = {},
-			TriggerFired = false
+			TriggerFired = false,
+			SuppressMainEffect = context.MainEffectPlayed == true,
+			MesoSeenTargets = {}
 		}
 		table.insert(self._T.activeAreas, area)
-		self:PlaySkillVisualForEvent(area, area.EventId, origin.x, origin.y, false)
+		if area.SuppressMainEffect ~= true then
+			self:PlaySkillVisualForEvent(area, area.EventId, origin.x, origin.y, false)
+		end
 		self:Log("area start user=" .. area.UserId .. " event=" .. area.EventId .. " frames=" .. tostring(area.RemainingFrames))
 	end
 
@@ -2974,7 +3033,7 @@ script BRSkillSystem extends Logic
 		local attackerEntity = context.SourceEntity
 		local attackPower = self:GetSkillAttackPower(attackerEntity)
 		local coefficient = math.max(0, self:ReadNumber(actionDef.Coefficient, 100))
-		local damage = math.max(1, math.floor(attackPower * coefficient / 100))
+		local damage = math.max(1, math.floor(attackPower * coefficient / 100 * self:GetAttackBuffRate(attackerEntity)))
 		local critical = self:RollCritical(attackerEntity)
 		if critical == true then
 			damage = math.max(1, math.floor(damage * self:GetCriticalDamageRate(attackerEntity)))
@@ -3192,6 +3251,467 @@ script BRSkillSystem extends Logic
 		_EffectService:PlayEffectAttached("61840689ea7b44f09f91960734232e34", caster, Vector3(0, 0, 0), 0, Vector3(1, 1, 1), false)
 	end
 
+	method string GetShadowDashSkillKey()
+		-- Returns the base skill key that arms the shadow-dash (tier 1) / into-darkness (tier 2) utility.
+		return "인투 다크니스"
+	end
+
+	method string GetShadowDashModelId()
+		-- Returns the spawnable model id for the shadow-dash projectile.
+		return "shadowdash"
+	end
+
+	method void HandleShadowDashCast(any cast)
+		-- Routes a shadow-dash cast to the tier-1 dash or the tier-2 into-darkness teleport.
+		if cast == nil or cast.CasterEntity == nil then
+			return
+		end
+		local baseKey = self:GetShadowDashSkillKey()
+		local castKey = self:ReadString(cast.SkillKey, "")
+		local tier2Key = self:GetTieredSkillKey(baseKey, 2)
+		local tier = math.max(1, math.floor(self:ReadNumber(cast.Tier, 1)))
+		if castKey == tier2Key or (castKey == baseKey and tier >= 2) then
+			self:StartIntoDarkness(cast)
+		elseif castKey == baseKey then
+			self:StartShadowDash(cast)
+		end
+	end
+
+	method void StartShadowDash(any cast)
+		-- Tier 1: fires the shadow forward, then dashes the caster along the same path after a delay.
+		local caster = cast.CasterEntity
+		if caster == nil or isvalid(caster) ~= true then
+			return
+		end
+		local direction = self:GetLookDirection(caster)
+		local distance = math.max(0.1, self:ReadNumber(self.ShadowDashDistance, 5))
+		local flightTime = math.max(0.05, self:ReadNumber(self.ShadowDashFlightTime, 0.35))
+		local followDelay = math.max(0, self:ReadNumber(self.ShadowDashFollowDelay, 1.0))
+		local userId = self:ReadString(cast.UserId, "")
+		self:SpawnShadowProjectile(caster, direction, distance, flightTime)
+		self:PlayShadowDashCastSound(caster)
+		local capturedCaster = caster
+		local capturedUserId = userId
+		local capturedDirection = direction
+		local capturedDistance = distance
+		local capturedFlightTime = flightTime
+		_TimerService:SetTimerOnce(function()
+			self:DashCaster(capturedCaster, capturedUserId, capturedDirection, capturedDistance, capturedFlightTime)
+		end, followDelay)
+		self:Log("shadow dash cast user=" .. userId .. " dir=" .. tostring(direction) .. " dist=" .. tostring(distance) .. " flight=" .. tostring(flightTime) .. " followDelay=" .. tostring(followDelay))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SpawnShadowProjectile(Entity caster, number direction, number distance, number flightTime)
+		-- Spawns the shadow projectile at the caster and launches it along the facing direction.
+		if caster == nil or isvalid(caster) ~= true then
+			return
+		end
+		local parent = caster.CurrentMap
+		if parent == nil then
+			self:Log("shadow dash spawn aborted reason=noMap")
+			return
+		end
+		local basePos = caster.TransformComponent.WorldPosition
+		self._T.shadowDashSerial = math.floor(self:ReadNumber(self._T.shadowDashSerial, 0)) + 1
+		local shadowName = "ShadowDash_" .. tostring(self._T.shadowDashSerial)
+		local shadow = _SpawnService:SpawnByModelId(self:GetShadowDashModelId(), shadowName, basePos, parent)
+		if shadow == nil then
+			self:Log("shadow dash spawn failed reason=noEntity")
+			return
+		end
+		---@type ShadowDashProjectile
+		local projectile = shadow:GetComponent("script.ShadowDashProjectile")
+		if projectile == nil then
+			self:Log("shadow dash spawn failed reason=noComponent")
+			return
+		end
+		projectile:Fire(direction, 0, distance, flightTime)
+		self:Log("shadow dash projectile fired name=" .. shadowName .. " dir=" .. tostring(direction))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void DashCaster(Entity caster, string userId, number direction, number distance, number flightTime)
+		-- Dashes the caster distance units along dir over flightTime, reusing the smooth-movement system.
+		if caster == nil or isvalid(caster) ~= true then
+			return
+		end
+		local context = {
+			SourceEntity = caster,
+			CasterEntity = caster,
+			UserId = self:ReadString(userId, ""),
+			Direction = direction,
+			IsVirtualCaster = false
+		}
+		local frames = math.max(1, math.floor(math.max(0.05, flightTime) / self:GetSkillFrameSeconds() + 0.5))
+		local actionDef = {
+			ActionId = "shadowdash",
+			MoveTimeFrames = frames
+		}
+		local casterPos = self:GetEntityPosition2(caster)
+		local target = Vector2(casterPos.x + direction * math.max(0.1, distance), casterPos.y)
+		target = self:ClampPositionToMapBounds(caster, target)
+		self:StartSmoothSkillMovement(context, actionDef, target, "shadowdash")
+		self:Log("shadow dash caster move user=" .. self:ReadString(userId, "") .. " target=(" .. tostring(target.x) .. "," .. tostring(target.y) .. ")")
+	end
+
+	method void PlayShadowDashCastSound(Entity caster)
+		-- Broadcasts the shadow-dash cast sound to clients.
+		if self.EnableSkillVisualEffects ~= true or caster == nil then
+			return
+		end
+		self:PlayShadowDashCastSoundClient()
+	end
+
+	@ExecSpace("Client")
+	method void PlayShadowDashCastSoundClient()
+		-- Plays the shadow-dash cast sound on the client.
+		_SoundService:PlaySound("934e8d9af9ec4b10a9cc04a87455ef02", math.max(0, self:ReadNumber(self.ShadowDashSoundVolume, 0.9)))
+	end
+
+	method void StartIntoDarkness(any cast)
+		-- Tier 2: teleports the caster behind the nearest facing enemy within range; no-op if none.
+		local caster = cast.CasterEntity
+		if caster == nil or isvalid(caster) ~= true then
+			return
+		end
+		local direction = self:GetLookDirection(caster)
+		local range = math.max(0.5, self:ReadNumber(self.IntoDarknessRange, 6))
+		local behindDistance = math.max(0.1, self:ReadNumber(self.IntoDarknessBehindDistance, 0.7))
+		local userId = self:ReadString(cast.UserId, "")
+		local context = {
+			SourceEntity = caster,
+			CasterEntity = caster,
+			UserId = userId,
+			Direction = direction
+		}
+		local enemy = self:FindFacedEnemy(context, caster, direction, range)
+		if enemy == nil then
+			self:Log("into darkness no target user=" .. userId)
+			return
+		end
+		local casterPos = self:GetEntityPosition2(caster)
+		local enemyPos = self:GetEntityPosition2(enemy)
+		local dx = enemyPos.x - casterPos.x
+		local dy = enemyPos.y - casterPos.y
+		local length = math.sqrt(dx * dx + dy * dy)
+		if length < 0.0001 then
+			dx = direction
+			dy = 0
+			length = 1
+		end
+		local nx = dx / length
+		local ny = dy / length
+		local behind = Vector2(enemyPos.x + nx * behindDistance, enemyPos.y + ny * behindDistance)
+		behind = self:ClampPositionToMapBounds(caster, behind)
+		self:MoveEntityToWorldPosition(caster, behind)
+		if userId ~= "" then
+			self:ApplyLocalSkillMovementPosition(behind, "intoDarkness", userId)
+		end
+		self:FaceEntityTowardPoint(caster, enemyPos.x, behind.x)
+		self:PlayIntoDarknessEffect(caster, enemyPos, behind)
+		self:Log("into darkness teleport user=" .. userId .. " enemy=" .. enemy.Name .. " behind=(" .. tostring(behind.x) .. "," .. tostring(behind.y) .. ")")
+	end
+
+	method Entity FindFacedEnemy(any context, Entity caster, number direction, number range)
+		-- Returns the nearest valid enemy in the caster's facing direction within range.
+		if caster == nil then
+			return nil
+		end
+		local targets = self:CollectTargetsForContext(context)
+		if targets == nil then
+			return nil
+		end
+		local casterPos = self:GetEntityPosition2(caster)
+		local best = nil
+		local bestDistance = range + 1
+		for index, targetEntity in ipairs(targets) do
+			if self:IsSkillTargetValid(context, targetEntity) == true then
+				local targetPos = self:GetEntityPosition2(targetEntity)
+				local dx = targetPos.x - casterPos.x
+				local dy = targetPos.y - casterPos.y
+				if dx * direction >= -0.5 then
+					local distance = math.sqrt(dx * dx + dy * dy)
+					if distance <= range and distance < bestDistance then
+						best = targetEntity
+						bestDistance = distance
+					end
+				end
+			end
+		end
+		return best
+	end
+
+	method void FaceEntityTowardPoint(Entity entity, number targetX, number fromX)
+		-- Turns a player entity to look toward a target X position after a teleport.
+		if entity == nil or isvalid(entity) ~= true or entity.PlayerControllerComponent == nil then
+			return
+		end
+		local diff = targetX - fromX
+		if diff > 0.0001 then
+			entity.PlayerControllerComponent.LookDirectionX = 1
+		elseif diff < -0.0001 then
+			entity.PlayerControllerComponent.LookDirectionX = -1
+		end
+	end
+
+	method void PlayIntoDarknessEffect(Entity caster, Vector2 fromPos, Vector2 toPos)
+		-- Broadcasts the into-darkness teleport visuals and sound to clients.
+		if self.EnableSkillVisualEffects ~= true or caster == nil then
+			return
+		end
+		self:PlayIntoDarknessEffectClient(toPos.x, toPos.y, fromPos.x, fromPos.y)
+	end
+
+	@ExecSpace("Client")
+	method void PlayIntoDarknessEffectClient(number toX, number toY, number fromX, number fromY)
+		-- Plays the teleport effect + ball animationclips and the cast sound on the client.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+		local options = {}
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = 40
+		options["IgnoreMapLayerCheck"] = true
+		_EffectService:PlayEffect("173e5f5f81994d73b16b0e21dff1f52a", localPlayer, Vector3(toX, toY, 0), 0, Vector3(1, 1, 1), false, options)
+		_EffectService:PlayEffect("30f61ec72f5d48f2ab93cff43d70559e", localPlayer, Vector3(fromX, fromY, 0), 0, Vector3(1, 1, 1), false, options)
+		_SoundService:PlaySound("b625fb6b256140c493c7a163d0c3a44c", math.max(0, self:ReadNumber(self.IntoDarknessSoundVolume, 0.9)))
+	end
+
+	method string GetThrowStarSkillKey()
+		-- Returns the base skill key that fires the homing throwing-star burst (tiers 1-4).
+		return "럭키 세븐"
+	end
+
+	method string GetThrowStarModelId()
+		-- Returns the spawnable model id for a throwing-star projectile.
+		return "throwstar"
+	end
+
+	method void HandleThrowStarCast(any cast)
+		-- Routes a 럭키 세븐 cast (base or tiered key) to the tiered homing-star burst.
+		if cast == nil or cast.CasterEntity == nil then
+			return
+		end
+		local baseKey = self:GetThrowStarSkillKey()
+		local castKey = self:ReadString(cast.SkillKey, "")
+		local tier = math.max(1, math.floor(self:ReadNumber(cast.Tier, 1)))
+		local matched = false
+		local resolvedTier = tier
+		if castKey == baseKey then
+			matched = true
+			resolvedTier = tier
+		else
+			for order = 2, self:GetMaxSkillTier() do
+				if castKey == self:GetTieredSkillKey(baseKey, order) then
+					matched = true
+					resolvedTier = order
+					break
+				end
+			end
+		end
+		if matched ~= true then
+			return
+		end
+		self:StartThrowStars(cast, resolvedTier)
+	end
+
+	method void StartThrowStars(any cast, number tier)
+		-- Fires the tiered burst of homing stars one at a time, evenly spaced by ThrowStarFollowupDelay.
+		local caster = cast.CasterEntity
+		if caster == nil or isvalid(caster) ~= true then
+			return
+		end
+		local order = self:ClampSkillTier(tier)
+		local direction = self:GetLookDirection(caster)
+		local userId = self:ReadString(cast.UserId, "")
+		local acquireRange = math.max(0.5, self:ReadNumber(self.ThrowStarAcquireRange, 7))
+		local context = {
+			SourceEntity = caster,
+			CasterEntity = caster,
+			UserId = userId,
+			Direction = direction
+		}
+		local totalStars = order + 1
+		local damagePercent = self:GetThrowStarDamagePercent(order)
+		local damage = math.max(1, math.floor(self:GetSkillAttackPower(caster) * damagePercent / 100))
+		local hitEffect = self:GetThrowStarHitEffect(order)
+		local maxRange = math.max(0.5, self:ReadNumber(self.ThrowStarMaxRange, 7))
+		local speed = math.max(0.1, self:ReadNumber(self.ThrowStarSpeed, 12))
+		local interval = math.max(0, self:ReadNumber(self.ThrowStarFollowupDelay, 0.15))
+		local mesoCount = math.max(0, math.floor(self:ReadNumber(cast.MesoFollowUpCount, 0)))
+		local mesoAttacker = cast.MesoAttacker
+
+		self:PlayThrowStarCastSound(caster, order)
+
+		for starIndex = 0, totalStars - 1 do
+			local delay = starIndex * interval
+			local capturedCaster = caster
+			local capturedContext = context
+			local capturedDirection = direction
+			local capturedDamage = damage
+			local capturedMaxRange = maxRange
+			local capturedSpeed = speed
+			local capturedHitEffect = hitEffect
+			local capturedAcquireRange = acquireRange
+			local capturedMesoCount = mesoCount
+			local capturedMesoAttacker = mesoAttacker
+			if delay <= 0 then
+				local target = self:FindFacedEnemy(context, caster, direction, acquireRange)
+				self:SpawnThrowStarVolley(caster, target, direction, 1, damage, maxRange, speed, hitEffect, mesoCount, mesoAttacker)
+			else
+				_TimerService:SetTimerOnce(function()
+					if capturedCaster == nil or isvalid(capturedCaster) ~= true then
+						return
+					end
+					local target = self:FindFacedEnemy(capturedContext, capturedCaster, capturedDirection, capturedAcquireRange)
+					self:SpawnThrowStarVolley(capturedCaster, target, capturedDirection, 1, capturedDamage, capturedMaxRange, capturedSpeed, capturedHitEffect, capturedMesoCount, capturedMesoAttacker)
+				end, delay)
+			end
+		end
+		self:Log("throw star cast user=" .. userId .. " tier=" .. tostring(order) .. " stars=" .. tostring(totalStars) .. " sequential interval=" .. tostring(interval) .. " dmg=" .. tostring(damage) .. " meso=" .. tostring(mesoCount))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SpawnThrowStarVolley(Entity caster, Entity target, number direction, number count, number damage, number maxRange, number speed, string hitEffect, number mesoCount, Entity mesoAttacker)
+		-- Spawns `count` homing stars at the caster with a small vertical spread so they do not overlap.
+		if caster == nil or isvalid(caster) ~= true then
+			return
+		end
+		local safeCount = math.max(0, math.floor(self:ReadNumber(count, 0)))
+		if safeCount <= 0 then
+			return
+		end
+		local parent = caster.CurrentMap
+		if parent == nil then
+			self:Log("throw star spawn aborted reason=noMap")
+			return
+		end
+		local safeMesoCount = math.max(0, math.floor(self:ReadNumber(mesoCount, 0)))
+		local basePos = caster.TransformComponent.WorldPosition
+		for starIndex = 1, safeCount do
+			self._T.throwStarSerial = math.floor(self:ReadNumber(self._T.throwStarSerial, 0)) + 1
+			local starName = "ThrowStar_" .. tostring(self._T.throwStarSerial)
+			local spread = self:ComputeThrowStarSpread(starIndex, safeCount)
+			local spawnPos = Vector3(basePos.x, basePos.y + spread, basePos.z)
+			local star = _SpawnService:SpawnByModelId(self:GetThrowStarModelId(), starName, spawnPos, parent)
+			if star ~= nil then
+				---@type ThrowStarProjectile
+				local projectile = star:GetComponent("script.ThrowStarProjectile")
+				if projectile ~= nil then
+					projectile:Fire(target, caster, direction, spread, damage, maxRange, speed, hitEffect, safeMesoCount, mesoAttacker)
+					self:Log("throw star spawn index=" .. tostring(starIndex) .. "/" .. tostring(safeCount) .. " dmg=" .. tostring(damage))
+				else
+					self:Log("throw star spawn failed reason=noComponent index=" .. tostring(starIndex))
+				end
+			else
+				self:Log("throw star spawn failed reason=noEntity index=" .. tostring(starIndex))
+			end
+		end
+	end
+
+	method number ComputeThrowStarSpread(number index, number count)
+		-- Returns a small symmetric vertical offset so stars in one volley fan out slightly.
+		local n = math.max(1, math.floor(self:ReadNumber(count, 1)))
+		local i = math.max(1, math.floor(self:ReadNumber(index, 1)))
+		if n <= 1 then
+			return 0
+		end
+		local center = (n + 1) / 2
+		return (i - center) * 0.18
+	end
+
+	method number GetThrowStarDamagePercent(number tier)
+		-- Per-star damage as a percent of caster attack power: t1/t2=100, t3=110, t4=120.
+		local order = self:ClampSkillTier(tier)
+		if order <= 2 then
+			return 100
+		end
+		if order == 3 then
+			return 110
+		end
+		return 120
+	end
+
+	method string GetThrowStarHitEffect(number tier)
+		-- Per-tier hit animationclip RUID.
+		local order = self:ClampSkillTier(tier)
+		if order <= 1 then
+			return "a12bf45994e643f38b9daea0075c9bdd"
+		end
+		if order == 2 then
+			return "4c42f0632fa249c29b8394c10d7634fe"
+		end
+		if order == 3 then
+			return "8fc08b2af4944a90be3f1822479c0fd9"
+		end
+		return "2a8b49e8f8914588bc8b5ad2be5b71e0"
+	end
+
+	method string GetThrowStarCastSound(number tier)
+		-- Per-tier cast sound RUID; tiers 3-4 have none.
+		local order = self:ClampSkillTier(tier)
+		if order <= 1 then
+			return "d7d22108af1946dfa6a674b9ec713a31"
+		end
+		if order == 2 then
+			return "e736b55d1ab94ad080b571bec3bf5730"
+		end
+		return ""
+	end
+
+	method void PlayThrowStarCastSound(Entity caster, number tier)
+		-- Broadcasts the per-tier throwing-star cast sound to clients.
+		if self.EnableSkillVisualEffects ~= true or caster == nil then
+			return
+		end
+		local sound = self:GetThrowStarCastSound(tier)
+		if sound == "" then
+			return
+		end
+		self:PlayThrowStarCastSoundClient(sound)
+	end
+
+	@ExecSpace("Client")
+	method void PlayThrowStarCastSoundClient(string soundRuid)
+		-- Plays the throwing-star cast sound on the client.
+		if soundRuid == nil or soundRuid == "" then
+			return
+		end
+		_SoundService:PlaySound(soundRuid, math.max(0, self:ReadNumber(self.ThrowStarSoundVolume, 0.9)))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyThrowStarDamage(Entity target, Entity attacker, number damage)
+		-- Applies throwing-star hit damage, reusing the shared dummy/bot/player dispatch.
+		if target == nil or isvalid(target) ~= true then
+			return
+		end
+		local dmg = math.max(1, math.floor(self:ReadNumber(damage, 1)))
+		---@type BRTrainingDummy
+		local dummy = self:GetTrainingDummyComponent(target)
+		if dummy ~= nil then
+			dummy:ApplyTrainingDamage(attacker, dmg, "throwstar")
+			self:Log("throw star damage dummy target=" .. target.Name .. " amount=" .. tostring(dmg))
+			return
+		end
+		local bot = self:GetBattleBotComponent(target)
+		if bot ~= nil then
+			bot:ApplyBotDamage(attacker, dmg, "throwstar")
+			self:Log("throw star damage bot target=" .. self:ReadString(bot.BotId, target.Name) .. " amount=" .. tostring(dmg))
+			return
+		end
+		if target.PlayerComponent ~= nil then
+			local player = target.PlayerComponent
+			player.Hp = math.max(0, player.Hp - dmg)
+			self:Log("throw star damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
+			if player.Hp <= 0 then
+				self:HandleSkillFatalDamage(attacker, target, "throwstar")
+			end
+		end
+	end
+
 	method void HandleSkillFatalDamage(Entity attackerEntity, Entity targetEntity, string sourceId)
 		-- Reuses battle death handling when a skill reduces a player to zero HP.
 		if targetEntity == nil or targetEntity.PlayerComponent == nil then
@@ -3246,6 +3766,7 @@ script BRSkillSystem extends Logic
 			ApplierUserId = self:ReadString(applierUserId, ""),
 			ExpiresAt = self:Now() + self:ReadNumber(actionDef.DurationFrames, 1) * self:GetSkillFrameSeconds(),
 			DamageTakenRate = self:ReadNumber(actionDef.DamageTakenRate, 1),
+			AttackPowerRate = self:ReadNumber(actionDef.AttackPowerRate, 1),
 			CancelChain = actionDef.CancelChain == true,
 			DotCoefficient = self:ReadNumber(actionDef.DotCoefficient, 0),
 			TickIntervalSeconds = tickIntervalSeconds,
@@ -3254,6 +3775,46 @@ script BRSkillSystem extends Logic
 		}
 		self:Log("status apply target=" .. targetEntity.Name .. " status=" .. statusId .. " source=" .. self:ReadString(sourceId, ""))
 		return true
+	end
+
+	method boolean IsCasterControlBlocked(Entity casterEntity)
+		-- True while the caster carries an active stun or silence status; blocks new skill casts (기절/침묵).
+		if casterEntity == nil then
+			return false
+		end
+		local key = self:GetEntityKey(casterEntity)
+		if key == "" or self._T.statusByEntityId == nil or self._T.statusByEntityId[key] == nil then
+			return false
+		end
+		local now = self:Now()
+		for statusId, status in pairs(self._T.statusByEntityId[key]) do
+			if status ~= nil and now < self:ReadNumber(status.ExpiresAt, 0) then
+				local safeStatusId = self:ReadString(status.StatusId, "")
+				if safeStatusId == "stun" or safeStatusId == "silence" then
+					return true
+				end
+			end
+		end
+		return false
+	end
+
+	method number GetAttackBuffRate(Entity attackerEntity)
+		-- Product of active attack-power buff rates on the attacker (buff_actions.attack_power_rate); 1.0 when none.
+		if attackerEntity == nil then
+			return 1.0
+		end
+		local key = self:GetEntityKey(attackerEntity)
+		if key == "" or self._T.statusByEntityId == nil or self._T.statusByEntityId[key] == nil then
+			return 1.0
+		end
+		local now = self:Now()
+		local rate = 1.0
+		for statusId, status in pairs(self._T.statusByEntityId[key]) do
+			if status ~= nil and now < self:ReadNumber(status.ExpiresAt, 0) then
+				rate = rate * math.max(0, self:ReadNumber(status.AttackPowerRate, 1))
+			end
+		end
+		return math.max(0, rate)
 	end
 
 	method void TickStatuses()
@@ -3759,6 +4320,155 @@ script BRSkillSystem extends Logic
 			entity.PolygonRendererComponent.Color = Color(1, 0.08, 0.02, math.max(0.03, math.min(1, self:ReadNumber(self.HitboxDebugAlpha, 0.22))))
 		end
 		entity:Destroy(math.max(0.03, self:ReadNumber(self.HitboxDebugDurationSeconds, 0.12)))
+	end
+
+	method number PreDelayFramesForSkill(any skillDef)
+		-- Converts a skill's pre-cast wind-up (선딜레이) into timeline frames.
+		local seconds = self:GetSkillPreDelaySeconds(skillDef)
+		if seconds <= 0 then
+			return 0
+		end
+		return math.max(0, math.floor(seconds / self:GetSkillFrameSeconds() + 0.5))
+	end
+
+	method number GetSkillPreDelaySeconds(any skillDef)
+		-- Pre-cast wind-up in seconds. TEMPORARY hardcode for the Brandish family (브랜디쉬/브랜디쉬2~4).
+		-- TODO: move to a skills.csv column and read it off skillDef here.
+		if skillDef == nil then
+			return 0
+		end
+		local id = self:ReadString(skillDef.BaseSkillKey, self:ReadString(skillDef.SkillKey, ""))
+		if id ~= "" and string.find(id, "브랜디쉬", 1, true) == 1 then
+			return 0.5
+		end
+		return 0
+	end
+
+	method void ShowSkillTelegraph(any cast)
+		-- Spawns a red range indicator over the skill's hit area(s), fading alpha 0.7 -> 0 across the
+		-- wind-up so the strike is telegraphed before it lands. Reuses the authored hitbox rects.
+		if self.EnableSkillVisualEffects ~= true then
+			return
+		end
+		if cast == nil or cast.SkillDef == nil then
+			return
+		end
+		local eventsByFrame = cast.SkillDef.EventsByFrame
+		if eventsByFrame == nil then
+			return
+		end
+		local modelId = self:ReadString(self.HitboxDebugModelId, "")
+		if modelId == "" then
+			return
+		end
+		local mapName = self:GetContextMapName(cast)
+		if mapName == "" then
+			return
+		end
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
+		if mapEntity == nil or isvalid(mapEntity) == false then
+			return
+		end
+		local preFrames = self:PreDelayFramesForSkill(cast.SkillDef)
+		local frameSeconds = self:GetSkillFrameSeconds()
+		local seen = {}
+		for frameKey, eventIds in pairs(eventsByFrame) do
+			local fk = math.floor(self:ReadNumber(frameKey, 0))
+			for index, eventId in ipairs(eventIds) do
+				local eventDef = self._T.skillEventCatalog[self:ReadString(eventId, "")]
+				if eventDef ~= nil and eventDef.HitboxIds ~= nil then
+					for hitIndex, hitboxId in ipairs(eventDef.HitboxIds) do
+						local safeId = self:ReadString(hitboxId, "")
+						if safeId ~= "" and seen[safeId] ~= true then
+							seen[safeId] = true
+							local hitbox = self._T.skillHitboxCatalog[safeId]
+							if hitbox ~= nil then
+								local rect = self:GetHitboxDebugRect(cast, hitbox)
+								if rect ~= nil then
+									-- Fade lasts until this hitbox's own event lands (wind-up + authored frame).
+									self:SpawnTelegraphBox(mapEntity, rect, (preFrames + fk) * frameSeconds)
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	method void SpawnTelegraphBox(Entity mapEntity, any rect, number duration)
+		-- Spawns one red telegraph box sized to the hit rect and starts its alpha fade.
+		if mapEntity == nil or isvalid(mapEntity) == false or rect == nil then
+			return
+		end
+		local width = math.max(0.01, self:ReadNumber(rect.W, 0))
+		local height = math.max(0.01, self:ReadNumber(rect.H, 0))
+		local modelId = self:ReadString(self.HitboxDebugModelId, "")
+		if modelId == "" then
+			return
+		end
+		self._T.telegraphSeq = math.floor(self:ReadNumber(self._T.telegraphSeq, 0)) + 1
+		local name = "SkillTelegraph_" .. tostring(self._T.telegraphSeq)
+		local entity = _SpawnService:SpawnByModelId(modelId, name, Vector3(self:ReadNumber(rect.X, 0), self:ReadNumber(rect.Y, 0), 0), mapEntity)
+		if entity == nil then
+			self:Log("telegraph spawn failed model=" .. modelId)
+			return
+		end
+		local r = entity.PolygonRendererComponent
+		if r ~= nil then
+			-- PolygonRenderer draws from Points, NOT from Transform.Scale. Build the rect explicitly.
+			local hw = width * 0.5
+			local hh = height * 0.5
+			r.Points:Clear()
+			r.Points:Add(Vector2(-hw, -hh))
+			r.Points:Add(Vector2(hw, -hh))
+			r.Points:Add(Vector2(hw, hh))
+			r.Points:Add(Vector2(-hw, hh))
+			r.SortingLayer = "MapLayer0"
+			-- High order so the telegraph is not occluded by foreground map decorations.
+			r.OrderInLayer = math.floor(self:ReadNumber(self.TelegraphOrderInLayer, 500))
+			r.IgnoreMapLayerCheck = true
+			r.Color = Color(1, 0.05, 0.05, 0.7)
+		end
+		local fadeDuration = math.max(0.05, self:ReadNumber(duration, 0.5))
+		-- The scheduled destroy is the single source of removal; the fade timer only animates alpha.
+		entity:Destroy(fadeDuration)
+		self:FadeTelegraph(entity, fadeDuration)
+	end
+
+	method void FadeTelegraph(Entity entity, number duration)
+		-- Lerps the telegraph alpha from 0.7 to 0 over `duration` on a light server timer.
+		if entity == nil or isvalid(entity) == false then
+			return
+		end
+		local totalDuration = math.max(0.05, self:ReadNumber(duration, 0.5))
+		local startTime = self:ReadNumber(_UtilLogic.ElapsedSeconds, 0)
+		local capturedEntity = entity
+		local timerId = nil
+		timerId = _TimerService:SetTimerRepeat(function()
+			if capturedEntity == nil or isvalid(capturedEntity) == false then
+				if timerId ~= nil then
+					_TimerService:ClearTimer(timerId)
+				end
+				return
+			end
+			local frac = (self:ReadNumber(_UtilLogic.ElapsedSeconds, 0) - startTime) / totalDuration
+			if frac < 0 then
+				frac = 0
+			end
+			if frac >= 1 then
+				if timerId ~= nil then
+					_TimerService:ClearTimer(timerId)
+				end
+				if capturedEntity.PolygonRendererComponent ~= nil then
+					capturedEntity.PolygonRendererComponent.Color = Color(1, 0.05, 0.05, 0)
+				end
+				return
+			end
+			if capturedEntity.PolygonRendererComponent ~= nil then
+				capturedEntity.PolygonRendererComponent.Color = Color(1, 0.05, 0.05, 0.7 * (1 - frac))
+			end
+		end, 0.05)
 	end
 
 	method boolean IsTargetInsideHitbox(any context, Entity targetEntity, any hitbox)

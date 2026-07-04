@@ -1,10 +1,14 @@
 ﻿action_id,attack_power_coefficient_percent,hit_effect_ruid
-PirateProjectileTrigger/damage,180,ca39d3bc1eaf4c63b3eb0d662b4b8dcb
-PirateProjectileTrigger2/damage,280,070fcbb91e5c48f881ba29f0cad46689
-PirateProjectileTrigger3/damage,360,6aa68d4d9108400094709af1ee793169
-PirateProjectileTrigger4/damage,520,e71d087320a7476498d253efd964ab3e
-크루얼 스텝/피해,100,
 브랜디쉬/피해,80,38e9351c34b843ddbcc191c762e7464c
 브랜디쉬2/피해,120,7d4fd3b71abd42d6b37f49652d13a8d7
 브랜디쉬3/피해,100,b79cbdf6d06b487382f03d625a1fc464
 브랜디쉬4/피해,150,5a68cdd33c834f58962437f802105ab3
+디바인스윙/피해,100,4fa210e2ce05468eaf7ffa8afb19545d
+디바인스윙2/피해,120,b3f39f13319c40dd8c544cd54ed3e4f1
+디바인스윙3/피해,150,c63011fbd1ae4060911379e36735f2e6
+디바인스윙4/피해,200,e3aca6d3ff0c488b95ff88f67af1f2db
+피어싱/피해,120,a2052fbfbbd94064b29dd3c1c651d65f
+샤프 슬래시/피해,100,9af100ddbf024e759415ff3c182421b9
+샤프 슬래시2/피해,120,315f5313f77c495e82f636840298950f
+샤프 슬래시3/피해,150,5dea20576bc64def8adac985ea73a9fc
+샤프 슬래시4/피해,200,7e6a8bb11f3b4a5d92a2297cb5221b2d

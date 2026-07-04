@@ -1,4 +1,10 @@
 ﻿action_id,attack_power_coefficient_percent,hit_effect_ruid
+기본공격_슬래시블러스트/피해,100,3ebd5d6967394c2589408f69c2bc5c54
+기본공격_애로우블로우/피해,100,84a473e004a34fdea67aa74a87dc75c6
+기본공격_샤프슬래시/피해,100,9674832552bc479da4bce8858754c5d3
+기본공격_에너지볼트/피해,100,6beb8d728a7d4cca92eb7f4d2d9c45f9
+리트리트 샷/피해,140,bd00603136314be19ae4be785c3c3180
+슬래시 스톤/피해,95,6ce3e8c3483643c2b4993df78057eb77
 브랜디쉬/피해,80,38e9351c34b843ddbcc191c762e7464c
 브랜디쉬2/피해,120,7d4fd3b71abd42d6b37f49652d13a8d7
 브랜디쉬3/피해,100,b79cbdf6d06b487382f03d625a1fc464

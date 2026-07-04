@@ -39,6 +39,26 @@ script BRBattleBotController extends Component
 
 	property boolean EnableBTDebugLog = false
 
+	property boolean EnableSkillPartAI = true
+
+	property boolean SeedSkillChainOnStart = true
+
+	property number LootSightRange = 10
+
+	property number LootInteractRange = 0.95
+
+	property number LootScanCooldownSeconds = 0.25
+
+	property number DesiredChainScore = 95
+
+	property number ChainDamagePerScore = 0.12
+
+	property number MaxChainDamageBonus = 24
+
+	property number LowHpRetreatPercent = 0.35
+
+	property number PredictedSafeMoveSeconds = 10
+
 	@Sync
 	property number CurrentHp = 100
 
@@ -77,6 +97,7 @@ script BRBattleBotController extends Component
 		self.CurrentHp = math.max(1, math.floor(self:ReadNumber(self.CurrentHp, self.MaxHp)))
 		self.CurrentLives = math.max(1, math.floor(self:ReadNumber(self.CurrentLives, self.MaxLives)))
 		self.BotState = "ALIVE"
+		self:InitializeBotSkillAI("begin")
 		self:SetupAvatarAppearance()
 		self:ConfigureAvatarAnimation()
 		self:ConfigureMovement()
@@ -118,6 +139,7 @@ script BRBattleBotController extends Component
 		self.CurrentHp = self.MaxHp
 		self.CharacterKey = self:ResolveBotCharacterKey()
 		self.BotState = "ALIVE"
+		self:InitializeBotSkillAI("initialize")
 		self:SetupAvatarAppearance()
 		self:ConfigureAvatarAnimation()
 		self:ConfigureMovement()
@@ -138,18 +160,33 @@ script BRBattleBotController extends Component
 		local ai = self.Entity.AIComponent
 
 		local root = SelectorNode("BattleBotRoot")
+		local survivalSequence = SequenceNode("SurvivalSequence")
+		local lootSequence = SequenceNode("LootSequence")
 		local attackSequence = SequenceNode("AttackSequence")
 		local chaseSequence = SequenceNode("ChaseSequence")
+		local findSurvival = ai:CreateLeafNode("FindSurvivalObjective", function(delta) return self:BTFindSurvivalObjective(delta) end)
+		local moveSurvival = ai:CreateLeafNode("MoveSurvivalObjective", function(delta) return self:BTMoveToObjective(delta) end)
+		local findLoot = ai:CreateLeafNode("FindLootObjective", function(delta) return self:BTFindLootObjective(delta) end)
+		local moveLoot = ai:CreateLeafNode("MoveLootObjective", function(delta) return self:BTMoveToObjective(delta) end)
+		local collectLoot = ai:CreateLeafNode("CollectLootObjective", function(delta) return self:BTCollectLootObjective(delta) end)
 		local findAttack = ai:CreateNode("BRBTFindTarget", "FindTargetForAttack")
 		local attackTarget = ai:CreateNode("BRBTAttackTarget", "AttackTarget")
 		local findMove = ai:CreateNode("BRBTFindTarget", "FindTargetForMove")
 		local moveTarget = ai:CreateNode("BRBTMoveToTarget", "MoveToTarget")
 		local wander = ai:CreateNode("BRBTWander", "Wander")
 
-		if findAttack == nil or attackTarget == nil or findMove == nil or moveTarget == nil or wander == nil then
+		if findSurvival == nil or moveSurvival == nil or findLoot == nil or moveLoot == nil or collectLoot == nil
+			or findAttack == nil or attackTarget == nil or findMove == nil or moveTarget == nil or wander == nil then
 			log("[BRBot] BT node create failed. refresh scripts/codeblocks first. id=" .. self:ReadString(self.BotId, ""))
 			return
 		end
+
+		survivalSequence:AttachChild(findSurvival)
+		survivalSequence:AttachChild(moveSurvival)
+
+		lootSequence:AttachChild(findLoot)
+		lootSequence:AttachChild(moveLoot)
+		lootSequence:AttachChild(collectLoot)
 
 		attackSequence:AttachChild(findAttack)
 		attackSequence:AttachChild(attackTarget)
@@ -157,10 +194,97 @@ script BRBattleBotController extends Component
 		chaseSequence:AttachChild(findMove)
 		chaseSequence:AttachChild(moveTarget)
 
+		root:AttachChild(survivalSequence)
+		root:AttachChild(lootSequence)
 		root:AttachChild(attackSequence)
 		root:AttachChild(chaseSequence)
 		root:AttachChild(wander)
 		ai:SetRootNode(root)
+	end
+
+	@ExecSpace("ServerOnly")
+	method any BTFindSurvivalObjective(number delta)
+		-- Moves toward the next safe rectangle when the zone would make survival worse than fighting.
+		if self:IsAlive() == false then
+			return BehaviourTreeStatus.Failure
+		end
+		if self:ShouldMoveToSafeZone() ~= true then
+			return BehaviourTreeStatus.Failure
+		end
+		local position = self:GetSafeZoneTargetPosition()
+		self:SetObjective("SAFE", nil, position, 999)
+		self:LogDecision("safe-zone target=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+		return BehaviourTreeStatus.Success
+	end
+
+	@ExecSpace("ServerOnly")
+	method any BTFindLootObjective(number delta)
+		-- Finds the best nearby skill-part objective unless an immediate kill is available.
+		if self:IsAlive() == false or self.EnableSkillPartAI ~= true then
+			return BehaviourTreeStatus.Failure
+		end
+		if self:ShouldPrioritizeImmediateCombat() == true then
+			return BehaviourTreeStatus.Failure
+		end
+		local objective = self:FindBestLootObjective()
+		if objective == nil then
+			self:ClearObjective()
+			return BehaviourTreeStatus.Failure
+		end
+		self:SetObjective(self:ReadString(objective.Kind, ""), objective.Entity, objective.Position, self:ReadNumber(objective.Score, 0))
+		self:LogDecision("loot kind=" .. self:ReadString(objective.Kind, "") .. " score=" .. tostring(math.floor(self:ReadNumber(objective.Score, 0))))
+		return BehaviourTreeStatus.Success
+	end
+
+	@ExecSpace("ServerOnly")
+	method any BTMoveToObjective(number delta)
+		-- Walks toward the currently selected survival or loot objective.
+		if self:IsAlive() == false then
+			return BehaviourTreeStatus.Failure
+		end
+		local objective = self:GetObjective()
+		if objective == nil then
+			return BehaviourTreeStatus.Failure
+		end
+		local position = self:GetObjectivePosition(objective)
+		if position == nil then
+			self:ClearObjective()
+			return BehaviourTreeStatus.Failure
+		end
+		if self:IsObjectiveComplete(objective, position) == true then
+			self:StopMove()
+			return BehaviourTreeStatus.Success
+		end
+		self:MoveTowardPosition(position, delta)
+		return BehaviourTreeStatus.Running
+	end
+
+	@ExecSpace("ServerOnly")
+	method any BTCollectLootObjective(number delta)
+		-- Claims the selected dropped part or opens/breaks the selected part box.
+		if self:IsAlive() == false or self.EnableSkillPartAI ~= true then
+			return BehaviourTreeStatus.Failure
+		end
+		local objective = self:GetObjective()
+		if objective == nil then
+			return BehaviourTreeStatus.Failure
+		end
+		local position = self:GetObjectivePosition(objective)
+		if position == nil or self:IsObjectiveComplete(objective, position) ~= true then
+			return BehaviourTreeStatus.Failure
+		end
+		local kind = self:ReadString(objective.Kind, "")
+		local success = false
+		if kind == "DROP" then
+			success = self:CollectDroppedPartObjective(objective)
+		elseif kind == "BOX" then
+			success = self:CollectPartBoxObjective(objective)
+		end
+		self:ClearObjective()
+		if success == true then
+			return BehaviourTreeStatus.Success
+		end
+		return BehaviourTreeStatus.Failure
 	end
 
 	@ExecSpace("ServerOnly")
@@ -263,7 +387,7 @@ script BRBattleBotController extends Component
 		self:UpdateNameTag()
 		log("[BRBot] hit id=" .. self.BotId .. " damage=" .. tostring(damage) .. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()) .. " source=" .. self:ReadString(source, "skill"))
 		if _BRDamageSkinSystem ~= nil then
-			_BRDamageSkinSystem:ShowDamage(self.Entity, damage, false, self:ReadString(source, "skill"))
+			_BRDamageSkinSystem:ShowEnemyDamage(self.Entity, damage, false, self:ReadString(source, "skill"))
 		end
 
 		if self.CurrentHp <= 0 then
@@ -321,7 +445,7 @@ script BRBattleBotController extends Component
 
 	method Entity FindNearestTarget()
 		local best = nil
-		local bestDistance = self:GetSightRange()
+		local bestScore = -999999
 		local position = self:GetEntityPosition2(self.Entity)
 		local mapName = self:ReadString(self.Entity.CurrentMapName, "")
 
@@ -329,9 +453,9 @@ script BRBattleBotController extends Component
 		if users ~= nil then
 			for index, target in ipairs(users) do
 				if self:IsTargetValid(target) == true then
-					local distance = self:GetDistance(position, self:GetEntityPosition2(target))
-					if distance < bestDistance then
-						bestDistance = distance
+					local score = self:ScoreCombatTarget(target, position)
+					if score > bestScore then
+						bestScore = score
 						best = target
 					end
 				end
@@ -340,9 +464,12 @@ script BRBattleBotController extends Component
 
 		local battleLogic = self:GetBattleLogic()
 		if battleLogic ~= nil then
-			local botTarget = battleLogic:FindNearestAliveBotTarget(self.Entity, position, bestDistance)
+			local botTarget = battleLogic:FindNearestAliveBotTarget(self.Entity, position, self:GetSightRange())
 			if botTarget ~= nil and self:IsTargetValid(botTarget) == true then
-				best = botTarget
+				local score = self:ScoreCombatTarget(botTarget, position)
+				if score > bestScore then
+					best = botTarget
+				end
 			end
 		end
 
@@ -396,6 +523,15 @@ script BRBattleBotController extends Component
 	method void MoveToward(Entity target, number delta)
 		local selfPosition = self:GetEntityPosition2(self.Entity)
 		local targetPosition = self:GetEntityPosition2(target)
+		self:MoveTowardPosition(targetPosition, delta)
+	end
+
+	method void MoveTowardPosition(Vector2 targetPosition, number delta)
+		-- Moves toward a world position using MapleTile-safe horizontal movement and jump checks.
+		if targetPosition == nil then
+			return
+		end
+		local selfPosition = self:GetEntityPosition2(self.Entity)
 		local direction = 1
 		if targetPosition.x < selfPosition.x then
 			direction = -1
@@ -493,6 +629,635 @@ script BRBattleBotController extends Component
 		if self.Entity.MovementComponent ~= nil then
 			self.Entity.MovementComponent.InputSpeed = self:GetMoveSpeed()
 			self.Entity.MovementComponent.JumpForce = 1.4
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void InitializeBotSkillAI(string source)
+		-- Creates a bot-owned skill-chain state and seeds starter parts once per bot id.
+		if self.EnableSkillPartAI ~= true or _BRSkillSystem == nil then
+			return
+		end
+		self:EnsureRuntime()
+		local userId = self:GetBotSkillUserId()
+		if userId == "" then
+			return
+		end
+		if self._T.botSkillUserId ~= userId then
+			self._T.botSkillUserId = userId
+			self._T.botSkillSeeded = false
+		end
+		local state = _BRSkillSystem:GetUserState(userId)
+		if state == nil then
+			return
+		end
+		local seeded = 0
+		if self.SeedSkillChainOnStart == true and self._T.botSkillSeeded ~= true then
+			seeded = _BRSkillSystem:SeedBattleChainFromData(userId, "bot-seed:" .. self:ReadString(source, "start"))
+			self._T.botSkillSeeded = true
+		end
+		self:OptimizeBotSkillChain("seed")
+		self:LogDecision("skill ai ready user=" .. userId .. " seeded=" .. tostring(seeded) .. " score=" .. tostring(math.floor(self:GetBotChainScore())))
+	end
+
+	method any FindBestLootObjective()
+		-- Scores nearby drops and part boxes so the bot improves its chain before taking bad fights.
+		if self.Entity == nil or self.Entity.CurrentMap == nil then
+			return nil
+		end
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.nextLootScanAt, 0) then
+			return self._T.cachedLootObjective
+		end
+		self._T.nextLootScanAt = now + self:GetLootScanCooldownSeconds()
+		local mapEntity = self.Entity.CurrentMap
+		local origin = self:GetEntityPosition2(self.Entity)
+		local best = nil
+		local bestScore = self:GetMinimumLootScore()
+
+		local drops = mapEntity:GetChildComponentsByTypeName("script.BRDroppedSkillPart", true)
+		if drops == nil or drops[1] == nil then
+			drops = mapEntity:GetChildComponentsByTypeName("BRDroppedSkillPart", true)
+		end
+		if drops ~= nil then
+			for index, component in ipairs(drops) do
+				---@type BRDroppedSkillPart
+				local drop = component
+				if self:IsDroppedPartObjectiveValid(drop) == true then
+					local position = self:GetEntityPosition2(drop.Entity)
+					local distance = self:GetDistance(origin, position)
+					if distance <= self:GetLootSightRange() then
+						local score = self:ScoreLootObjective("DROP", drop.Entity, position, distance, drop:GetPartId())
+						if score > bestScore then
+							bestScore = score
+							best = { Kind = "DROP", Entity = drop.Entity, Position = position, Score = score }
+						end
+					end
+				end
+			end
+		end
+
+		local boxes = mapEntity:GetChildComponentsByTypeName("script.BRPartBox", true)
+		if boxes == nil or boxes[1] == nil then
+			boxes = mapEntity:GetChildComponentsByTypeName("BRPartBox", true)
+		end
+		if boxes ~= nil then
+			for index, component in ipairs(boxes) do
+				---@type BRPartBox
+				local box = component
+				if self:IsPartBoxObjectiveValid(box) == true then
+					local position = self:GetEntityPosition2(box.Entity)
+					local distance = self:GetDistance(origin, position)
+					if distance <= self:GetLootSightRange() then
+						local score = self:ScoreLootObjective("BOX", box.Entity, position, distance, "")
+						if score > bestScore then
+							bestScore = score
+							best = { Kind = "BOX", Entity = box.Entity, Position = position, Score = score }
+						end
+					end
+				end
+			end
+		end
+
+		self._T.cachedLootObjective = best
+		return best
+	end
+
+	method boolean IsDroppedPartObjectiveValid(any drop)
+		-- Checks whether a dropped part can still be claimed by this bot.
+		if drop == nil or drop.Entity == nil or isvalid(drop.Entity) == false then
+			return false
+		end
+		if drop.active ~= true then
+			return false
+		end
+		if drop:GetPartId() == "" then
+			return false
+		end
+		if drop:IsOwnerPickupBlocked(self:GetBotSkillUserId()) == true then
+			return false
+		end
+		return true
+	end
+
+	method boolean IsPartBoxObjectiveValid(any box)
+		-- Checks whether a part box is active and worth routing to.
+		if box == nil or box.Entity == nil or isvalid(box.Entity) == false then
+			return false
+		end
+		if box.EnablePartBox ~= true or box.available ~= true then
+			return false
+		end
+		if box:IsPlacedSpawnMarker() == true then
+			return false
+		end
+		local kind = string.lower(self:ReadString(box.BoxKind, ""))
+		if kind == "kiosk" then
+			return false
+		end
+		return true
+	end
+
+	method number ScoreLootObjective(string kind, Entity entity, Vector2 position, number distance, string partId)
+		-- Scores loot using chain need, distance, and safe-zone risk.
+		local score = self:GetBotLootNeedScore()
+		if kind == "DROP" then
+			score = score + 115
+		else
+			score = score + 78
+		end
+		score = score - self:ReadNumber(distance, 0) * 6
+		if self:IsPositionSafeForObjective(position) ~= true then
+			score = score - 85
+		end
+		if partId ~= "" and self:WouldPartLikelyImproveChain(partId) == true then
+			score = score + 25
+		end
+		return score
+	end
+
+	method boolean WouldPartLikelyImproveChain(string partId)
+		-- Gives a small bonus when the part id resembles an existing chain part for tier stacking.
+		local state = self:GetBotSkillState()
+		if state == nil or state.EquippedChainSlots == nil then
+			return true
+		end
+		for slotIndex = 1, self:GetChainSlotCountForBot() do
+			local part = _BRSkillSystem:FindPartInState(state, state.EquippedChainSlots[slotIndex])
+			if part ~= nil and self:ReadString(part.PartId, "") == self:ReadString(partId, "") then
+				return true
+			end
+		end
+		return self:GetBotChainFilledCount(state) < self:GetBotUnlockedChainSlots(state)
+	end
+
+	method boolean CollectDroppedPartObjective(any objective)
+		-- Grants a world drop directly into the bot-owned skill state.
+		if objective == nil or objective.Entity == nil or _BRSkillSystem == nil then
+			return false
+		end
+		local drop = self:GetDroppedPartComponent(objective.Entity)
+		if self:IsDroppedPartObjectiveValid(drop) ~= true then
+			return false
+		end
+		local userId = self:GetBotSkillUserId()
+		local part = _BRSkillSystem:GrantPart(userId, drop:GetPartId(), false, objective.Entity.Id)
+		if part == nil then
+			self:LogDecision("drop skipped reason=no-space part=" .. drop:GetPartId())
+			return false
+		end
+		drop.active = false
+		drop:ClearTimers()
+		objective.Entity:Destroy()
+		self:OnBotPartAcquired(part, "drop")
+		return true
+	end
+
+	method boolean CollectPartBoxObjective(any objective)
+		-- Opens or breaks the selected box so the bot can collect the resulting parts.
+		if objective == nil or objective.Entity == nil or _BRSkillSystem == nil then
+			return false
+		end
+		local box = self:GetPartBoxComponent(objective.Entity)
+		if self:IsPartBoxObjectiveValid(box) ~= true then
+			return false
+		end
+		if box:IsDamageBox() == true then
+			self:FacePosition(self:GetEntityPosition2(objective.Entity))
+			box:ApplyPartBoxDamage(self.Entity, self:GetAttackDamage(), "bot-loot:" .. self:ReadString(self.BotId, "BOT"))
+			self:LogDecision("box attacked kind=" .. self:ReadString(box.BoxKind, "skill"))
+			return true
+		end
+		box.available = false
+		box:SetVisualAvailable(false)
+		local result = _BRSkillSystem:OpenBoxForUser(self:GetBotSkillUserId(), box.DropCount, false, objective.Entity.Id)
+		if result ~= nil and result.Dropped ~= nil then
+			for index, part in ipairs(result.Dropped) do
+				self:OnBotPartAcquired(part, "box")
+			end
+		end
+		if box.RespawnSeconds > 0 then
+			_TimerService:SetTimerOnce(function() box:RespawnBox() end, box.RespawnSeconds)
+		end
+		self:LogDecision("box opened kind=" .. self:ReadString(box.BoxKind, "legacy"))
+		return true
+	end
+
+	method void OnBotPartAcquired(any part, string source)
+		-- Re-scores the bot chain immediately after receiving a new part.
+		if part == nil then
+			return
+		end
+		self:OptimizeBotSkillChain(source)
+		self:LogDecision("part acquired part=" .. self:ReadString(part.PartId, "") .. " source=" .. self:ReadString(source, "") .. " score=" .. tostring(math.floor(self:GetBotChainScore())))
+	end
+
+	method void OptimizeBotSkillChain(string source)
+		-- Equips the best bagged part into the best chain slot when it improves the bot's score.
+		if self.EnableSkillPartAI ~= true or _BRSkillSystem == nil then
+			return
+		end
+		local userId = self:GetBotSkillUserId()
+		local state = _BRSkillSystem:GetUserState(userId)
+		if state == nil then
+			return
+		end
+		local currentScore = self:ScoreBotChainState(state)
+		local bestInstanceId = 0
+		local bestSlot = 0
+		local bestScore = currentScore
+		if state.Parts ~= nil then
+			for index, part in ipairs(state.Parts) do
+				if part ~= nil then
+					for slotIndex = 1, self:GetBotUnlockedChainSlots(state) do
+						local score = self:ScoreBotChainWithPlacement(state, part.InstanceId, slotIndex)
+						if score > bestScore + 0.1 then
+							bestScore = score
+							bestInstanceId = part.InstanceId
+							bestSlot = slotIndex
+						end
+					end
+				end
+			end
+		end
+		if bestInstanceId > 0 and bestSlot > 0 then
+			if _BRSkillSystem:EquipPartInstanceToChainSlot(userId, bestInstanceId, bestSlot) == true then
+				self:LogDecision("chain optimize slot=" .. tostring(bestSlot) .. " instance=" .. tostring(bestInstanceId) .. " score=" .. tostring(math.floor(currentScore)) .. "->" .. tostring(math.floor(bestScore)) .. " source=" .. self:ReadString(source, ""))
+			end
+		end
+	end
+
+	method number ScoreBotChainWithPlacement(any state, number candidateInstanceId, number targetSlot)
+		-- Scores a hypothetical chain after moving one part into one slot.
+		if state == nil or _BRSkillSystem == nil then
+			return 0
+		end
+		local score = 0
+		local previousSkillKey = ""
+		local previousPart = nil
+		local previousTier = 0
+		local currentTier = 0
+		local unlocked = self:GetBotUnlockedChainSlots(state)
+		for slotIndex = 1, unlocked do
+			local instanceId = state.EquippedChainSlots[slotIndex]
+			if slotIndex == math.floor(self:ReadNumber(targetSlot, 0)) then
+				instanceId = candidateInstanceId
+			elseif instanceId == candidateInstanceId then
+				instanceId = nil
+			end
+			local part = _BRSkillSystem:FindPartInState(state, instanceId)
+			if part == nil then
+				previousSkillKey = ""
+				previousPart = nil
+				previousTier = 0
+				currentTier = 0
+			else
+				local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
+				if skillKey ~= "" and skillKey == previousSkillKey then
+					currentTier = math.min(currentTier + 1, 4)
+				else
+					currentTier = 1
+				end
+				score = score + 20 + currentTier * 9 + math.max(0, unlocked - slotIndex) * 0.15
+				if previousPart ~= nil and _BRSkillSystem:SkillPartHasTrigger(previousPart, previousTier) == true
+					and _BRSkillSystem:SkillPartHasTrigger(part, currentTier) ~= true then
+					score = score + 24
+				end
+				previousSkillKey = skillKey
+				previousPart = part
+				previousTier = currentTier
+			end
+		end
+		return score
+	end
+
+	method number ScoreBotChainState(any state)
+		-- Scores the currently equipped chain with the same heuristic used for candidate placements.
+		if state == nil or _BRSkillSystem == nil then
+			return 0
+		end
+		local score = 0
+		local chain = _BRSkillSystem:BuildChainState(state)
+		score = score + self:ReadNumber(chain.FilledCount, 0) * 20
+		score = score + self:ReadNumber(chain.HighestTier, 0) * 14
+		if chain.Tiers ~= nil then
+			for slotIndex = 1, self:GetBotUnlockedChainSlots(state) do
+				score = score + math.max(0, self:ReadNumber(chain.Tiers[slotIndex], 0)) * 6
+				local part = _BRSkillSystem:FindPartInState(state, chain.Slots[slotIndex])
+				local nextPart = nil
+				if slotIndex < self:GetBotUnlockedChainSlots(state) then
+					nextPart = _BRSkillSystem:FindPartInState(state, chain.Slots[slotIndex + 1])
+				end
+				if part ~= nil and nextPart ~= nil and _BRSkillSystem:SkillPartHasTrigger(part, chain.Tiers[slotIndex]) == true
+					and _BRSkillSystem:SkillPartHasTrigger(nextPart, chain.Tiers[slotIndex + 1]) ~= true then
+					score = score + 24
+				end
+			end
+		end
+		local resolved = _BRSkillSystem:BuildResolvedChain(state)
+		if resolved ~= nil then
+			score = score + self:ReadNumber(resolved.Count, 0) * 12
+		end
+		return score
+	end
+
+	method number GetBotChainScore()
+		-- Returns the score for the bot-owned skill chain.
+		local state = self:GetBotSkillState()
+		if state == nil then
+			return 0
+		end
+		return self:ScoreBotChainState(state)
+	end
+
+	method any GetBotSkillState()
+		-- Returns the skill-system state keyed by this bot's synthetic user id.
+		if self.EnableSkillPartAI ~= true or _BRSkillSystem == nil then
+			return nil
+		end
+		return _BRSkillSystem:GetUserState(self:GetBotSkillUserId())
+	end
+
+	method string GetBotSkillUserId()
+		-- Returns a synthetic user id for runtime skill-chain ownership.
+		local botId = self:ReadString(self.BotId, "")
+		if botId == "" then
+			return ""
+		end
+		return "BOT:" .. botId
+	end
+
+	method number GetBotLootNeedScore()
+		-- Returns how strongly the bot should prefer improving its chain right now.
+		local state = self:GetBotSkillState()
+		if state == nil then
+			return 0
+		end
+		local chainScore = self:ScoreBotChainState(state)
+		local need = math.max(0, self:GetDesiredChainScore() - chainScore) * 0.55
+		local unlocked = self:GetBotUnlockedChainSlots(state)
+		local filled = self:GetBotChainFilledCount(state)
+		if filled < unlocked then
+			need = need + (unlocked - filled) * 28
+		end
+		if self:GetHpPercent() < self:GetLowHpRetreatPercent() then
+			need = need - 25
+		end
+		return need
+	end
+
+	method number GetMinimumLootScore()
+		-- Raises the loot threshold once the bot already has a good chain.
+		if self:GetBotChainScore() >= self:GetDesiredChainScore() then
+			return 95
+		end
+		return 45
+	end
+
+	method number GetBotChainFilledCount(any state)
+		-- Returns the number of occupied unlocked chain slots.
+		if state == nil or _BRSkillSystem == nil then
+			return 0
+		end
+		local chain = _BRSkillSystem:BuildChainState(state)
+		return math.max(0, math.floor(self:ReadNumber(chain.FilledCount, 0)))
+	end
+
+	method number GetBotUnlockedChainSlots(any state)
+		-- Returns how many chain slots this bot can currently use.
+		if state == nil or _BRSkillSystem == nil then
+			return 0
+		end
+		return math.max(1, math.floor(_BRSkillSystem:GetUnlockedChainSlotCount(state)))
+	end
+
+	method number GetChainSlotCountForBot()
+		-- Returns the configured chain length from the skill system when available.
+		if _BRSkillSystem ~= nil then
+			return math.max(1, math.floor(_BRSkillSystem:GetChainSlotCount()))
+		end
+		return 5
+	end
+
+	method boolean ShouldPrioritizeImmediateCombat()
+		-- Lets the bot finish a close target instead of walking past it for loot.
+		local target = self:FindNearestTarget()
+		if target == nil or self:IsTargetInAttackRange(target) ~= true then
+			return false
+		end
+		local hp = self:GetTargetHp(target)
+		if hp > 0 and hp <= self:GetAttackDamage() * 1.4 then
+			return true
+		end
+		return self:GetBotChainScore() >= self:GetDesiredChainScore() and self:GetHpPercent() >= self:GetLowHpRetreatPercent()
+	end
+
+	method number ScoreCombatTarget(Entity target, Vector2 origin)
+		-- Scores combat targets by distance, low-health finish potential, and bot confidence.
+		if target == nil or origin == nil then
+			return -999999
+		end
+		local distance = self:GetDistance(origin, self:GetEntityPosition2(target))
+		if distance > self:GetSightRange() then
+			return -999999
+		end
+		local hp = self:GetTargetHp(target)
+		local hpPercent = self:GetTargetHpPercent(target)
+		local score = 120 - distance * 8 + (1 - hpPercent) * 45
+		if hp > 0 and hp <= self:GetAttackDamage() * 2 then
+			score = score + 55
+		end
+		if self:GetHpPercent() < self:GetLowHpRetreatPercent() and hpPercent > self:GetHpPercent() then
+			score = score - 35
+		end
+		score = score + math.min(35, self:GetBotChainScore() * 0.18)
+		return score
+	end
+
+	method number GetTargetHp(Entity target)
+		-- Reads HP from either a player or another battle bot.
+		if target == nil then
+			return 0
+		end
+		if target.PlayerComponent ~= nil then
+			return math.max(0, self:ReadNumber(target.PlayerComponent.Hp, 0))
+		end
+		local bot = self:GetBattleBotController(target)
+		if bot ~= nil then
+			return math.max(0, self:ReadNumber(bot.CurrentHp, 0))
+		end
+		return 0
+	end
+
+	method number GetTargetHpPercent(Entity target)
+		-- Reads a target HP ratio with conservative fallbacks.
+		if target == nil then
+			return 1
+		end
+		if target.PlayerComponent ~= nil then
+			local hp = math.max(0, self:ReadNumber(target.PlayerComponent.Hp, 0))
+			local maxHp = math.max(1, self:ReadNumber(target.PlayerComponent.MaxHp, 100))
+			return math.max(0, math.min(1, hp / maxHp))
+		end
+		local bot = self:GetBattleBotController(target)
+		if bot ~= nil then
+			return math.max(0, math.min(1, self:ReadNumber(bot.CurrentHp, 0) / math.max(1, bot:GetMaxHp())))
+		end
+		return 1
+	end
+
+	method number GetHpPercent()
+		-- Returns this bot's current HP ratio.
+		return math.max(0, math.min(1, self:ReadNumber(self.CurrentHp, 0) / math.max(1, self:GetMaxHp())))
+	end
+
+	method boolean ShouldMoveToSafeZone()
+		-- Checks current and predicted safe rectangles before selecting risky objectives.
+		if _BRMagneticZoneSystem == nil or _BRMagneticZoneSystem.ZoneRunning ~= true or self.Entity == nil then
+			return false
+		end
+		local mapName = self:ReadString(self.Entity.CurrentMapName, "")
+		if mapName == "" or self:ReadString(_BRMagneticZoneSystem.ZoneMapName, "") ~= mapName then
+			return false
+		end
+		local position = self:GetEntityPosition2(self.Entity)
+		if _BRMagneticZoneSystem:IsEntityInForbiddenZone(self.Entity) == true then
+			return true
+		end
+		if _BRMagneticZoneSystem:IsPointInsideSafe(position) ~= true then
+			return true
+		end
+		if self:ReadNumber(_BRMagneticZoneSystem.PhaseTimeRemaining, 999) <= self:GetPredictedSafeMoveSeconds()
+			and _BRMagneticZoneSystem:IsPointInsidePredictedSafe(position) ~= true then
+			return true
+		end
+		return false
+	end
+
+	method Vector2 GetSafeZoneTargetPosition()
+		-- Picks the middle of the currently safe world rectangle.
+		if _BRMagneticZoneSystem == nil then
+			return self:GetEntityPosition2(self.Entity)
+		end
+		local x = (self:ReadNumber(_BRMagneticZoneSystem.SafeMinX, 0) + self:ReadNumber(_BRMagneticZoneSystem.SafeMaxX, 0)) * 0.5
+		local y = (self:ReadNumber(_BRMagneticZoneSystem.SafeMinY, 0) + self:ReadNumber(_BRMagneticZoneSystem.SafeMaxY, 0)) * 0.5
+		return Vector2(x, y)
+	end
+
+	method boolean IsPositionSafeForObjective(Vector2 position)
+		-- Rejects loot that would lead the bot into the forbidden or soon-forbidden area.
+		if _BRMagneticZoneSystem == nil or _BRMagneticZoneSystem.ZoneRunning ~= true then
+			return true
+		end
+		if self.Entity == nil or self:ReadString(_BRMagneticZoneSystem.ZoneMapName, "") ~= self:ReadString(self.Entity.CurrentMapName, "") then
+			return true
+		end
+		if _BRMagneticZoneSystem:IsPointInsideSafe(position) ~= true then
+			return false
+		end
+		if self:ReadNumber(_BRMagneticZoneSystem.PhaseTimeRemaining, 999) <= self:GetPredictedSafeMoveSeconds() then
+			return _BRMagneticZoneSystem:IsPointInsidePredictedSafe(position) == true
+		end
+		return true
+	end
+
+	method void SetObjective(string kind, Entity entity, Vector2 position, number score)
+		-- Stores a short-lived objective for BT movement and collection nodes.
+		self._T.objective = {
+			Kind = self:ReadString(kind, ""),
+			Entity = entity,
+			Position = position,
+			Score = self:ReadNumber(score, 0)
+		}
+	end
+
+	method any GetObjective()
+		-- Returns the active objective if its referenced entity is still valid.
+		local objective = self._T.objective
+		if objective == nil then
+			return nil
+		end
+		local kind = self:ReadString(objective.Kind, "")
+		if kind ~= "SAFE" then
+			if objective.Entity == nil or isvalid(objective.Entity) == false then
+				return nil
+			end
+		end
+		return objective
+	end
+
+	method void ClearObjective()
+		-- Clears the active BT objective.
+		self._T.objective = nil
+	end
+
+	method Vector2 GetObjectivePosition(any objective)
+		-- Resolves an objective target position from entity or cached vector data.
+		if objective == nil then
+			return nil
+		end
+		if objective.Entity ~= nil and isvalid(objective.Entity) == true then
+			return self:GetEntityPosition2(objective.Entity)
+		end
+		return objective.Position
+	end
+
+	method boolean IsObjectiveComplete(any objective, Vector2 position)
+		-- Checks arrival for safe-zone movement or loot interaction.
+		if objective == nil or position == nil then
+			return false
+		end
+		local kind = self:ReadString(objective.Kind, "")
+		local selfPosition = self:GetEntityPosition2(self.Entity)
+		if kind == "SAFE" then
+			if self:ShouldMoveToSafeZone() ~= true then
+				return true
+			end
+			return self:GetDistance(selfPosition, position) <= 0.65
+		end
+		return self:GetDistance(selfPosition, position) <= self:GetLootInteractRange()
+	end
+
+	method any GetDroppedPartComponent(Entity entity)
+		-- Returns the dropped-part component from an entity.
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRDroppedSkillPart")
+		if component == nil then
+			component = entity:GetComponent("BRDroppedSkillPart")
+		end
+		return component
+	end
+
+	method any GetPartBoxComponent(Entity entity)
+		-- Returns the part-box component from an entity.
+		if entity == nil then
+			return nil
+		end
+		local component = entity:GetComponent("script.BRPartBox")
+		if component == nil then
+			component = entity:GetComponent("BRPartBox")
+		end
+		return component
+	end
+
+	method void FacePosition(Vector2 targetPosition)
+		-- Turns the bot toward a world position without changing its target.
+		if targetPosition == nil or self.Entity == nil then
+			return
+		end
+		local selfPosition = self:GetEntityPosition2(self.Entity)
+		if targetPosition.x < selfPosition.x then
+			self._T.lookDirection = -1
+			if self.Entity.SpriteRendererComponent ~= nil then
+				self.Entity.SpriteRendererComponent.FlipX = true
+			end
+		else
+			self._T.lookDirection = 1
+			if self.Entity.SpriteRendererComponent ~= nil then
+				self.Entity.SpriteRendererComponent.FlipX = false
+			end
 		end
 	end
 
@@ -730,6 +1495,9 @@ script BRBattleBotController extends Component
 		if _BRBattleLauncher:IsActiveMatchForMap(mapName) ~= true then
 			return true
 		end
+		if _BRBattleLauncher:IsBattleGameplayStartedForMap(mapName) ~= true then
+			return false
+		end
 		if _BRBattleTimerSystem == nil then
 			return true
 		end
@@ -868,6 +1636,15 @@ script BRBattleBotController extends Component
 		if self._T.avatarLoggedStates == nil then
 			self._T.avatarLoggedStates = {}
 		end
+		if self._T.nextLootScanAt == nil then
+			self._T.nextLootScanAt = 0
+		end
+		if self._T.cachedLootObjective == nil then
+			self._T.cachedLootObjective = nil
+		end
+		if self._T.nextDecisionLogAt == nil then
+			self._T.nextDecisionLogAt = 0
+		end
 	end
 
 	method string BuildDefaultBotId()
@@ -940,7 +1717,16 @@ script BRBattleBotController extends Component
 	end
 
 	method number GetAttackDamage()
-		return math.max(1, math.floor(self:ReadNumber(self.AttackDamage, 18)))
+		return math.max(1, math.floor(self:ReadNumber(self.AttackDamage, 18) + self:GetBotChainDamageBonus()))
+	end
+
+	method number GetBotChainDamageBonus()
+		-- Converts chain quality into a modest bot melee damage bonus.
+		if self.EnableSkillPartAI ~= true then
+			return 0
+		end
+		local bonus = self:GetBotChainScore() * self:GetChainDamagePerScore()
+		return math.max(0, math.min(self:GetMaxChainDamageBonus(), bonus))
 	end
 
 	method number GetMesoReward()
@@ -964,7 +1750,12 @@ script BRBattleBotController extends Component
 	end
 
 	method number GetMoveSpeed()
-		return math.max(0.1, self:ReadNumber(self.MoveSpeed, 1.15))
+		local speed = math.max(0.1, self:ReadNumber(self.MoveSpeed, 1.15))
+		local state = self:GetBotSkillState()
+		if state ~= nil then
+			speed = speed + math.min(0.35, self:GetBotChainFilledCount(state) * 0.04 + self:GetBotChainScore() * 0.001)
+		end
+		return speed
 	end
 
 	method number GetJumpCooldownSeconds()
@@ -991,8 +1782,61 @@ script BRBattleBotController extends Component
 		return math.max(self:GetWanderMinSeconds(), self:ReadNumber(self.WanderMaxSeconds, 1.45))
 	end
 
+	method number GetLootSightRange()
+		-- Returns the search radius for loot decisions.
+		return math.max(1, self:ReadNumber(self.LootSightRange, 10))
+	end
+
+	method number GetLootInteractRange()
+		-- Returns the pickup/open distance for loot objectives.
+		return math.max(0.25, self:ReadNumber(self.LootInteractRange, 0.95))
+	end
+
+	method number GetLootScanCooldownSeconds()
+		-- Returns the cached objective scan interval.
+		return math.max(0.05, self:ReadNumber(self.LootScanCooldownSeconds, 0.25))
+	end
+
+	method number GetDesiredChainScore()
+		-- Returns the chain score at which combat can take priority over more loot.
+		return math.max(0, self:ReadNumber(self.DesiredChainScore, 95))
+	end
+
+	method number GetChainDamagePerScore()
+		-- Returns the damage conversion rate from chain score.
+		return math.max(0, self:ReadNumber(self.ChainDamagePerScore, 0.12))
+	end
+
+	method number GetMaxChainDamageBonus()
+		-- Returns the maximum melee damage bonus from chain quality.
+		return math.max(0, self:ReadNumber(self.MaxChainDamageBonus, 24))
+	end
+
+	method number GetLowHpRetreatPercent()
+		-- Returns the HP ratio where the bot becomes more conservative.
+		return math.max(0.05, math.min(0.95, self:ReadNumber(self.LowHpRetreatPercent, 0.35)))
+	end
+
+	method number GetPredictedSafeMoveSeconds()
+		-- Returns when to pre-move for the next warned zone shrink.
+		return math.max(0, self:ReadNumber(self.PredictedSafeMoveSeconds, 10))
+	end
+
 	method number Now()
 		return _UtilLogic.ElapsedSeconds
+	end
+
+	method void LogDecision(string message)
+		-- Writes high-level AI decision logs without flooding every frame.
+		if self.EnableBTDebugLog ~= true then
+			return
+		end
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.nextDecisionLogAt, 0) then
+			return
+		end
+		self._T.nextDecisionLogAt = now + 0.75
+		log("[BRBotAI] id=" .. self:ReadString(self.BotId, "BOT") .. " " .. self:ReadString(message, ""))
 	end
 
 	method string ReadString(any value, string fallback)

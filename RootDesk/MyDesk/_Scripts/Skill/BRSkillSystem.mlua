@@ -3,7 +3,7 @@ script BRSkillSystem extends Logic
 
 	property boolean AutoEquipDroppedParts = false
 
-	property boolean SeedDefaultChainOnBattleReset = true
+	property boolean SeedDefaultChainOnBattleReset = false
 
 	property boolean VerboseLog = true
 
@@ -193,6 +193,9 @@ script BRSkillSystem extends Logic
 		if self._T.uniqueRuntimeByUser == nil then
 			self._T.uniqueRuntimeByUser = {}
 		end
+		if self._T.basicAttackRuntimeByUser == nil then
+			self._T.basicAttackRuntimeByUser = {}
+		end
 		if self._T.lastSafeFootholdByUser == nil then
 			self._T.lastSafeFootholdByUser = {}
 		end
@@ -238,9 +241,25 @@ script BRSkillSystem extends Logic
 	method void ValidateSkillDataCatalogs()
 		-- Logs broken CSV/DataSet references early so silent skill failures are visible.
 		self:Log("data loaded skills=" .. tostring(self:GetTableCount(self._T.skillRuntimeCatalog)) .. " parts=" .. tostring(self:GetTableCount(self._T.catalog)) .. " events=" .. tostring(self:GetTableCount(self._T.skillEventCatalog)) .. " actions=" .. tostring(self:GetTableCount(self._T.skillActionCatalog)) .. " hitboxes=" .. tostring(self:GetTableCount(self._T.skillHitboxCatalog)))
+		self:ValidateMesoStarterClassification()
 		self:ValidateSkillTimelineEvents()
 		self:ValidateSkillEventDefinitions()
 		self:ValidateSkillActionDefinitions()
+	end
+
+	method void ValidateMesoStarterClassification()
+		-- Logs the synthetic starter classification for Meso Explosion.
+		local skillKey = self:GetMesoExplosionSkillKey()
+		local category = ""
+		if self._T.skillRuntimeCatalog ~= nil and self._T.skillRuntimeCatalog[skillKey] ~= nil then
+			category = self:ReadString(self._T.skillRuntimeCatalog[skillKey].SkillCategory, "")
+		end
+		local partId = self:GetPartIdForSkillKey(skillKey)
+		local starter = false
+		if partId ~= "" and self._T.catalog ~= nil and self._T.catalog[partId] ~= nil then
+			starter = self:SkillPartHasTrigger(self._T.catalog[partId], 1)
+		end
+		self:Log("meso starter classification category=" .. self:ReadString(category, "") .. " part=" .. partId .. " starter=" .. tostring(starter == true))
 	end
 
 	method void ValidateSkillTimelineEvents()
@@ -739,10 +758,16 @@ script BRSkillSystem extends Logic
 	end
 
 	method boolean IsSkillPartCategory(string category)
-		-- Only skill-chain parts are rollable parts; basic skills are direct casts.
+		-- Treats rollable chain entries, including trigger/starters, as skill parts.
 		local safeCategory = self:ReadString(category, "")
-		if safeCategory == "기본 스킬" or safeCategory == "basic" or safeCategory == "basic_skill" then
+		if safeCategory == "기본 스킬" or safeCategory == "기본 공격" or safeCategory == "basic" or safeCategory == "basic_skill" or safeCategory == "basic_attack" then
 			return false
+		end
+		if safeCategory == "보조 스킬" or safeCategory == "unique" or safeCategory == "auxiliary" or safeCategory == "support" then
+			return false
+		end
+		if safeCategory == "트리거" or safeCategory == "시동기" or safeCategory == "trigger" or safeCategory == "starter" then
+			return true
 		end
 		if safeCategory == "스킬 파츠" or safeCategory == "part" or safeCategory == "skill_part" then
 			return true
@@ -1127,6 +1152,22 @@ script BRSkillSystem extends Logic
 	end
 
 	@ExecSpace("Server")
+	method void RequestCastBasicAttackSkill(string requestUserId)
+		-- Casts the class-fixed basic attack without advancing the editable chain.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("basic attack request skipped reason=noUser")
+			return
+		end
+		local playerEntity = self:FindPlayerEntityByUserId(userId)
+		if playerEntity == nil then
+			self:Log("basic attack request skipped user=" .. userId .. " reason=noPlayer")
+			return
+		end
+		self:TryCastBasicAttackSkill(playerEntity)
+	end
+
+	@ExecSpace("Server")
 	method void RequestCastUniqueSkill(string requestUserId, string requestedSkillKey)
 		-- Casts the character-specific unique skill outside the skill-chain recipe.
 		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
@@ -1141,6 +1182,57 @@ script BRSkillSystem extends Logic
 		end
 		local uniqueSkillKey = self:ResolveUniqueSkillKey(userId, requestedSkillKey)
 		self:TryCastUniqueSkill(playerEntity, uniqueSkillKey)
+	end
+
+	method boolean TryCastBasicAttackSkill(Entity casterEntity)
+		-- Starts one class-fixed basic attack with its own cooldown.
+		self:EnsureRuntime()
+		if casterEntity == nil or casterEntity.PlayerComponent == nil then
+			return false
+		end
+		if casterEntity.PlayerComponent:IsDead() == true or casterEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+
+		local userId = self:GetUserIdFromPlayer(casterEntity)
+		if userId == "" then
+			return false
+		end
+		if self:IsCasterControlBlocked(casterEntity) == true then
+			self:Log("basic attack blocked user=" .. userId .. " reason=controlStatus")
+			return false
+		end
+
+		local safeSkillKey = self:ResolveBasicAttackSkillKey(userId)
+		local skillDef = self._T.skillRuntimeCatalog[safeSkillKey]
+		if skillDef == nil then
+			self:Log("basic attack skipped user=" .. userId .. " skill=" .. safeSkillKey .. " reason=noDefinition")
+			return false
+		end
+
+		local runtime = self:GetBasicAttackRuntime(userId)
+		local now = self:Now()
+		if now < self:ReadNumber(runtime.NextCastAt, 0) then
+			return true
+		end
+
+		local step = {
+			SlotIndex = 0,
+			EndSlotIndex = 0,
+			Tier = 1,
+			Part = nil,
+			SkillDef = skillDef,
+			SkillKey = safeSkillKey,
+			Role = "basicAttack",
+			EndPart = nil,
+			EndSkillDef = nil,
+			TriggerEndSlotIndex = 0,
+			EndTier = 0
+		}
+		self:StartSkillCast(casterEntity, userId, step, false, nil, nil)
+		runtime.NextCastAt = now + self:GetSkillCooldownSeconds(skillDef)
+		self:Log("basic attack cast user=" .. userId .. " skill=" .. safeSkillKey .. " cooldown=" .. tostring(runtime.NextCastAt - now))
+		return true
 	end
 
 	method boolean TryCastUniqueSkill(Entity casterEntity, string uniqueSkillKey)
@@ -1205,6 +1297,19 @@ script BRSkillSystem extends Logic
 			end
 		end
 		return self:NormalizeSkillKeyWithFallback(requestedSkillKey, fallbackSkillKey)
+	end
+
+	@ExecSpace("ServerOnly")
+	method string ResolveBasicAttackSkillKey(string userId)
+		-- Resolves the class-fixed basic attack from character_default_skills.basic_attack_id.
+		local fallbackSkillKey = self:GetDefaultBasicSkillIdForUser(userId)
+		if _BRCharacterSystem ~= nil then
+			local serverSkillKey = _BRCharacterSystem:GetServerBasicAttackKey(userId)
+			if serverSkillKey ~= nil and serverSkillKey ~= "" then
+				return self:NormalizeSkillKeyWithFallback(serverSkillKey, fallbackSkillKey)
+			end
+		end
+		return self:NormalizeSkillKeyWithFallback("", fallbackSkillKey)
 	end
 
 	method string NormalizeUniqueSkillKey(string skillKey)
@@ -1489,7 +1594,7 @@ script BRSkillSystem extends Logic
 					table.insert(result.Steps, step)
 				end
 			end
-			if self:ReadString(group.SkillKey, "") == self:GetMesoExplosionSkillKey() then
+			if self:IsMesoExplosionSkillKey(self:ReadString(group.SkillKey, "")) == true then
 				pendingMesoCount = self:CoinCountForTier(group.Tier)
 			end
 		end
@@ -1576,7 +1681,7 @@ script BRSkillSystem extends Logic
 	end
 
 	method boolean SkillPartHasTrigger(any part, number tier)
-		-- Resolves a part to the tiered skill definition and checks for trigger actions.
+		-- Resolves a part to the tiered skill definition and checks for trigger/starter behavior.
 		if part == nil then
 			return false
 		end
@@ -1584,6 +1689,9 @@ script BRSkillSystem extends Logic
 		local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
 		if skillKey == "" or self._T.skillRuntimeCatalog == nil then
 			return false
+		end
+		if self:IsMesoExplosionSkillKey(skillKey) == true then
+			return true
 		end
 		local tieredSkillKey = self:GetTieredSkillKey(skillKey, tier)
 		local skillDef = self._T.skillRuntimeCatalog[tieredSkillKey]
@@ -1687,6 +1795,18 @@ script BRSkillSystem extends Logic
 		return self._T.uniqueRuntimeByUser[safeUserId]
 	end
 
+	method any GetBasicAttackRuntime(string userId)
+		-- Returns per-user basic-attack cooldown state.
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if self._T.basicAttackRuntimeByUser[safeUserId] == nil then
+			self._T.basicAttackRuntimeByUser[safeUserId] = {
+				NextCastAt = 0
+			}
+		end
+		return self._T.basicAttackRuntimeByUser[safeUserId]
+	end
+
 	method void StartSkillCast(Entity casterEntity, string userId, any step, boolean isVirtualCaster, number fixedX, number fixedY)
 		-- Adds one active skill cast to the server frame loop.
 		if step == nil or step.SkillDef == nil then
@@ -1724,7 +1844,7 @@ script BRSkillSystem extends Logic
 			Cancelled = false
 		}
 		table.insert(self._T.activeCasts, cast)
-		if cast.IsVirtualCaster ~= true and self:ReadString(cast.SkillKey, "") == self:GetMesoExplosionSkillKey() then
+		if cast.IsVirtualCaster ~= true and self:IsMesoExplosionSkillKey(self:ReadString(cast.SkillKey, "")) == true then
 			self:PlayCasterMesoEffect(casterEntity)
 			self:ArmActiveMesoFollowUps(cast.UserId, self:CoinCountForTier(cast.Tier), casterEntity)
 		end
@@ -3192,10 +3312,11 @@ script BRSkillSystem extends Logic
 
 		if targetEntity.PlayerComponent ~= nil then
 			local player = targetEntity.PlayerComponent
+			damage = math.max(1, math.floor(damage * self:GetDamageTakenRate(targetEntity)))
 			player.Hp = math.max(0, player.Hp - damage)
 			self:Log("damage player user=" .. self:ReadString(context.UserId, "") .. " target=" .. self:ReadString(player.UserId, "") .. " amount=" .. tostring(damage) .. " hp=" .. tostring(player.Hp) .. " critical=" .. tostring(critical))
 			if _BRDamageSkinSystem ~= nil then
-				_BRDamageSkinSystem:ShowDamage(targetEntity, damage, critical == true, self:ReadString(sourceId, "skill"))
+				_BRDamageSkinSystem:ShowEnemyDamage(targetEntity, damage, critical == true, self:ReadString(sourceId, "skill"))
 			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attackerEntity, targetEntity, sourceId)
@@ -3264,6 +3385,11 @@ script BRSkillSystem extends Logic
 	method string GetMesoExplosionSkillKey()
 		-- Returns the reserved skill key that arms meso follow-up coins.
 		return "메소 익스플로전"
+	end
+
+	method boolean IsMesoExplosionSkillKey(string skillKey)
+		-- Returns true for the synthetic meso trigger/starter skill.
+		return self:ReadString(skillKey, "") == self:GetMesoExplosionSkillKey()
 	end
 
 	method string GetMesoCoinModelId()
@@ -3355,10 +3481,11 @@ script BRSkillSystem extends Logic
 		end
 		if target.PlayerComponent ~= nil then
 			local player = target.PlayerComponent
+			dmg = math.max(1, math.floor(dmg * self:GetDamageTakenRate(target)))
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("meso coin damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
 			if _BRDamageSkinSystem ~= nil then
-				_BRDamageSkinSystem:ShowDamage(target, dmg, false, "meso")
+				_BRDamageSkinSystem:ShowEnemyDamage(target, dmg, false, "meso")
 			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attacker, target, "meso")
@@ -3838,10 +3965,11 @@ script BRSkillSystem extends Logic
 		end
 		if target.PlayerComponent ~= nil then
 			local player = target.PlayerComponent
+			dmg = math.max(1, math.floor(dmg * self:GetDamageTakenRate(target)))
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("throw star damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
 			if _BRDamageSkinSystem ~= nil then
-				_BRDamageSkinSystem:ShowDamage(target, dmg, false, "throwstar")
+				_BRDamageSkinSystem:ShowEnemyDamage(target, dmg, false, "throwstar")
 			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attacker, target, "throwstar")
@@ -3954,6 +4082,25 @@ script BRSkillSystem extends Logic
 		for statusId, status in pairs(self._T.statusByEntityId[key]) do
 			if status ~= nil and now < self:ReadNumber(status.ExpiresAt, 0) then
 				rate = rate * math.max(0, self:ReadNumber(status.AttackPowerRate, 1))
+			end
+		end
+		return math.max(0, rate)
+	end
+
+	method number GetDamageTakenRate(Entity targetEntity)
+		-- Product of active incoming-damage buff rates on the target (buff_actions.damage_taken_rate).
+		if targetEntity == nil then
+			return 1.0
+		end
+		local key = self:GetEntityKey(targetEntity)
+		if key == "" or self._T.statusByEntityId == nil or self._T.statusByEntityId[key] == nil then
+			return 1.0
+		end
+		local now = self:Now()
+		local rate = 1.0
+		for statusId, status in pairs(self._T.statusByEntityId[key]) do
+			if status ~= nil and now < self:ReadNumber(status.ExpiresAt, 0) then
+				rate = rate * math.max(0, self:ReadNumber(status.DamageTakenRate, 1))
 			end
 		end
 		return math.max(0, rate)
@@ -4557,11 +4704,11 @@ script BRSkillSystem extends Logic
 		if skillDef == nil then
 			return 0
 		end
-		-- Meso Explosion is a follow-up "charge" that only enhances the NEXT chain skill (arms meso
-		-- coins). It performs no attack itself, so it gets no recovery delay / freeze / attack swing —
+		-- Meso Explosion is a trigger/starter charge that only enhances the NEXT chain skill (arms meso
+		-- coins). It performs no attack itself, so it gets no recovery delay / freeze / attack swing -
 		-- the enhanced skill fires immediately after.
 		local id = self:ReadString(skillDef.BaseSkillKey, self:ReadString(skillDef.SkillKey, ""))
-		if id == self:GetMesoExplosionSkillKey() then
+		if self:IsMesoExplosionSkillKey(id) == true then
 			return 0
 		end
 		return 0.35
@@ -5124,7 +5271,7 @@ script BRSkillSystem extends Logic
 	end
 
 	method void ResetUserForBattle(string userId)
-		-- Starts a battle from a clean CSV-backed chain state.
+		-- Starts a battle from a clean, empty chain state unless explicit seeding is enabled.
 		self:EnsureRuntime()
 		if userId == nil or userId == "" then
 			return

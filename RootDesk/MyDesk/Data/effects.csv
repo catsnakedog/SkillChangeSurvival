@@ -32,6 +32,31 @@ Blink/effect,8dc15776c4f349a0bfa155e911e4a7be,false,8,
 Blink/effect0,df5bd4514ffb461fb8479ff0d88ec204,false,8,
 Blink/effect1,c4755faee88149738692350b34aa5766,false,8,
 Blink/special,ba3f9119b8634a1f80e85017adc426f7,false,8,
+기본공격_슬래시블러스트/effect,eaa71284041b4c8390c32ade11286e16,false,10,0.75
+기본공격_애로우블로우/effect,2ed6be9152eb4bf0b22f4ca6e6fff9fe,false,10,0.75
+기본공격_애로우블로우/ball,64142d933e854590a67af044f3d091fb,false,10,0.8
+기본공격_애로우블로우/hit,84a473e004a34fdea67aa74a87dc75c6,false,10,0.7
+기본공격_샤프슬래시/effect,ffaf507b148744f49715a8253477fec0,false,10,0.75
+기본공격_에너지볼트/effect,ba512e50ddad4231bd6093dd07afc00e,false,10,0.75
+기본공격_에너지볼트/ball,d393500fd23f4537a2dd1f65089fc4a1,false,10,0.8
+기본공격_에너지볼트/hit,6beb8d728a7d4cca92eb7f4d2d9c45f9,false,10,0.7
+리트리트 샷/ball,18e115c155d04180aba1abcdf4fb7c89,false,18,0.85
+리트리트 샷/effect,f3ef77e108644d37ab20de75572e1716,false,18,0.85
+리트리트 샷/hit,bd00603136314be19ae4be785c3c3180,false,12,0.75
+리트리트 샷/keydown,16b47a4e422e4f91a7919686df05e0b5,false,12,0.85
+리트리트 샷/keydownend,088e9b21162e470d898bb7de67cb83a8,false,12,0.85
+리트리트 샷/prepare,8176064917054100aee2ffb6f80574a3,false,12,0.85
+아이언월/affected,e9c90ecd65224980b56903dba89ef856,false,20,0.8
+아이언월/effect,fe52cf2e9f9e4f059cfb4fb3856aecf9,false,20,0.8
+슬래시 스톤/effect,74f8d58d6b2b4386bd20f7556c4898a1,false,18,0.85
+슬래시 스톤/effect0,c6affc4c0bab428ab9fadb071e2efe60,false,18,0.85
+슬래시 스톤/hit,6ce3e8c3483643c2b4993df78057eb77,false,12,0.75
+극딜/effect,1140322cfd5a4c40b1134e1159245059,false,24,0.85
+극딜/effect0,762aa3461a7642c98fd332e68a157596,false,24,0.85
+극딜/special,aba23a644a524deb8a4e2e1e9f981e78,false,16,0.85
+극딜/special0,3863b1dffb11469bb08d209b73d2fd58,false,16,0.85
+극딜/specialAffected,ed555eb20813410fbe18202147e487f7,false,24,0.85
+극딜/specialAffected0,77833685938e4cb984dacdb8b677af85,false,24,0.85
 PirateMonkeySummon/hit,afa8ab584f074d62ac784dc9dc26d632,false,12,
 PirateMonkeySummon/attack1,d1c1aa2c9dbc496b9c03f8cf65230b6a,false,18,
 PirateMonkeySummon/die,460f16fb831d41ac99eb2d164f5f8443,false,18,

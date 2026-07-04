@@ -29,7 +29,7 @@ characters.csv,캐릭터,5,basic_skill_id,기본 스킬 id,string,,N,,기본 스
 characters.csv,캐릭터,6,sprite_id,스프라이트 id,string,,N,,스프라이트 id,p20
 skills.csv,스킬,1,id,id,string,,N,,스킬 id,"p8,p29,p44"
 skills.csv,스킬,2,name,이름,string,,N,,스킬 이름,"p8,p29,p44"
-skills.csv,스킬,3,skill_category,스킬 범주,enum,,N,기본 스킬|스킬 파츠,기본 스킬 또는 스킬 파츠,"p8,p29,p44"
+skills.csv,스킬,3,skill_category,스킬 범주,enum,,N,기본 스킬|스킬 파츠|트리거,기본 스킬/스킬 파츠/시동 트리거,"p8,p29,p44"
 skills.csv,스킬,4,icon_ruid,아이콘 RUID,string,,N,,아이콘 RUID,"p8,p29,p44"
 skills.csv,스킬,5,description,설명,string,,N,,스킬 설명,"p8,p29,p44"
 skills.csv,스킬,6,effect_ids,이펙트 id,pipe_string,,Y,effect1|effect2|effect3,복수 가능,"p8,p29,p44"

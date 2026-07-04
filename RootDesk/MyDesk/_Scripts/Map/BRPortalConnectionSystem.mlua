@@ -7,7 +7,7 @@ script BRPortalConnectionSystem extends Logic
 
 	property number PollSeconds = 0.08
 
-	property number ActivationPadding = 0.18
+	property number ActivationPadding = 0
 
 	property number PortalInteractReach = 5.5
 
@@ -129,6 +129,7 @@ script BRPortalConnectionSystem extends Logic
 		self._T.graphsByMap[safeMapName] = nil
 		self._T.cooldownUntil = {}
 		self._T.arrivalPortalKeyByUser = {}
+		self._T.arrivalPortalBlockUntilByUser = {}
 		self:Log("cleared map=" .. safeMapName)
 	end
 
@@ -228,9 +229,27 @@ script BRPortalConnectionSystem extends Logic
 			local scale = self:GetPortalVisualScale()
 			portal.TransformComponent.Scale = Vector3(scale, scale, 1)
 		end
+		self:ConfigurePortalTouchArea(portal, direction, active == true)
 		portal.Visible = active == true
 		portal:SetVisible(active == true)
 		return true
+	end
+
+	method void ConfigurePortalTouchArea(Entity portal, string direction, boolean active)
+		-- Keeps touch input bounds aligned with the same visual box used by interaction-key checks.
+		if portal == nil or isvalid(portal) ~= true then
+			return
+		end
+		if portal.TouchReceiveComponent == nil and active == true then
+			portal:AddComponent("TouchReceiveComponent")
+		end
+		if portal.TouchReceiveComponent ~= nil then
+			portal.TouchReceiveComponent.Offset = Vector2(0, 0)
+			portal.TouchReceiveComponent.TouchArea = self:GetPortalBoxSize(direction)
+			portal.TouchReceiveComponent.AutoFitToSize = active == true
+			portal.TouchReceiveComponent.DynamicTouchArea = active == true
+			portal.TouchReceiveComponent.RelayEventToBehind = true
+		end
 	end
 
 	method string GetPortalVisualRUIDForLink(any link)
@@ -601,8 +620,11 @@ script BRPortalConnectionSystem extends Logic
 		local exitPosition = self:ResolvePortalExitPosition(mapName, destinationPortal, arrivalDirection)
 		local boundsWarning = self:BuildMapBoundsWarning(mapName, exitPosition)
 		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
-		self._T.cooldownUntil[userId] = self:Now() + self:GetReuseCooldownSeconds()
+		local now = self:Now()
+		local portalReuseAt = now + self:GetReuseCooldownSeconds()
+		self._T.cooldownUntil[userId] = portalReuseAt
 		self._T.arrivalPortalKeyByUser[userId] = arrivalPortalKey
+		self._T.arrivalPortalBlockUntilByUser[userId] = portalReuseAt
 		self:SetPlayerWorldPosition(playerEntity, exitPosition)
 		self:ApplyLocalPortalPosition(exitPosition, "portal", userId)
 
@@ -804,14 +826,6 @@ script BRPortalConnectionSystem extends Logic
 		local boxSize = self:GetPortalBoxSize(direction)
 		local halfWidth = boxSize.x * 0.5 + self:GetActivationPadding()
 		local halfHeight = boxSize.y * 0.5 + self:GetActivationPadding()
-		local reach = self:GetPortalInteractReach()
-		if direction == "East" or direction == "West" then
-			halfWidth = math.max(halfWidth, 1.35)
-			halfHeight = math.max(halfHeight, math.min(reach, 2.2))
-		else
-			halfWidth = math.max(halfWidth, 2.6)
-			halfHeight = math.max(halfHeight, math.min(reach, 3.5))
-		end
 		return math.abs(playerPosition.x - portalPosition.x) <= halfWidth
 			and math.abs(playerPosition.y - portalPosition.y) <= halfHeight
 	end
@@ -1034,7 +1048,7 @@ script BRPortalConnectionSystem extends Logic
 	end
 
 	method boolean IsWaitingForArrivalPortalExit(any graph, Entity root, string userId, Vector2 playerPosition)
-		-- Blocks only the arrival portal until the player leaves its trigger box.
+		-- Blocks the arrival portal only for the short post-teleport reuse lock.
 		local safeUserId = self:ReadString(userId, "")
 		if safeUserId == "" then
 			return false
@@ -1043,31 +1057,17 @@ script BRPortalConnectionSystem extends Logic
 		if blockedKey == "" then
 			return false
 		end
-
-		local blockedLink = {}
-		local hasBlockedLink = false
-		local mapName = ""
-		if graph ~= nil and graph.PortalLinkByKey ~= nil then
-			mapName = self:ReadString(graph.MapName, "")
-			local candidateLink = graph.PortalLinkByKey[blockedKey]
-			if candidateLink ~= nil then
-				blockedLink = candidateLink
-				hasBlockedLink = true
+		local blockUntil = self:ReadNumber(self._T.arrivalPortalBlockUntilByUser[safeUserId], 0)
+		if blockUntil > 0 then
+			if self:Now() < blockUntil then
+				return true
 			end
-		end
-		if hasBlockedLink == false then
 			self._T.arrivalPortalKeyByUser[safeUserId] = nil
+			self._T.arrivalPortalBlockUntilByUser[safeUserId] = nil
 			return false
 		end
-
-		local blockedRoomName = self:ReadString(blockedLink["FromRoomName"], "")
-		local blockedDirection = self:ReadString(blockedLink["FromDirection"], "")
-		local blockedPortal = self:GetPhysicalPortal(mapName, root, blockedRoomName, blockedDirection)
-		if self:IsPlayerInsidePortal(playerPosition, blockedPortal, blockedDirection) == true then
-			return true
-		end
-
 		self._T.arrivalPortalKeyByUser[safeUserId] = nil
+		self._T.arrivalPortalBlockUntilByUser[safeUserId] = nil
 		return false
 	end
 
@@ -1106,11 +1106,12 @@ script BRPortalConnectionSystem extends Logic
 	end
 
 	method Vector2 GetPortalBoxSize(string direction)
-		-- Returns the activation box size used by generated portal markers.
+		-- Returns the visual-size activation box used by generated portal markers.
+		local scale = self:GetPortalVisualScale()
 		if direction == "East" or direction == "West" then
-			return Vector2(0.45, 2.4)
+			return Vector2(0.45 * scale, 2.4 * scale)
 		end
-		return Vector2(2.4, 0.45)
+		return Vector2(2.4 * scale, 0.45 * scale)
 	end
 
 	method Vector2 GetEntityPosition2(Entity entity)
@@ -1133,6 +1134,9 @@ script BRPortalConnectionSystem extends Logic
 		if self._T.arrivalPortalKeyByUser == nil then
 			self._T.arrivalPortalKeyByUser = {}
 		end
+		if self._T.arrivalPortalBlockUntilByUser == nil then
+			self._T.arrivalPortalBlockUntilByUser = {}
+		end
 	end
 
 	method number GetPollSeconds()
@@ -1142,7 +1146,7 @@ script BRPortalConnectionSystem extends Logic
 
 	method number GetActivationPadding()
 		-- Returns extra activation padding around portal boxes.
-		return math.max(0, self:ReadNumber(self.ActivationPadding, 0.18))
+		return math.max(0, self:ReadNumber(self.ActivationPadding, 0))
 	end
 
 	method number GetPortalInteractReach()

@@ -13,7 +13,7 @@ script BRPortalConnectionSystem extends Logic
 
 	property number PortalExitOffset = 1.75
 
-	property number ReuseCooldownSeconds = 0.85
+	property number ReuseCooldownSeconds = 1
 
 	property number ClientRequestCooldownSeconds = 0.15
 
@@ -105,6 +105,7 @@ script BRPortalConnectionSystem extends Logic
 		end
 
 		self._T.graphsByMap[safeMapName] = nil
+		self._T.cooldownUntil = {}
 		self._T.arrivalPortalKeyByUser = {}
 		self:Log("cleared map=" .. safeMapName)
 	end
@@ -438,6 +439,7 @@ script BRPortalConnectionSystem extends Logic
 		if localPlayer.PlayerComponent ~= nil then
 			localPlayer.PlayerComponent:SetWorldPosition(Vector3(position.x, position.y, 0))
 		end
+		self.clientNextPortalRequestAt = _UtilLogic.ElapsedSeconds + self:GetReuseCooldownSeconds()
 		self:ApplyInstantCameraFollow(reason)
 		log("[BRPortalConnection] local move reason=" .. self:ReadString(reason, "") .. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
 	end

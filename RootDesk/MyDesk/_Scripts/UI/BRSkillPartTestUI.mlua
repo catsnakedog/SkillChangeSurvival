@@ -295,7 +295,7 @@ script BRSkillPartTestUI extends Logic
 			return
 		end
 		if targetSlot <= 0 then
-			self:Log("drop ignored skill=" .. skillKey .. " reason=noTargetSlot")
+			self:Log("drop ignored skill=" .. skillKey .. " reason=noTargetSlot x=" .. tostring(math.floor(screenPoint.x)) .. " y=" .. tostring(math.floor(screenPoint.y)))
 			return
 		end
 		_BRSkillSystem:RequestGrantTestPartToChainSlot(userId, partId, targetSlot)
@@ -329,9 +329,15 @@ script BRSkillPartTestUI extends Logic
 	method Entity GetHudChainSlotEntity(number slotIndex)
 		local safeSlot = math.max(1, math.min(5, math.floor(self:ReadNumber(slotIndex, 1))))
 		local rootPath = self:ReadString(self.BattleHudRootPath, "/ui/BRBattleHudGroup")
-		local entity = _EntityService:GetEntityByPath(rootPath .. "/Bg/ChainPart_" .. tostring(safeSlot))
+		local entity = _EntityService:GetEntityByPath(rootPath .. "/BattleHub/ChainPart_" .. tostring(safeSlot))
+		if entity == nil then
+			entity = _EntityService:GetEntityByPath(rootPath .. "/Bg/ChainPart_" .. tostring(safeSlot))
+		end
 		if entity == nil then
 			entity = _EntityService:GetEntityByPath(rootPath .. "/Panel/Chain/Slot_" .. tostring(safeSlot))
+		end
+		if entity == nil then
+			entity = _EntityService:GetEntityByPath(rootPath .. "/Panel/Chain/Slot_" .. tostring(safeSlot + 1))
 		end
 		return entity
 	end

@@ -162,9 +162,6 @@ script BRSkillUIDatabase extends Logic
 					if skillId ~= "" then
 						local iconRuid = self:GetDataCell(skills, row, "icon_ruid", "")
 						if iconRuid == "" then
-							iconRuid = self:GetFirstEffectRUID(self:GetDataCell(skills, row, "effect_ids", ""))
-						end
-						if iconRuid == "" then
 							iconRuid = self:ReadString(self.PlaceholderIconRUID, "")
 						end
 						self._T.skillDisplayCatalog[skillId] = {
@@ -193,9 +190,6 @@ script BRSkillUIDatabase extends Logic
 					local skillId = self:GetDataCell(skills, row, "id", "")
 					if skillId ~= "" then
 						local iconRuid = self:GetDataCell(skills, row, "icon_ruid", "")
-						if iconRuid == "" then
-							iconRuid = self:GetFirstEffectRUID(self:GetDataCell(skills, row, "effect_ids", ""))
-						end
 						if iconRuid == "" then
 							iconRuid = self:ReadString(self.PlaceholderIconRUID, "")
 						end

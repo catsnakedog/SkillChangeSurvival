@@ -13,7 +13,7 @@ script BRSkillSystem extends Logic
 
 	property number StartingSkillLevel = 1
 
-	property number BaseUnlockedChainSlots = 2
+	property number BaseUnlockedChainSlots = 1
 
 	property number ChainSlotsPerLevel = 1
 
@@ -1417,12 +1417,18 @@ script BRSkillSystem extends Logic
 					local nextGroup = groups[groupIndex + 1]
 					if self:SkillHasTrigger(skillDef) == true and nextGroup ~= nil and nextGroup.Part ~= nil then
 						local endTier = self:ClampSkillTier(nextGroup.Tier)
-						step.Role = "start"
-						step.EndPart = nextGroup.Part
-						step.EndSkillDef = self:GetSkillDefinitionForPart(nextGroup.Part, endTier)
-						step.TriggerEndSlotIndex = math.floor(self:ReadNumber(nextGroup.EndSlotIndex, 0))
-						step.EndTier = endTier
-						consumedEndGroups[groupIndex + 1] = true
+						local endSkillDef = self:GetSkillDefinitionForPart(nextGroup.Part, endTier)
+						if self:SkillHasTrigger(endSkillDef) ~= true then
+							step.Role = "start"
+							step.EndPart = nextGroup.Part
+							step.EndSkillDef = endSkillDef
+							step.TriggerEndSlotIndex = math.floor(self:ReadNumber(nextGroup.EndSlotIndex, 0))
+							step.EndTier = endTier
+							consumedEndGroups[groupIndex + 1] = true
+						else
+							step.Role = "start"
+							self:Log("trigger link skipped user=" .. self:ReadString(state.UserId, "") .. " start=" .. self:ReadString(step.SkillKey, "") .. " next=" .. self:ReadString(endSkillDef.SkillKey, "") .. " reason=nextIsTrigger")
+						end
 					end
 					if pendingMesoCount > 0 then
 						step.MesoFollowUpCount = pendingMesoCount
@@ -1515,6 +1521,24 @@ script BRSkillSystem extends Logic
 			end
 		end
 		return false
+	end
+
+	method boolean SkillPartHasTrigger(any part, number tier)
+		-- Resolves a part to the tiered skill definition and checks for trigger actions.
+		if part == nil then
+			return false
+		end
+		self:EnsureRuntime()
+		local skillKey = self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId))
+		if skillKey == "" or self._T.skillRuntimeCatalog == nil then
+			return false
+		end
+		local tieredSkillKey = self:GetTieredSkillKey(skillKey, tier)
+		local skillDef = self._T.skillRuntimeCatalog[tieredSkillKey]
+		if skillDef == nil then
+			skillDef = self._T.skillRuntimeCatalog[skillKey]
+		end
+		return self:SkillHasTrigger(skillDef)
 	end
 
 	method boolean SkillEventHasTrigger(string eventId, any visitedEvents)
@@ -5163,6 +5187,42 @@ script BRSkillSystem extends Logic
 		self._T.localSkillRequiredExperience = math.max(1, math.floor(self:ReadNumber(requiredExperience, 1)))
 		self._T.localUnlockedChainSlots = math.max(1, math.floor(self:ReadNumber(unlockedSlots, self:GetBaseUnlockedChainSlots())))
 		self._T.localPanelUpdatedAt = _UtilLogic.ElapsedSeconds
+		self:RefreshLocalSkillChainUI("snapshot", self._T.localSnapshotVersion)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshLocalSkillChainUI(string reason, number version)
+		-- Wakes the authored BattleHub skill UI as soon as a fresh snapshot arrives.
+		local refreshed = 0
+		refreshed = refreshed + self:RefreshSkillChainUIRoot("/ui/BRBattleHudGroup", reason, version)
+		if refreshed <= 0 then
+			refreshed = refreshed + self:RefreshSkillChainUIRoot("/ui/BRSkillChainGroup", reason, version)
+		end
+	end
+
+	method number RefreshSkillChainUIRoot(string rootPath, string reason, number version)
+		local root = _EntityService:GetEntityByPath(self:ReadString(rootPath, ""))
+		if root == nil then
+			return 0
+		end
+		local components = root:GetChildComponentsByTypeName("script.BRSkillChainUI", true)
+		if components == nil or #components <= 0 then
+			components = root:GetChildComponentsByTypeName("BRSkillChainUI", true)
+		end
+		if components == nil then
+			return 0
+		end
+
+		local count = 0
+		for index, component in ipairs(components) do
+			if component ~= nil then
+				---@type BRSkillChainUI
+				local ui = component
+				ui:RequestImmediateRefresh(reason, version)
+				count = count + 1
+			end
+		end
+		return count
 	end
 
 	@ExecSpace("Client")
@@ -5346,7 +5406,7 @@ script BRSkillSystem extends Logic
 
 ]]
 	method string BuildChainSnapshotText(any state)
-		-- Serializes slots as slot,instanceId,short,tier,displayName,skillKey records.
+		-- Serializes slots as slot,instanceId,short,tier,displayName,skillKey,hasTrigger records.
 		local chain = self:BuildChainState(state)
 		local text = ""
 		for slotIndex = 1, self:GetChainSlotCount() do
@@ -5357,6 +5417,7 @@ script BRSkillSystem extends Logic
 			local displayName = "-"
 			local skillKey = "-"
 			local tier = math.floor(self:ReadNumber(chain.Tiers[slotIndex], 0))
+			local hasTrigger = "0"
 			if locked == true then
 				instanceId = 0
 				shortText = "LOCK"
@@ -5367,17 +5428,20 @@ script BRSkillSystem extends Logic
 				shortText = self:GetPartShortText(part)
 				displayName = self:SanitizeRecordText(self:GetSkillName(part))
 				skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
+				if self:SkillPartHasTrigger(part, tier) == true then
+					hasTrigger = "1"
+				end
 			end
 			if text ~= "" then
 				text = text .. ";"
 			end
-			text = text .. tostring(slotIndex) .. "," .. tostring(instanceId) .. "," .. shortText .. "," .. tostring(tier) .. "," .. displayName .. "," .. skillKey
+			text = text .. tostring(slotIndex) .. "," .. tostring(instanceId) .. "," .. shortText .. "," .. tostring(tier) .. "," .. displayName .. "," .. skillKey .. "," .. hasTrigger
 		end
 		return text
 	end
 
 	method string BuildBagSnapshotText(any state)
-		-- Serializes explicit spare bag slots as slot,instanceId,short,tier,displayName,skillKey records.
+		-- Serializes explicit spare bag slots as slot,instanceId,short,tier,displayName,skillKey,hasTrigger records.
 		self:NormalizeUserState(state)
 		local text = ""
 		for bagSlot = 1, self:GetBagSlotCount() do
@@ -5390,11 +5454,15 @@ script BRSkillSystem extends Logic
 			local displayName = "-"
 			local skillKey = "-"
 			local tier = 0
+			local hasTrigger = "0"
 			if part ~= nil then
 				shortText = self:GetPartShortText(part)
 				displayName = self:SanitizeRecordText(self:GetSkillName(part))
 				skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
 				tier = 1
+				if self:SkillPartHasTrigger(part, tier) == true then
+					hasTrigger = "1"
+				end
 			end
 			if text ~= "" then
 				text = text .. ";"
@@ -5405,6 +5473,7 @@ script BRSkillSystem extends Logic
 				.. "," .. tostring(tier)
 				.. "," .. displayName
 				.. "," .. skillKey
+				.. "," .. hasTrigger
 		end
 		return text
 	end
@@ -6097,7 +6166,7 @@ script BRSkillSystem extends Logic
 
 	method number GetBaseUnlockedChainSlots()
 		-- Returns how many chain slots are available at the starting level.
-		return math.max(1, math.min(self:GetChainSlotCount(), math.floor(self:ReadNumber(self.BaseUnlockedChainSlots, 2))))
+		return math.max(1, math.min(self:GetChainSlotCount(), math.floor(self:ReadNumber(self.BaseUnlockedChainSlots, 1))))
 	end
 
 	method number GetChainSlotsPerLevel()

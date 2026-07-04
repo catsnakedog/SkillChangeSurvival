@@ -19,6 +19,8 @@ script BRBattleLauncher extends Logic
 
 	property number StartCornerFloorOffsetY = 0.25
 
+	property number StartCenterSpawnSpreadX = 0.85
+
 	property number FallbackStartRoomWidth = 20
 
 	property number FallbackStartRoomHeight = 10
@@ -378,9 +380,9 @@ script BRBattleLauncher extends Logic
 			local playerEntity = _UserService:GetUserEntityByUserId(player.UserId)
 			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
 				local requestedSpawnIndex = self:ReadNumber(player.SpawnIndex, index)
-				local spawnIndex = self:GetStartCornerSlotIndex(movedCount + 1)
+				local spawnIndex = math.max(1, math.floor(self:ReadNumber(requestedSpawnIndex, movedCount + 1)))
 				local spawnPosition = self:GetSpawnPosition(matchRoom, spawnIndex, total, owner)
-				local spawnCornerName = self:GetStartCornerRoomName(spawnIndex)
+				local spawnCornerName = "Center"
 				self:ResetPlayerSkillStateForBattle(playerEntity, self:ReadString(matchRoom.MatchId, ""))
 				self:MovePlayerToBattleStart(playerEntity, targetMapName, spawnPosition, spawnIndex)
 				self:SetGatherName(player.UserId, spawnIndex, total)
@@ -1377,23 +1379,21 @@ script BRBattleLauncher extends Logic
 	end
 
 	method Vector2 GetSpawnPosition(any matchRoom, number index, number total, any owner)
-		-- Returns one of the four fixed-corner battle start positions.
-		local cornerSlot = self:GetStartCornerSlotIndex(index)
+		-- Returns a foothold-aligned start position near the center room.
 		local targetMapName = self:ResolveTargetMapForRoom(matchRoom, owner)
-		local roomName = self:GetStartCornerRoomName(cornerSlot)
-		local roomCenter = self:GetPhysicalRoomCenter(targetMapName, roomName)
+		local roomCenter = self:GetCenterSpawnRoomCenter(matchRoom, owner, targetMapName)
 		if roomCenter == nil then
-			roomCenter = self:GetFallbackStartCornerCenter(matchRoom, cornerSlot, owner)
+			roomCenter = self:GetFallbackStartCenter(matchRoom, owner, targetMapName)
 		end
 
 		local roomHeight = self:GetStartRoomHeight(targetMapName)
-		local offset = self:GetStartCornerOffset(cornerSlot, roomHeight)
+		local offset = self:GetStartCenterOffset(index, total, targetMapName, roomHeight)
 		local rawPosition = Vector2(roomCenter.x + offset.x, roomCenter.y + offset.y)
 		return self:GetFootholdAlignedSpawnPosition(targetMapName, rawPosition, roomHeight)
 	end
 
 	method Vector2 GetFootholdAlignedSpawnPosition(string targetMapName, Vector2 rawPosition, number roomHeight)
-		-- Aligns the start position to the real MapleTile foothold under that X coordinate when one exists.
+		-- Aligns the start position to the nearest real MapleTile foothold near the requested point.
 		local safeMapName = self:ReadString(targetMapName, "RoomTestMap")
 		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. safeMapName)
 		if mapEntity == nil or mapEntity.FootholdComponent == nil then
@@ -1404,13 +1404,40 @@ script BRBattleLauncher extends Logic
 		local rayStart = Vector2(rawPosition.x, rawPosition.y + searchDistance * 0.5)
 		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDistance)
 		if foothold == nil then
+			foothold = mapEntity.FootholdComponent:GetNearestFootholdByPoint(rawPosition, searchDistance)
+		end
+
+		local alignedPosition = self:GetSpawnFootholdLandingPosition(foothold, rawPosition.x)
+		if alignedPosition == nil then
 			return rawPosition
 		end
 
-		local footholdY = foothold:GetYByX(rawPosition.x)
-		local alignedPosition = Vector2(rawPosition.x, footholdY + self:GetStartCornerFloorOffsetY())
 		log("[BRBattleLauncher] start foothold aligned map=" .. safeMapName .. " raw=(" .. tostring(rawPosition.x) .. "," .. tostring(rawPosition.y) .. ") aligned=(" .. tostring(alignedPosition.x) .. "," .. tostring(alignedPosition.y) .. ") foothold=" .. tostring(foothold.Id))
 		return alignedPosition
+	end
+
+	method any GetSpawnFootholdLandingPosition(any foothold, number requestedX)
+		-- Converts a foothold to a safe standing point while rejecting vertical footholds.
+		if foothold == nil then
+			return nil
+		end
+		if foothold:IsVertical() == true then
+			return nil
+		end
+
+		local x = self:ReadNumber(requestedX, 0)
+		local startPoint = foothold.StartPoint
+		local endPoint = foothold.EndPoint
+		if startPoint ~= nil and endPoint ~= nil then
+			local minX = math.min(startPoint.x, endPoint.x) + 0.03
+			local maxX = math.max(startPoint.x, endPoint.x) - 0.03
+			if maxX < minX then
+				minX = math.min(startPoint.x, endPoint.x)
+				maxX = math.max(startPoint.x, endPoint.x)
+			end
+			x = math.max(minX, math.min(maxX, x))
+		end
+		return Vector2(x, foothold:GetYByX(x) + self:GetStartCornerFloorOffsetY())
 	end
 
 	method number GetStartCornerSlotIndex(number index)
@@ -1434,6 +1461,74 @@ script BRBattleLauncher extends Logic
 		return "CornerNW"
 	end
 
+	method any GetCenterSpawnRoomCenter(any matchRoom, any owner, string targetMapName)
+		-- Finds the logical center room and resolves its assigned physical room center.
+		if _BRRoomGraphGenerator == nil then
+			return nil
+		end
+
+		local graph = nil
+		if matchRoom ~= nil then
+			graph = matchRoom.RoomGraph
+		end
+		if graph == nil then
+			graph = _BRRoomGraphGenerator:GetLatestGraphForMap(self:ReadString(targetMapName, ""))
+		end
+		if graph == nil then
+			return nil
+		end
+		local centerRoom = self:GetCenterLogicalRoom(graph)
+		local roomName = self:GetAssignedPhysicalRoomName(centerRoom)
+		if roomName == "" then
+			return nil
+		end
+
+		local mapName = self:ReadString(targetMapName, "RoomTestMap")
+		if mapName == "" then
+			mapName = "RoomTestMap"
+		end
+		local root = _BRRoomGraphGenerator:GetPhysicalRoomRoot(mapName)
+		return _BRRoomGraphGenerator:GetPhysicalRoomCenter(mapName, root, roomName)
+	end
+
+	method any GetCenterLogicalRoom(any graph)
+		-- Picks the visited logical room nearest to the graph center.
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local centerRow = (math.max(1, self:ReadNumber(graph.Rows, 1)) + 1) * 0.5
+		local centerColumn = (math.max(1, self:ReadNumber(graph.Columns, 1)) + 1) * 0.5
+		local bestRoom = nil
+		local bestDistance = nil
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				local row = self:ReadNumber(room.Row, centerRow)
+				local column = self:ReadNumber(room.Column, centerColumn)
+				local dx = row - centerRow
+				local dy = column - centerColumn
+				local distance = dx * dx + dy * dy
+				if bestDistance == nil or distance < bestDistance then
+					bestDistance = distance
+					bestRoom = room
+				end
+			end
+		end
+		return bestRoom
+	end
+
+	method string GetAssignedPhysicalRoomName(any logicalRoom)
+		-- Reads the physical room name assigned to a logical room.
+		if logicalRoom == nil then
+			return ""
+		end
+		local assignedRoomName = self:ReadString(logicalRoom.AssignedRoomName, "")
+		if assignedRoomName ~= "" then
+			return assignedRoomName
+		end
+		return self:ReadString(logicalRoom.FixedPhysicalRoomName, "")
+	end
+
 	method any GetPhysicalRoomCenter(string targetMapName, string roomName)
 		-- Reads the center position from an authored physical room entity when it exists.
 		local safeMapName = self:ReadString(targetMapName, "RoomTestMap")
@@ -1452,6 +1547,29 @@ script BRBattleLauncher extends Logic
 
 		local position = room.TransformComponent.WorldPosition
 		return Vector2(position.x, position.y)
+	end
+
+	method Vector2 GetFallbackStartCenter(any matchRoom, any owner, string targetMapName)
+		-- Computes a center-ish room when a generated room graph is not available yet.
+		local safeMapName = self:ReadString(targetMapName, self:ResolveTargetMapForRoom(matchRoom, owner))
+		local gridTool = self:GetGridMapEditorTool(safeMapName)
+		if gridTool ~= nil then
+			local row = math.max(1, math.floor((gridTool:GetRows() + 1) * 0.5))
+			local column = math.max(1, math.floor((gridTool:GetColumns() + 1) * 0.5))
+			return gridTool:GetCellCenter(row, column)
+		end
+
+		local columns = self:GetStartGridColumns(matchRoom, owner)
+		local rows = self:GetStartGridRows(matchRoom, owner)
+		local spacingX = self:GetStartRoomWidth(safeMapName) + self:GetStartGapX(safeMapName)
+		local spacingY = self:GetStartRoomHeight(safeMapName) + self:GetStartGapY(safeMapName)
+		local row = math.max(1, math.floor((rows + 1) * 0.5))
+		local column = math.max(1, math.floor((columns + 1) * 0.5))
+		local middleX = (columns - 1) * 0.5
+		local middleY = (rows - 1) * 0.5
+		local x = self:GetStartOriginX(safeMapName) + (column - 1 - middleX) * spacingX
+		local y = self:GetStartOriginY(safeMapName) + (middleY - (row - 1)) * spacingY
+		return Vector2(x, y)
 	end
 
 	method Vector2 GetFallbackStartCornerCenter(any matchRoom, number cornerSlot, any owner)
@@ -1493,6 +1611,19 @@ script BRBattleLauncher extends Logic
 			x = -x
 		end
 		local y = -(self:ReadNumber(roomHeight, self:GetStartRoomHeight("")) * 0.5) + self:GetStartCornerFloorOffsetY()
+		return Vector2(x, y)
+	end
+
+	method Vector2 GetStartCenterOffset(number index, number total, string targetMapName, number roomHeight)
+		-- Spreads players slightly around the center room foothold so they do not spawn on one pixel.
+		local count = math.max(1, math.floor(self:ReadNumber(total, 1)))
+		local slot = math.max(1, math.min(count, math.floor(self:ReadNumber(index, 1))))
+		local spread = self:GetStartCenterSpawnSpreadX()
+		local x = (slot - ((count + 1) * 0.5)) * spread
+		local halfWidth = self:GetStartRoomWidth(targetMapName) * 0.5
+		local maxOffset = math.max(0, halfWidth - 1.25)
+		x = math.max(-maxOffset, math.min(maxOffset, x))
+		local y = -(self:ReadNumber(roomHeight, self:GetStartRoomHeight(targetMapName)) * 0.5) + self:GetStartCornerFloorOffsetY()
 		return Vector2(x, y)
 	end
 
@@ -1593,6 +1724,11 @@ script BRBattleLauncher extends Logic
 	method number GetStartCornerFloorOffsetY()
 		-- Returns the vertical offset above the room bottom foothold for corner starts.
 		return math.max(0, self:ReadNumber(self.StartCornerFloorOffsetY, 0.25))
+	end
+
+	method number GetStartCenterSpawnSpreadX()
+		-- Returns horizontal spacing between central start positions.
+		return math.max(0, self:ReadNumber(self.StartCenterSpawnSpreadX, 0.85))
 	end
 
 	@ExecSpace("ServerOnly")

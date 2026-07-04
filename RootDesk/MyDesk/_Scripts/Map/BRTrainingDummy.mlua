@@ -9,15 +9,30 @@ script BRTrainingDummy extends Component
 
 	property number DamageFlashSeconds = 0.12
 
+	property boolean RespawnOnBreak = true
+
+	property number BreakDestroyDelaySeconds = 0.45
+
 	property boolean VerboseLog = true
 
 	property string NameTagTitle = "CHAIN MONSTER"
+
+	@Sync
+	property string MonsterPresetName = ""
+
+	@Sync
+	property number MonsterLevel = 1
+
+	@Sync
+	property boolean IsBattleRuntimeMonster = false
 
 	property boolean GrantSkillExperienceOnBreak = true
 
 	property number SkillExperienceReward = 1
 
 	property number MesoReward = 5
+
+	property number HitDamage = 1
 
 	property boolean PauseMovementWhenBroken = true
 
@@ -74,6 +89,50 @@ script BRTrainingDummy extends Component
 		else
 			self:FlashHit()
 		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void InitializeBattleMonster(string displayName, string presetName, number level, number maxHp, number hitDamage, number mesoReward, number experienceReward, boolean boss)
+		-- Applies CSV-backed monster stats to a runtime-spawned battle monster.
+		self.EnableTrainingDummy = true
+		self.IsBattleRuntimeMonster = true
+		self.MonsterPresetName = self:ReadString(presetName, "")
+		self.MonsterLevel = math.max(1, math.floor(self:ReadNumber(level, 1)))
+		self.NameTagTitle = self:ReadString(displayName, "Battle Monster")
+		self.MaxHp = math.max(1, math.floor(self:ReadNumber(maxHp, 1)))
+		self.HitDamage = math.max(1, math.floor(self:ReadNumber(hitDamage, 1)))
+		self.SkillExperienceReward = math.max(0, math.floor(self:ReadNumber(experienceReward, 0)))
+		self.MesoReward = math.max(0, math.floor(self:ReadNumber(mesoReward, 0)))
+		self.RespawnOnBreak = false
+		self.ResetDelaySeconds = 0
+		self.GrantSkillExperienceOnBreak = true
+		self.CurrentHp = self:GetMaxHp()
+		self.DummyStatus = "Lv." .. tostring(math.floor(self.MonsterLevel)) .. " HP " .. tostring(math.floor(self.CurrentHp)) .. "/" .. tostring(self:GetMaxHp())
+		if boss == true then
+			self.DummyStatus = "BOSS " .. self.DummyStatus
+		end
+		self:SetMovementPaused(false)
+		self:SetDummyColor(Color(1, 1, 1, 1))
+		self:UpdateNameTag()
+		self:Log("battle monster initialized name=" .. self.NameTagTitle
+			.. " preset=" .. self.MonsterPresetName
+			.. " hp=" .. tostring(self:GetMaxHp())
+			.. " hitDamage=" .. tostring(self:GetHitDamage())
+			.. " meso=" .. tostring(self:GetMesoReward())
+			.. " exp=" .. tostring(self:GetSkillExperienceReward()))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void KillForEvolution()
+		-- Removes this monster as part of phase evolution.
+		self:ClearTimers()
+		self.CurrentHp = 0
+		self.DummyStatus = "Evolved"
+		self:SetMovementPaused(true)
+		self:SetDummyColor(Color(0.4, 0.4, 0.4, 1))
+		self:UpdateNameTag()
+		self:Log("evolution kill name=" .. self:ReadString(self.NameTagTitle, "monster"))
+		self:DestroyEntityAfterBreak()
 	end
 
 	@ExecSpace("ServerOnly")
@@ -134,12 +193,32 @@ script BRTrainingDummy extends Component
 		self:UpdateNameTag()
 		self:Log("broken resetIn=" .. tostring(self:GetResetDelaySeconds()))
 
+		if self:ShouldRespawnOnBreak() ~= true then
+			local destroyDelay = self:GetBreakDestroyDelaySeconds()
+			if destroyDelay <= 0 then
+				self:DestroyEntityAfterBreak()
+				return
+			end
+			self.resetTimerId = _TimerService:SetTimerOnce(function() self:DestroyEntityAfterBreak() end, destroyDelay)
+			return
+		end
+
 		local delay = self:GetResetDelaySeconds()
 		if delay <= 0 then
 			self:ResetDummy()
 			return
 		end
 		self.resetTimerId = _TimerService:SetTimerOnce(function() self:ResetDummy() end, delay)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void DestroyEntityAfterBreak()
+		if self.Entity == nil then
+			return
+		end
+		self.Entity:SetVisible(false)
+		self.Entity:SetEnable(false)
+		self.Entity:Destroy()
 	end
 
 	@ExecSpace("ServerOnly")
@@ -294,12 +373,24 @@ script BRTrainingDummy extends Component
 		return math.max(0.03, self:ReadNumber(self.DamageFlashSeconds, 0.12))
 	end
 
+	method boolean ShouldRespawnOnBreak()
+		return self.RespawnOnBreak == true
+	end
+
+	method number GetBreakDestroyDelaySeconds()
+		return math.max(0, self:ReadNumber(self.BreakDestroyDelaySeconds, 0.45))
+	end
+
 	method number GetSkillExperienceReward()
 		return math.max(0, math.floor(self:ReadNumber(self.SkillExperienceReward, 1)))
 	end
 
 	method number GetMesoReward()
 		return math.max(0, math.floor(self:ReadNumber(self.MesoReward, 5)))
+	end
+
+	method number GetHitDamage()
+		return math.max(1, math.floor(self:ReadNumber(self.HitDamage, 1)))
 	end
 
 	method string ReadString(any value, string fallback)

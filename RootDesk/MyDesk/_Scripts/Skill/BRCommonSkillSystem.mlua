@@ -102,7 +102,7 @@ script BRCommonSkillSystem extends Logic
 
 	property integer localNimbusEffectSerial = 0
 
-	-- Fixed-action key rebinding (client-local). Codes are KeyboardKey values (Q=113, C=99, E=101).
+	-- Fixed-action key rebinding (client-local). Codes are KeyboardKey values (Q=113, C=99, E=101, R=114).
 	-- Attack has no static default in this project (DefaultPlayer engine binding), so it is discovered
 	-- at runtime via PlayerControllerComponent:GetActionName and remapped via SetActionKey.
 	property string AttackActionName = "Attack"
@@ -119,9 +119,9 @@ script BRCommonSkillSystem extends Logic
 
 	property integer NimbusKeyCode = 101
 
-	property integer AttackKeyCode = 0
+	property integer AttackKeyCode = 114
 
-	property integer DefaultAttackKeyCode = 0
+	property integer DefaultAttackKeyCode = 114
 
 	property boolean attackKeyDiscovered = false
 
@@ -135,7 +135,7 @@ script BRCommonSkillSystem extends Logic
 
 	property integer snapNimbusKeyCode = 101
 
-	property integer snapAttackKeyCode = 0
+	property integer snapAttackKeyCode = 114
 
 	method void OnBeginPlay()
 		-- Initializes common skill input on the client and portal-lock state on the server.
@@ -175,7 +175,7 @@ script BRCommonSkillSystem extends Logic
 		self.inputKeyUpHandler = _InputService:ConnectEvent(KeyUpEvent, self.OnCommonSkillKeyUp)
 		self:EnsureAttackKeyDiscovered()
 		self:RemoveBlinkKeyDefaultAction(true)
-		log("[BRCommonSkill] client input ready unique=" .. self:GetKeyDisplayName(self:GetUniqueKeyCode()) .. " blink=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " nimbus=" .. self:GetKeyDisplayName(self:GetNimbusKeyCode()))
+		log("[BRCommonSkill] client input ready unique=" .. self:GetKeyDisplayName(self:GetUniqueKeyCode()) .. " blink=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " nimbus=" .. self:GetKeyDisplayName(self:GetNimbusKeyCode()) .. " chain=" .. self:GetActionKeyName("attack"))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1676,7 +1676,7 @@ script BRCommonSkillSystem extends Logic
 		elseif id == "nimbus" then
 			return "근두운"
 		elseif id == "attack" then
-			return "기본 공격"
+			return "체인 스킬"
 		end
 		return ""
 	end
@@ -1813,6 +1813,18 @@ script BRCommonSkillSystem extends Logic
 	method void EnsureAttackKeyDiscovered()
 		-- Finds which key currently fires the "Attack" PlayerActionEvent so it can be shown and remapped.
 		if self.attackKeyDiscovered == true then
+			return
+		end
+		local configuredCode = math.floor(self:ReadNumber(self.AttackKeyCode, self.DefaultAttackKeyCode))
+		if configuredCode > 0 then
+			self.AttackKeyCode = configuredCode
+			if math.floor(self:ReadNumber(self.DefaultAttackKeyCode, 0)) <= 0 then
+				self.DefaultAttackKeyCode = configuredCode
+			end
+			self.snapAttackKeyCode = configuredCode
+			self.attackKeyDiscovered = true
+			self:ApplyAttackKeyToController(configuredCode)
+			log("[BRCommonSkill] attack key configured key=" .. self:GetKeyDisplayName(configuredCode))
 			return
 		end
 		local controller = self:GetLocalPlayerController()

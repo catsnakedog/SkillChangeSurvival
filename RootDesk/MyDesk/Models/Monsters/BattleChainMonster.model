@@ -21,7 +21,11 @@
         "MOD.Core.TransformComponent",
         "MOD.Core.NameTagComponent",
         "script.BRTrainingDummy",
-        "MOD.Core.PolygonRendererComponent"
+        "MOD.Core.PolygonRendererComponent",
+        "MOD.Core.SpriteRendererComponent",
+        "MOD.Core.RigidbodyComponent",
+        "MOD.Core.MovementComponent",
+        "script.BRBattleMonsterAI"
       ],
       "Properties": [],
       "Values": [
@@ -322,7 +326,169 @@
             "$type": "MODNativeType",
             "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
           },
+          "Value": false
+        },
+        {
+          "TargetType": "MOD.Core.SpriteRendererComponent",
+          "Name": "SpriteRUID",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": "9cd156b021944812adee08038f82731f"
+        },
+        {
+          "TargetType": "MOD.Core.SpriteRendererComponent",
+          "Name": "SortingLayer",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": "MapLayer0"
+        },
+        {
+          "TargetType": "MOD.Core.SpriteRendererComponent",
+          "Name": "OrderInLayer",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": 34
+        },
+        {
+          "TargetType": "MOD.Core.SpriteRendererComponent",
+          "Name": "IgnoreMapLayerCheck",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
           "Value": true
+        },
+        {
+          "TargetType": "MOD.Core.RigidbodyComponent",
+          "Name": "KinematicMove",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": false
+        },
+        {
+          "TargetType": "MOD.Core.RigidbodyComponent",
+          "Name": "IsolatedMove",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": false
+        },
+        {
+          "TargetType": "MOD.Core.RigidbodyComponent",
+          "Name": "IgnoreMoveBoundary",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": true
+        },
+        {
+          "TargetType": "MOD.Core.RigidbodyComponent",
+          "Name": "Gravity",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "number"
+          },
+          "Value": 1
+        },
+        {
+          "TargetType": "MOD.Core.RigidbodyComponent",
+          "Name": "WalkSpeed",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "number"
+          },
+          "Value": 0.75
+        },
+        {
+          "TargetType": "MOD.Core.RigidbodyComponent",
+          "Name": "WalkJump",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "number"
+          },
+          "Value": 1.4
+        },
+        {
+          "TargetType": "MOD.Core.MovementComponent",
+          "Name": "InputSpeed",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "number"
+          },
+          "Value": 0.75
+        },
+        {
+          "TargetType": "MOD.Core.MovementComponent",
+          "Name": "JumpForce",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "number"
+          },
+          "Value": 1.4
+        },
+        {
+          "TargetType": "script.BRBattleMonsterAI",
+          "Name": "StandRUID",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": "9cd156b021944812adee08038f82731f"
+        },
+        {
+          "TargetType": "script.BRBattleMonsterAI",
+          "Name": "MoveRUID",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": "b44d5aa5e1704deab2dab7ef512b4a70"
+        },
+        {
+          "TargetType": "script.BRBattleMonsterAI",
+          "Name": "AttackRUID",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": "bbd6d46426ff40a3ba7796d3c3dc8d0f"
+        },
+        {
+          "TargetType": "script.BRBattleMonsterAI",
+          "Name": "DieRUID",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": "fbde4fab716a4e658eb88a27a2d321df"
+        },
+        {
+          "TargetType": "script.BRBattleMonsterAI",
+          "Name": "AttackDamage",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "number"
+          },
+          "Value": 100
+        },
+        {
+          "TargetType": "script.BRBattleMonsterAI",
+          "Name": "VerboseLog",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": false
         }
       ],
       "EventLinks": [],

@@ -1,4 +1,6 @@
 ﻿action_id,status_id,duration_frames,damage_taken_rate,chance_percent,heal_max_hp_percent,attack_power_rate
+아이언월/피해감소,iron_wall,67,0.5,100,0,1
+극딜/공버프,burst_damage,134,1,100,0,1.2
 에픽 어드벤처/데미지버프,epic_adventure,2000,1,100,0,
 메이플 용사/스탯버프,maple_hero,8000,1,100,0,
 용사의 의지/면역,will_immunity,100,1,100,0,

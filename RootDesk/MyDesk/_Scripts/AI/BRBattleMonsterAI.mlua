@@ -1,0 +1,625 @@
+@Component
+script BRBattleMonsterAI extends Component
+
+	property boolean EnableMonsterAI = true
+
+	property number MoveSpeed = 0.75
+
+	property number SightRange = 7
+
+	property number AttackRangeX = 0.9
+
+	property number AttackRangeY = 0.75
+
+	property number AttackCooldownSeconds = 1.25
+
+	property number AttackHoldSeconds = 0.45
+
+	property number AttackDamage = 1
+
+	property number JumpCooldownSeconds = 1.4
+
+	property boolean AllowJumpChase = false
+
+	property number FootholdEdgeMargin = 0.18
+
+	property number WanderMinSeconds = 0.7
+
+	property number WanderMaxSeconds = 1.8
+
+	property boolean BossMonster = false
+
+	property string StandRUID = ""
+
+	property string MoveRUID = ""
+
+	property string AttackRUID = ""
+
+	property string DieRUID = ""
+
+	property boolean VerboseLog = true
+
+	@ExecSpace("ServerOnly")
+	method void OnBeginPlay()
+		self:EnsureRuntime()
+		self:ConfigureMovement()
+		self:ApplyRenderDefaults()
+		self:SetVisualState("STAND", true)
+		self:Log("ready damage=" .. tostring(self:GetAttackDamage())
+			.. " speed=" .. tostring(self:GetMoveSpeed())
+			.. " stand=" .. self:ShortRUID(self.StandRUID))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnUpdate(number delta)
+		if self.EnableMonsterAI ~= true or self.Entity == nil or isvalid(self.Entity) ~= true then
+			return
+		end
+		self:EnsureRuntime()
+		if self:IsAlive() ~= true then
+			self:HandleDead()
+			return
+		end
+
+		local dt = math.max(0.001, self:ReadNumber(delta, 0.033))
+		local target = self:GetCachedTarget()
+		if self:IsTargetValid(target) == true then
+			if self:IsTargetInAttackRange(target) == true then
+				self:StopMove()
+				self:FaceTarget(target)
+				self:TryAttack(target)
+				return
+			end
+			if self:IsTargetInSightRange(target) == true then
+				self:MoveToward(target, dt)
+				return
+			end
+		end
+
+		self:Wander(dt)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ConfigureBattleMonsterAI(string standRuid, string moveRuid, string attackRuid, string dieRuid, number attackDamage, boolean boss)
+		self.EnableMonsterAI = true
+		self.BossMonster = boss == true
+		self.StandRUID = self:ReadString(standRuid, self.StandRUID)
+		self.MoveRUID = self:ReadString(moveRuid, self.MoveRUID)
+		self.AttackRUID = self:ReadString(attackRuid, self.AttackRUID)
+		self.DieRUID = self:ReadString(dieRuid, self.DieRUID)
+		self.AttackDamage = math.max(1, math.floor(self:ReadNumber(attackDamage, self.AttackDamage)))
+		if self.BossMonster == true then
+			self.MoveSpeed = math.max(self:ReadNumber(self.MoveSpeed, 0.75), 0.95)
+			self.SightRange = math.max(self:ReadNumber(self.SightRange, 7), 10)
+			self.AttackRangeX = math.max(self:ReadNumber(self.AttackRangeX, 0.9), 1.25)
+			self.AttackRangeY = math.max(self:ReadNumber(self.AttackRangeY, 0.75), 1.0)
+		end
+		self:EnsureRuntime()
+		self:ConfigureMovement()
+		self:ApplyRenderDefaults()
+		self:SetVisualState("STAND", true)
+		self:Log("configured damage=" .. tostring(self:GetAttackDamage())
+			.. " boss=" .. tostring(self.BossMonster)
+			.. " stand=" .. self:ShortRUID(self.StandRUID)
+			.. " move=" .. self:ShortRUID(self.MoveRUID)
+			.. " attack=" .. self:ShortRUID(self.AttackRUID))
+	end
+
+	method Entity GetCachedTarget()
+		local now = self:Now()
+		if now >= self:ReadNumber(self._T.nextTargetScanAt, 0) then
+			self._T.cachedTarget = self:FindNearestPlayer()
+			self._T.nextTargetScanAt = now + 0.25
+		end
+		if self:IsTargetValid(self._T.cachedTarget) ~= true then
+			self._T.cachedTarget = nil
+		end
+		return self._T.cachedTarget
+	end
+
+	method Entity FindNearestPlayer()
+		if self.Entity == nil then
+			return nil
+		end
+		local mapName = self:ReadString(self.Entity.CurrentMapName, "")
+		if mapName == "" or _UserService == nil then
+			return nil
+		end
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users == nil then
+			return nil
+		end
+
+		local best = nil
+		local bestDistance = 999999
+		local origin = self:GetEntityPosition2(self.Entity)
+		for index, target in ipairs(users) do
+			if self:IsTargetValid(target) == true then
+				local distance = self:GetDistance(origin, self:GetEntityPosition2(target))
+				if distance < bestDistance then
+					bestDistance = distance
+					best = target
+				end
+			end
+		end
+		return best
+	end
+
+	method boolean IsTargetValid(Entity target)
+		if target == nil or isvalid(target) ~= true or self.Entity == nil then
+			return false
+		end
+		if target.CurrentMapName ~= self.Entity.CurrentMapName then
+			return false
+		end
+		if target.PlayerComponent == nil then
+			return false
+		end
+		return target.PlayerComponent:IsDead() == false and target.PlayerComponent.Hp > 0
+	end
+
+	method boolean IsTargetInSightRange(Entity target)
+		local distance = self:GetDistance(self:GetEntityPosition2(self.Entity), self:GetEntityPosition2(target))
+		return distance <= self:GetSightRange()
+	end
+
+	method boolean IsTargetInAttackRange(Entity target)
+		local selfPosition = self:GetEntityPosition2(self.Entity)
+		local targetPosition = self:GetEntityPosition2(target)
+		return math.abs(targetPosition.x - selfPosition.x) <= self:GetAttackRangeX()
+			and math.abs(targetPosition.y - selfPosition.y) <= self:GetAttackRangeY()
+	end
+
+	method void TryAttack(Entity target)
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.nextAttackAt, 0) then
+			self:SetVisualState("ATTACK", false)
+			return
+		end
+
+		self._T.nextAttackAt = now + self:GetAttackCooldownSeconds()
+		self._T.visualHoldUntil = now + self:GetAttackHoldSeconds()
+		self:SetVisualState("ATTACK", true)
+
+		local battleLogic = self:GetBattleLogic()
+		if battleLogic ~= nil then
+			battleLogic:ApplyDamageToPlayerFromBot(self.Entity, target, self:GetAttackDamage(), "monster:" .. self:GetMonsterSourceName())
+			self:Log("attack target=" .. self:GetTargetUserId(target)
+				.. " damage=" .. tostring(self:GetAttackDamage()))
+		else
+			self:Log("attack skipped reason=noBattleLogic target=" .. self:GetTargetUserId(target))
+		end
+	end
+
+	method void MoveToward(Entity target, number delta)
+		local selfPosition = self:GetEntityPosition2(self.Entity)
+		local targetPosition = self:GetEntityPosition2(target)
+		local direction = 1
+		if targetPosition.x < selfPosition.x then
+			direction = -1
+		end
+		self:MoveDirection(direction, delta)
+		if self.AllowJumpChase == true then
+			self:TryJumpToward(targetPosition)
+		end
+	end
+
+	method void Wander(number delta)
+		local now = self:Now()
+		if now >= self:ReadNumber(self._T.nextWanderAt, 0) then
+			local direction = -1
+			if _UtilLogic ~= nil and _UtilLogic:RandomDouble() >= 0.5 then
+				direction = 1
+			end
+			self._T.wanderDirection = direction
+			local minSeconds = self:GetWanderMinSeconds()
+			local maxSeconds = self:GetWanderMaxSeconds()
+			local randomRate = 0.5
+			if _UtilLogic ~= nil then
+				randomRate = _UtilLogic:RandomDouble()
+			end
+			self._T.nextWanderAt = now + minSeconds + randomRate * math.max(0.01, maxSeconds - minSeconds)
+		end
+		self:MoveDirection(self:ReadNumber(self._T.wanderDirection, 1), delta)
+	end
+
+	method void MoveDirection(number direction, number delta)
+		local safeDirection = 1
+		if self:ReadNumber(direction, 1) < 0 then
+			safeDirection = -1
+		end
+		if self:CanMoveDirection(safeDirection) ~= true then
+			local reversedDirection = safeDirection * -1
+			if self:CanMoveDirection(reversedDirection) == true then
+				safeDirection = reversedDirection
+				self._T.wanderDirection = safeDirection
+			else
+				self:FaceDirection(safeDirection)
+				self:StopMove()
+				local now = self:Now()
+				if now >= self:ReadNumber(self._T.nextMoveBlockedLogAt, 0) then
+					self._T.nextMoveBlockedLogAt = now + 1
+					self:Log("move blocked grounded=" .. tostring(self:IsGrounded())
+						.. " dir=" .. tostring(safeDirection))
+				end
+				return
+			end
+		end
+
+		self._T.lookDirection = safeDirection
+		self:FaceDirection(safeDirection)
+		if self.Entity.MovementComponent ~= nil then
+			self.Entity.MovementComponent.InputSpeed = self:GetMoveSpeed()
+			self.Entity.MovementComponent:MoveToDirection(Vector2(safeDirection, 0), 0)
+		end
+		if self.Entity.RigidbodyComponent ~= nil then
+			local yVelocity = 0
+			if self.Entity.RigidbodyComponent.MoveVelocity ~= nil then
+				yVelocity = self.Entity.RigidbodyComponent.MoveVelocity.y
+			end
+			self.Entity.RigidbodyComponent.MoveVelocity = Vector2(safeDirection * self:GetMoveSpeed(), yVelocity)
+		end
+		self:SetVisualState("MOVE", false)
+	end
+
+	method boolean CanMoveDirection(number direction)
+		if self.Entity == nil or self.Entity.RigidbodyComponent == nil then
+			return true
+		end
+		local rb = self.Entity.RigidbodyComponent
+		if rb:IsOnGround() ~= true then
+			return false
+		end
+		local foothold = rb:GetCurrentFoothold()
+		if foothold ~= nil and foothold:IsVertical() ~= true and foothold.StartPoint ~= nil and foothold.EndPoint ~= nil then
+			local position = self.Entity.TransformComponent.WorldPosition
+			local minX = math.min(foothold.StartPoint.x, foothold.EndPoint.x) + self:GetFootholdEdgeMargin()
+			local maxX = math.max(foothold.StartPoint.x, foothold.EndPoint.x) - self:GetFootholdEdgeMargin()
+			if maxX <= minX then
+				return false
+			end
+			if self:ReadNumber(direction, 1) < 0 then
+				return position.x > minX
+			end
+			return position.x < maxX
+		end
+		return rb:PredictFootholdEnd(0.35, self:ReadNumber(direction, 1) > 0) ~= true
+	end
+
+	method boolean IsGrounded()
+		if self.Entity == nil or self.Entity.RigidbodyComponent == nil then
+			return false
+		end
+		return self.Entity.RigidbodyComponent:IsOnGround() == true
+	end
+
+	method void TryJumpToward(Vector2 targetPosition)
+		if targetPosition == nil or self.Entity == nil or self.Entity.RigidbodyComponent == nil or self.Entity.MovementComponent == nil then
+			return
+		end
+		if targetPosition.y <= self:GetEntityPosition2(self.Entity).y + 0.45 then
+			return
+		end
+		local now = self:Now()
+		if now < self:ReadNumber(self._T.nextJumpAt, 0) then
+			return
+		end
+		if self.Entity.RigidbodyComponent:IsOnGround() ~= true then
+			return
+		end
+		self._T.nextJumpAt = now + self:GetJumpCooldownSeconds()
+		self.Entity.MovementComponent:Jump()
+	end
+
+	method void StopMove()
+		if self.Entity == nil then
+			return
+		end
+		if self.Entity.MovementComponent ~= nil
+			and (self.Entity.RigidbodyComponent == nil or self:IsGrounded() == true) then
+			self.Entity.MovementComponent:Stop()
+		end
+		if self.Entity.RigidbodyComponent ~= nil then
+			local yVelocity = 0
+			if self.Entity.RigidbodyComponent.MoveVelocity ~= nil then
+				yVelocity = self.Entity.RigidbodyComponent.MoveVelocity.y
+			end
+			self.Entity.RigidbodyComponent.MoveVelocity = Vector2(0, yVelocity)
+		end
+		self:SetVisualState("STAND", false)
+	end
+
+	method void FaceTarget(Entity target)
+		if target == nil then
+			return
+		end
+		local selfPosition = self:GetEntityPosition2(self.Entity)
+		local targetPosition = self:GetEntityPosition2(target)
+		if targetPosition.x < selfPosition.x then
+			self:FaceDirection(-1)
+		else
+			self:FaceDirection(1)
+		end
+	end
+
+	method void FaceDirection(number direction)
+		local safeDirection = 1
+		if self:ReadNumber(direction, 1) < 0 then
+			safeDirection = -1
+		end
+		self._T.lookDirection = safeDirection
+		if self.Entity ~= nil and self.Entity.TransformComponent ~= nil then
+			local scale = self.Entity.TransformComponent.Scale
+			local baseX = math.abs(self:ReadNumber(scale.x, 1))
+			if baseX <= 0 then
+				baseX = 1
+			end
+			self.Entity.TransformComponent.Scale = Vector3(-safeDirection * baseX, scale.y, scale.z)
+		end
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil then
+			self.Entity.SpriteRendererComponent.FlipX = false
+		end
+	end
+
+	method void HandleDead()
+		if self._T.deathHandled == true then
+			return
+		end
+		self._T.deathHandled = true
+		self:StopMove()
+		self:SetVisualState("DIE", true)
+		self:Log("dead visual=" .. self:ShortRUID(self.DieRUID))
+	end
+
+	method void ConfigureMovement()
+		if self.Entity == nil then
+			return
+		end
+		if self.Entity.RigidbodyComponent ~= nil then
+			self.Entity.RigidbodyComponent.Enable = true
+			self.Entity.RigidbodyComponent.KinematicMove = false
+			self.Entity.RigidbodyComponent.IsolatedMove = false
+			self.Entity.RigidbodyComponent.IgnoreMoveBoundary = false
+			self.Entity.RigidbodyComponent.Gravity = 30
+			self.Entity.RigidbodyComponent.WalkSpeed = self:GetMoveSpeed()
+			self.Entity.RigidbodyComponent.WalkJump = 1.4
+			self.Entity.RigidbodyComponent:PositionReset()
+		end
+		if self.Entity.MovementComponent ~= nil then
+			self.Entity.MovementComponent.InputSpeed = self:GetMoveSpeed()
+			self.Entity.MovementComponent.JumpForce = 1.4
+		end
+	end
+
+	method void ApplyRenderDefaults()
+		if self.Entity == nil or self.Entity.SpriteRendererComponent == nil then
+			return
+		end
+		self.Entity.SpriteRendererComponent.Enable = true
+		self.Entity.SpriteRendererComponent.SortingLayer = "MapLayer0"
+		self.Entity.SpriteRendererComponent.OrderInLayer = 34
+		self.Entity.SpriteRendererComponent.IgnoreMapLayerCheck = true
+		self.Entity.SpriteRendererComponent.Color = Color(1, 1, 1, 1)
+		self.Entity.SpriteRendererComponent:SetAlpha(1)
+	end
+
+	method void SetVisualState(string state, boolean force)
+		if self.Entity == nil or self.Entity.SpriteRendererComponent == nil then
+			return
+		end
+		local stateKey = string.upper(self:ReadString(state, "STAND"))
+		if force ~= true and stateKey ~= "ATTACK" and stateKey ~= "DIE" and self:Now() < self:ReadNumber(self._T.visualHoldUntil, 0) then
+			return
+		end
+		local ruid = self:GetVisualRUID(stateKey)
+		if ruid == "" then
+			return
+		end
+		if force ~= true and self._T.visualState == stateKey and self.Entity.SpriteRendererComponent.SpriteRUID == ruid then
+			return
+		end
+		if force == true and self.Entity.SpriteRendererComponent.SpriteRUID == ruid and stateKey ~= "STAND" then
+			local stand = self:GetVisualRUID("STAND")
+			if stand ~= "" and stand ~= ruid then
+				self.Entity.SpriteRendererComponent.SpriteRUID = stand
+			end
+		end
+		self.Entity.SpriteRendererComponent.SpriteRUID = ruid
+		self.Entity.SpriteRendererComponent.Enable = true
+		self._T.visualState = stateKey
+	end
+
+	method string GetVisualRUID(string state)
+		local stateKey = string.upper(self:ReadString(state, "STAND"))
+		if stateKey == "MOVE" and self:ReadString(self.MoveRUID, "") ~= "" then
+			return self.MoveRUID
+		end
+		if stateKey == "ATTACK" and self:ReadString(self.AttackRUID, "") ~= "" then
+			return self.AttackRUID
+		end
+		if stateKey == "DIE" and self:ReadString(self.DieRUID, "") ~= "" then
+			return self.DieRUID
+		end
+		return self:ReadString(self.StandRUID, "")
+	end
+
+	method boolean IsAlive()
+		local dummy = self:GetTrainingDummy()
+		if dummy ~= nil then
+			return dummy.CurrentHp > 0
+		end
+		return self.Entity ~= nil and isvalid(self.Entity) == true
+	end
+
+	method any GetTrainingDummy()
+		if self.Entity == nil then
+			return nil
+		end
+		local dummy = self.Entity:GetComponent("script.BRTrainingDummy")
+		if dummy == nil then
+			dummy = self.Entity:GetComponent("BRTrainingDummy")
+		end
+		return dummy
+	end
+
+	method any GetBattleLogic()
+		local mapName = ""
+		if self.Entity ~= nil and self.Entity.CurrentMapName ~= nil then
+			mapName = self:ReadString(self.Entity.CurrentMapName, "")
+		end
+		if mapName == "" then
+			return nil
+		end
+		local entity = _EntityService:GetEntityByPath("/maps/" .. mapName .. "/BattleLogic")
+		if entity == nil then
+			return nil
+		end
+		return entity:GetComponent("script.BRBattleLogic")
+	end
+
+	method Vector2 GetEntityPosition2(Entity entity)
+		if entity == nil or entity.TransformComponent == nil then
+			return Vector2(0, 0)
+		end
+		local position = entity.TransformComponent.WorldPosition
+		return Vector2(position.x, position.y)
+	end
+
+	method number GetDistance(Vector2 a, Vector2 b)
+		if a == nil or b == nil then
+			return 999999
+		end
+		local dx = a.x - b.x
+		local dy = a.y - b.y
+		return math.sqrt(dx * dx + dy * dy)
+	end
+
+	method number GetMoveSpeed()
+		return math.max(0.1, self:ReadNumber(self.MoveSpeed, 0.75))
+	end
+
+	method number GetSightRange()
+		return math.max(1, self:ReadNumber(self.SightRange, 7))
+	end
+
+	method number GetAttackRangeX()
+		return math.max(0.2, self:ReadNumber(self.AttackRangeX, 0.9))
+	end
+
+	method number GetAttackRangeY()
+		return math.max(0.2, self:ReadNumber(self.AttackRangeY, 0.75))
+	end
+
+	method number GetAttackCooldownSeconds()
+		return math.max(0.1, self:ReadNumber(self.AttackCooldownSeconds, 1.25))
+	end
+
+	method number GetAttackHoldSeconds()
+		return math.max(0.05, self:ReadNumber(self.AttackHoldSeconds, 0.45))
+	end
+
+	method number GetAttackDamage()
+		return math.max(1, math.floor(self:ReadNumber(self.AttackDamage, 1)))
+	end
+
+	method number GetJumpCooldownSeconds()
+		return math.max(0.2, self:ReadNumber(self.JumpCooldownSeconds, 1.4))
+	end
+
+	method number GetWanderMinSeconds()
+		return math.max(0.1, self:ReadNumber(self.WanderMinSeconds, 0.7))
+	end
+
+	method number GetWanderMaxSeconds()
+		return math.max(self:GetWanderMinSeconds(), self:ReadNumber(self.WanderMaxSeconds, 1.8))
+	end
+
+	method number GetFootholdEdgeMargin()
+		return math.max(0.03, self:ReadNumber(self.FootholdEdgeMargin, 0.18))
+	end
+
+	method string GetMonsterSourceName()
+		local dummy = self:GetTrainingDummy()
+		if dummy ~= nil then
+			return self:ReadString(dummy.MonsterPresetName, "battle-monster")
+		end
+		return "battle-monster"
+	end
+
+	method string GetTargetUserId(Entity target)
+		if target ~= nil and target.PlayerComponent ~= nil then
+			return self:ReadString(target.PlayerComponent.UserId, "")
+		end
+		return ""
+	end
+
+	method void EnsureRuntime()
+		if self._T.nextAttackAt == nil then
+			self._T.nextAttackAt = 0
+		end
+		if self._T.nextJumpAt == nil then
+			self._T.nextJumpAt = 0
+		end
+		if self._T.nextWanderAt == nil then
+			self._T.nextWanderAt = 0
+		end
+		if self._T.nextTargetScanAt == nil then
+			self._T.nextTargetScanAt = 0
+		end
+		if self._T.wanderDirection == nil then
+			self._T.wanderDirection = 1
+		end
+		if self._T.lookDirection == nil then
+			self._T.lookDirection = 1
+		end
+		if self._T.visualState == nil then
+			self._T.visualState = ""
+		end
+		if self._T.visualHoldUntil == nil then
+			self._T.visualHoldUntil = 0
+		end
+		if self._T.deathHandled == nil then
+			self._T.deathHandled = false
+		end
+		if self._T.nextMoveBlockedLogAt == nil then
+			self._T.nextMoveBlockedLogAt = 0
+		end
+	end
+
+	method number Now()
+		if _UtilLogic ~= nil then
+			return _UtilLogic.ElapsedSeconds
+		end
+		return 0
+	end
+
+	method string ShortRUID(string value)
+		local text = self:ReadString(value, "")
+		if string.len(text) <= 8 then
+			return text
+		end
+		return string.sub(text, 1, 8)
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		if self.VerboseLog == true then
+			log("[BRBattleMonsterAI] " .. message)
+		end
+	end
+
+end

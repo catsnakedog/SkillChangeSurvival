@@ -1,4 +1,18 @@
 ﻿action_id,action_type,required_context
+기본공격_슬래시블러스트/피해,damage,시전자|대상
+기본공격_애로우블로우/투사체,projectile,시전자
+기본공격_애로우블로우/피해,damage,시전자|대상
+기본공격_샤프슬래시/피해,damage,시전자|대상
+기본공격_에너지볼트/투사체,projectile,시전자
+기본공격_에너지볼트/피해,damage,시전자|대상
+리트리트 샷/후퇴,move,시전자
+리트리트 샷/투사체,projectile,시전자
+리트리트 샷/피해,damage,시전자|대상
+리트리트 샷/둔화,debuff,대상
+아이언월/피해감소,buff,시전자
+슬래시 스톤/구르기,move,시전자
+슬래시 스톤/피해,damage,시전자|대상
+극딜/공버프,buff,시전자
 PirateMonkeySummon/summon,summon,위치|시전자
 PirateMonkeySummon2/summon,summon,위치|시전자
 PirateMonkeySummon3/summon,summon,위치|시전자
@@ -18,7 +32,8 @@ PirateProjectileTrigger4/trigger,trigger,위치|방향|시전자
 브랜디쉬/피해,damage,시전자|대상
 브랜디쉬2/피해,damage,시전자|대상
 브랜디쉬3/피해,damage,시전자|대상
-브랜디쉬4/피해,damage,시전자|대상디바인스윙/피해,damage,시전자|대상
+브랜디쉬4/피해,damage,시전자|대상
+디바인스윙/피해,damage,시전자|대상
 디바인스윙/스턴,debuff,대상
 디바인스윙2/피해,damage,시전자|대상
 디바인스윙2/스턴,debuff,대상

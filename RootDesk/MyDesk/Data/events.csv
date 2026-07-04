@@ -1,4 +1,17 @@
 ﻿event_id,event_type,area_target_id,action_ids
+기본공격_슬래시블러스트/타격,area,기본공격_슬래시블러스트/범위,
+기본공격_애로우블로우/발사,action,,기본공격_애로우블로우/투사체
+기본공격_애로우블로우/타격,action,,기본공격_애로우블로우/피해
+기본공격_샤프슬래시/타격,area,기본공격_샤프슬래시/범위,
+기본공격_에너지볼트/발사,action,,기본공격_에너지볼트/투사체
+기본공격_에너지볼트/타격,action,,기본공격_에너지볼트/피해
+리트리트 샷/후퇴,action,,리트리트 샷/후퇴
+리트리트 샷/발사,action,,리트리트 샷/투사체
+리트리트 샷/타격,action,,리트리트 샷/피해|리트리트 샷/둔화
+아이언월/방어,action,,아이언월/피해감소
+슬래시 스톤/구르기,action,,슬래시 스톤/구르기
+슬래시 스톤/타격,area,슬래시 스톤/범위,
+극딜/버프,action,,극딜/공버프
 PirateMonkeySummon/summon,action,,PirateMonkeySummon/summon
 PirateMonkeySummon2/summon,action,,PirateMonkeySummon2/summon
 PirateMonkeySummon3/summon,action,,PirateMonkeySummon3/summon

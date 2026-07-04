@@ -364,6 +364,7 @@ script BRBattleLauncher extends Logic
 		entry["LoadingTimerId"] = 0
 		entry["Started"] = true
 		self:StartMagneticZone(entry["MatchRoom"], entry["Owner"], entry["TargetMapName"])
+		self:StartBattleMonsters(entry["TargetMapName"])
 		self:MarkMatchPlaying(entry["MatchRoom"], entry["Owner"])
 		self:NotifyBattleGameplayOpened(entry["MatchRoom"])
 		log("[BRBattleLauncher] battle systems started id=" .. safeMatchId .. " map=" .. self:ReadString(entry["TargetMapName"], ""))
@@ -1085,6 +1086,21 @@ script BRBattleLauncher extends Logic
 			targetMapName = self:ReadString(fallbackMapName, "")
 		end
 		_BRSupplySystem:ClearSuppliesForMap(targetMapName)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartBattleMonsters(string targetMapName)
+		-- Spawns the first monster.csv row after gameplay opens.
+		if _BRSupplySystem == nil then
+			log("[BRBattleLauncher] monster start skipped: supply system missing")
+			return
+		end
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeMapName == "" then
+			return
+		end
+		local count = _BRSupplySystem:StartMonstersForMap(safeMapName)
+		log("[BRBattleLauncher] battle monsters started map=" .. safeMapName .. " count=" .. tostring(count))
 	end
 
 	@ExecSpace("ServerOnly")

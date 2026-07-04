@@ -11,6 +11,24 @@ script BRSupplySystem extends Logic
 
 	property string RuntimeSupplyBoxModelId = "skillpartbox"
 
+	property string MonsterDataSetName = "monster"
+
+	property string MonsterAnchorChildName = "Monster"
+
+	property string FallbackMonsterAnchorChildNames = "Monster,Monster_1,Monster_2,Monster_3,Monster_4,MonsterSpawn,MonsterSpawnPoint"
+
+	property integer MonsterFallbackRoomScanCount = 36
+
+	property string RuntimeMonsterNamePrefix = "RuntimeBattleMonster"
+
+	property string StartMonsterName = "갈리나"
+
+	property string FinalEvolutionMonsterName = "푸른 눈의 가고일"
+
+	property string FallbackMonsterModelId = "battlechainmonster"
+
+	property number MonsterSpawnYOffset = 0.03
+
 	property number MaxSuppliesPerDrop = 0
 
 	property number SkillChestDropCount = 3
@@ -74,10 +92,17 @@ script BRSupplySystem extends Logic
 		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
 		local candidates = self:CollectSupplyCandidates(targetMapName, graph)
 		self._T.candidatesByMap[targetMapName] = candidates
+		local monsterAnchors = self:CollectMonsterAnchors(targetMapName, graph)
+		self._T.monsterAnchorsByMap[targetMapName] = monsterAnchors
+		self._T.currentMonsterRowByMap[targetMapName] = 0
 
 		for index, supply in ipairs(candidates) do
 			self:SetSupplyRuntimeActive(supply, false)
 		end
+		for index, anchor in ipairs(monsterAnchors) do
+			self:HideMonsterAnchor(anchor)
+		end
+		self:ClearRuntimeMonstersForMap(targetMapName)
 
 		local initialDropped = self:SpawnOneSkillChestPerRoom(targetMapName, candidates)
 
@@ -86,7 +111,10 @@ script BRSupplySystem extends Logic
 		self.LastSupplyCandidateCount = #candidates
 		self.LastSupplyDroppedCount = initialDropped
 		self.LastSupplyVersion = self.LastSupplyVersion + 1
-		self:Log("prepared map=" .. targetMapName .. " candidates=" .. tostring(#candidates) .. " initialChests=" .. tostring(initialDropped))
+		self:Log("prepared map=" .. targetMapName
+			.. " candidates=" .. tostring(#candidates)
+			.. " monsterAnchors=" .. tostring(#monsterAnchors)
+			.. " initialChests=" .. tostring(initialDropped))
 		return #candidates
 	end
 
@@ -140,12 +168,14 @@ script BRSupplySystem extends Logic
 				end
 			end
 		end
+		local monstersCleared = self:ClearRuntimeMonstersForMap(targetMapName)
+		self._T.currentMonsterRowByMap[targetMapName] = 0
 
 		self.LastSupplyMapName = targetMapName
 		self.LastSupplyState = "Cleared"
 		self.LastSupplyDroppedCount = 0
 		self.LastSupplyVersion = self.LastSupplyVersion + 1
-		self:Log("cleared map=" .. targetMapName .. " count=" .. tostring(cleared))
+		self:Log("cleared map=" .. targetMapName .. " count=" .. tostring(cleared) .. " monsters=" .. tostring(monstersCleared))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -159,6 +189,10 @@ script BRSupplySystem extends Logic
 			return
 		end
 		self._T.phaseEvents[key] = true
+		local evolvedCount = self:TryEvolveMonstersForPhase(targetMapName, phase)
+		if evolvedCount > 0 then
+			self:PublishSupplyEvent(targetMapName, "MonsterEvolve", evolvedCount, "")
+		end
 
 		if phase == 3 then
 			local delay = self:GetKioskSpawnDelaySeconds()
@@ -172,8 +206,7 @@ script BRSupplySystem extends Logic
 			local count = self:SpawnSupplyDropForMap(targetMapName, self:GetSupplyDropCount())
 			self:PublishSupplyEvent(targetMapName, "SupplyDrop", count, self.LastSupplyAlertCells)
 		elseif phase == 6 then
-			local count = self:LevelUpMonstersForMap(targetMapName)
-			self:PublishSupplyEvent(targetMapName, "MonsterLevelUp", count, "")
+			self:PublishSupplyEvent(targetMapName, "MonsterEvolve", evolvedCount, "")
 		elseif phase == 7 then
 			local count = self:SpawnBossForMap(targetMapName)
 			self:PublishSupplyEvent(targetMapName, "Boss", count, "")
@@ -207,6 +240,380 @@ script BRSupplySystem extends Logic
 	method void DebugClearSupplies()
 		-- Clears supply boxes on the default test map.
 		self:ClearSuppliesForMap(self:ReadString(self.DefaultMapName, "RoomTestMap"))
+	end
+
+	@ExecSpace("ServerOnly")
+	@InspectorButton("Debug Start Monsters")
+	method void DebugStartMonsters()
+		-- Spawns the first CSV monster row on every authored monster anchor.
+		self:StartMonstersForMap(self:ReadString(self.DefaultMapName, "RoomTestMap"))
+	end
+
+	@ExecSpace("ServerOnly")
+	method number StartMonstersForMap(string mapName)
+		-- Starts the CSV monster chain from the configured first monster row.
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local rowIndex = self:GetStartMonsterRowIndex()
+		if rowIndex <= 0 then
+			self:Log("monster start skipped reason=noStartRow map=" .. targetMapName)
+			return 0
+		end
+		local count = self:ReplaceMonsterWave(targetMapName, rowIndex, "start")
+		self:PublishSupplyEvent(targetMapName, "MonsterStart", count, "")
+		return count
+	end
+
+	method number TryEvolveMonstersForPhase(string mapName, number phaseNumber)
+		-- Evolves active monsters when the current CSV row's evolution phase is reached.
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local currentRow = math.floor(self:ReadNumber(self._T.currentMonsterRowByMap[targetMapName], 0))
+		if currentRow <= 0 then
+			return 0
+		end
+
+		local current = self:GetMonsterDataRow(currentRow)
+		if current == nil then
+			return 0
+		end
+		local phase = math.floor(self:ReadNumber(phaseNumber, 0))
+		if math.floor(self:ReadNumber(current.EvolutionPhase, 0)) ~= phase then
+			return 0
+		end
+
+		local nextRow = currentRow + 1
+		local finalRow = self:GetFinalEvolutionRowIndex()
+		if finalRow > 0 and nextRow > finalRow then
+			return 0
+		end
+		if self:GetMonsterDataRow(nextRow) == nil then
+			return 0
+		end
+		return self:ReplaceMonsterWave(targetMapName, nextRow, "phase " .. tostring(phase))
+	end
+
+	method number ReplaceMonsterWave(string mapName, number rowIndex, string reason)
+		-- Destroys the previous wave and respawns the requested CSV monster at every monster anchor.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local row = math.max(1, math.floor(self:ReadNumber(rowIndex, 1)))
+		self:ClearRuntimeMonstersForMap(targetMapName)
+		local spawned = self:SpawnMonsterWaveForRow(targetMapName, row)
+		if spawned > 0 then
+			self._T.currentMonsterRowByMap[targetMapName] = row
+		end
+		local data = self:GetMonsterDataRow(row)
+		local name = ""
+		if data ~= nil then
+			name = self:ReadString(data.Name, "")
+		end
+		self:Log("monster wave map=" .. targetMapName
+			.. " row=" .. tostring(row)
+			.. " name=" .. name
+			.. " count=" .. tostring(spawned)
+			.. " reason=" .. self:ReadString(reason, ""))
+		return spawned
+	end
+
+	method number SpawnMonsterWaveForRow(string mapName, number rowIndex)
+		-- Spawns one configured monster for each authored monster anchor.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local anchors = self:GetMonsterAnchorsForMap(targetMapName)
+		if anchors == nil or #anchors <= 0 then
+			self:Log("monster wave skipped reason=noAnchors map=" .. targetMapName)
+			return 0
+		end
+
+		local spawned = 0
+		for index, anchor in ipairs(anchors) do
+			local monster = self:SpawnMonsterForAnchor(targetMapName, anchor, rowIndex, false)
+			if monster ~= nil then
+				spawned = spawned + 1
+				self:RememberRuntimeMonster(targetMapName, monster, rowIndex, self:GetEntityKey(anchor))
+			end
+		end
+		return spawned
+	end
+
+	method Entity SpawnMonsterForAnchor(string mapName, Entity anchor, number rowIndex, boolean boss)
+		-- Spawns one CSV-configured monster at an authored map anchor.
+		if anchor == nil or isvalid(anchor) ~= true then
+			return nil
+		end
+		self:HideMonsterAnchor(anchor)
+		local position = self:GetMonsterAnchorSpawnPosition(mapName, anchor)
+		return self:SpawnConfiguredMonster(mapName, rowIndex, position, boss == true)
+	end
+
+	method Entity SpawnConfiguredMonster(string mapName, number rowIndex, Vector3 position, boolean boss)
+		-- Spawns the local battle monster model and applies monster.csv preset metadata/stats.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. targetMapName)
+		if mapEntity == nil then
+			self:Log("monster spawn skipped reason=noMap map=" .. targetMapName)
+			return nil
+		end
+
+		local row = math.max(1, math.floor(self:ReadNumber(rowIndex, 1)))
+		local fallbackModelId = self:GetFallbackMonsterModelId()
+		local entityName = self:GetRuntimeMonsterName(row, boss == true)
+		local monster = _SpawnService:SpawnByModelId(fallbackModelId, entityName, position, mapEntity)
+		if monster == nil then
+			self:Log("monster spawn failed row=" .. tostring(row) .. " modelId=" .. fallbackModelId .. " map=" .. targetMapName)
+			return nil
+		end
+		self:ConfigureBattleMonsterEntity(monster, row, boss == true)
+		return monster
+	end
+
+	method void ConfigureBattleMonsterEntity(Entity monster, number rowIndex, boolean boss)
+		-- Applies data-driven battle target stats to a spawned monster entity.
+		if monster == nil or isvalid(monster) ~= true then
+			return
+		end
+		if monster.NameTagComponent == nil then
+			monster:AddComponent("NameTagComponent")
+		end
+		if monster.NameTagComponent ~= nil then
+			monster.NameTagComponent.Enable = true
+			monster.NameTagComponent.OffsetY = 1.4
+		end
+
+		local data = self:GetMonsterDataRow(rowIndex)
+		self:EnsureMonsterRuntimeComponents(monster, data, boss == true)
+
+		local dummy = monster:GetComponent("script.BRTrainingDummy")
+		if dummy == nil then
+			dummy = monster:GetComponent("BRTrainingDummy")
+		end
+		if dummy == nil then
+			dummy = monster:AddComponent("script.BRTrainingDummy")
+		end
+		if dummy ~= nil and data ~= nil then
+			---@type BRTrainingDummy
+			local trainingDummy = dummy
+			trainingDummy.VerboseLog = boss == true
+			trainingDummy:InitializeBattleMonster(
+				self:ReadString(data.Name, "Battle Monster"),
+				self:ReadString(data.ModelId, ""),
+				self:ReadNumber(data.Level, 1),
+				self:ReadNumber(data.MaxHp, 1),
+				self:ReadNumber(data.HitDamage, 0),
+				self:ReadNumber(data.MesoReward, 0),
+				self:ReadNumber(data.ExpReward, 0),
+				boss == true
+			)
+		end
+		self:ApplyMonsterRenderDefaults(monster, boss == true, data)
+		self:ConfigureMonsterRuntimeAI(monster, data, boss == true)
+	end
+
+	method void EnsureMonsterRuntimeComponents(Entity monster, any data, boolean boss)
+		-- The local fallback model is a training dummy, so runtime monsters need render, body, and AI pieces.
+		if monster == nil or isvalid(monster) ~= true then
+			return
+		end
+		if monster.SpriteRendererComponent == nil then
+			monster:AddComponent("SpriteRendererComponent")
+		end
+		if monster.RigidbodyComponent == nil then
+			monster:AddComponent("RigidbodyComponent")
+		end
+		if monster.MovementComponent == nil then
+			monster:AddComponent("MovementComponent")
+		end
+		local ai = monster:GetComponent("script.BRBattleMonsterAI")
+		if ai == nil then
+			ai = monster:GetComponent("BRBattleMonsterAI")
+		end
+		if ai == nil then
+			monster:AddComponent("script.BRBattleMonsterAI")
+		end
+		if monster.PolygonRendererComponent ~= nil then
+			monster.PolygonRendererComponent.Enable = false
+		end
+		self:ConfigureMonsterPhysicsDefaults(monster, data, boss == true)
+	end
+
+	method void ConfigureMonsterPhysicsDefaults(Entity monster, any data, boolean boss)
+		if monster == nil then
+			return
+		end
+		local moveSpeed = self:GetBattleMonsterMoveSpeed(data, boss == true)
+		if monster.RigidbodyComponent ~= nil then
+			monster.RigidbodyComponent.Enable = true
+			monster.RigidbodyComponent.KinematicMove = false
+			monster.RigidbodyComponent.IsolatedMove = false
+			monster.RigidbodyComponent.IgnoreMoveBoundary = false
+			monster.RigidbodyComponent.Gravity = 30
+			monster.RigidbodyComponent.WalkSpeed = moveSpeed
+			monster.RigidbodyComponent.WalkJump = 1.4
+			monster.RigidbodyComponent:PositionReset()
+		end
+		if monster.MovementComponent ~= nil then
+			monster.MovementComponent.InputSpeed = moveSpeed
+			monster.MovementComponent.JumpForce = 1.4
+		end
+	end
+
+	method void ApplyMonsterRenderDefaults(Entity monster, boolean boss, any data)
+		-- Keeps spawned preset monsters above map tiles and readable as battle targets.
+		if monster == nil then
+			return
+		end
+		if monster.SpriteRendererComponent ~= nil then
+			local standRuid = self:GetMonsterVisualRUIDByData(data, "stand")
+			if standRuid ~= "" then
+				monster.SpriteRendererComponent.SpriteRUID = standRuid
+			end
+			monster.SpriteRendererComponent.SortingLayer = "MapLayer0"
+			monster.SpriteRendererComponent.OrderInLayer = 34
+			monster.SpriteRendererComponent.IgnoreMapLayerCheck = true
+			monster.SpriteRendererComponent.Enable = true
+			monster.SpriteRendererComponent.Color = Color(1, 1, 1, 1)
+			monster.SpriteRendererComponent:SetAlpha(1)
+		end
+		if monster.AvatarRendererComponent ~= nil then
+			monster.AvatarRendererComponent.SortingLayer = "MapLayer0"
+			monster.AvatarRendererComponent.OrderInLayer = 34
+			monster.AvatarRendererComponent.IgnoreMapLayerCheck = true
+			monster.AvatarRendererComponent.Enable = true
+		end
+		if monster.TransformComponent ~= nil and boss == true then
+			local scale = monster.TransformComponent.Scale
+			monster.TransformComponent.Scale = Vector3(math.abs(scale.x) * 1.15, math.abs(scale.y) * 1.15, scale.z)
+		end
+	end
+
+	method void ConfigureMonsterRuntimeAI(Entity monster, any data, boolean boss)
+		if monster == nil or data == nil then
+			return
+		end
+		local ai = monster:GetComponent("script.BRBattleMonsterAI")
+		if ai == nil then
+			ai = monster:GetComponent("BRBattleMonsterAI")
+		end
+		if ai == nil then
+			self:Log("monster ai missing name=" .. self:ReadString(monster.Name, "monster"))
+			return
+		end
+		---@type BRBattleMonsterAI
+		local monsterAI = ai
+		monsterAI.MoveSpeed = self:GetBattleMonsterMoveSpeed(data, boss == true)
+		monsterAI.VerboseLog = boss == true
+		monsterAI:ConfigureBattleMonsterAI(
+			self:GetMonsterVisualRUIDByData(data, "stand"),
+			self:GetMonsterVisualRUIDByData(data, "move"),
+			self:GetMonsterVisualRUIDByData(data, "attack"),
+			self:GetMonsterVisualRUIDByData(data, "die"),
+			self:ReadNumber(data.HitDamage, 1),
+			boss == true
+		)
+	end
+
+	method number GetBattleMonsterMoveSpeed(any data, boolean boss)
+		local level = 1
+		if data ~= nil then
+			level = math.max(1, math.floor(self:ReadNumber(data.Level, 1)))
+		end
+		local speed = 0.6 + math.min(0.35, level * 0.045)
+		if boss == true then
+			speed = math.max(speed, 0.95)
+		end
+		return speed
+	end
+
+	method string GetMonsterVisualRUIDByData(any data, string action)
+		local presetName = ""
+		if data ~= nil then
+			presetName = self:ReadString(data.ModelId, "")
+		end
+		return self:GetMonsterVisualRUID(presetName, action)
+	end
+
+	method string GetMonsterVisualRUID(string presetName, string action)
+		local preset = string.lower(self:ReadString(presetName, ""))
+		local state = string.lower(self:ReadString(action, "stand"))
+		if preset == "monster-797" then
+			return self:GetMonsterVisualRUIDFromState(state,
+				"9cd156b021944812adee08038f82731f",
+				"b44d5aa5e1704deab2dab7ef512b4a70",
+				"bbd6d46426ff40a3ba7796d3c3dc8d0f",
+				"fbde4fab716a4e658eb88a27a2d321df")
+		elseif preset == "monster-1637" then
+			return self:GetMonsterVisualRUIDFromState(state,
+				"d5966a1f6c80461bb50b1ff9544c7d28",
+				"c289009fbd924d2b880e897fb3523828",
+				"01a1fcfcf33b4e8488f1fbaac1eaeaee",
+				"49d1578d52e144a183958128c7fc1daf")
+		elseif preset == "monster-2796" then
+			return self:GetMonsterVisualRUIDFromState(state,
+				"43304dbb82894470861f079a0adf649b",
+				"ee648f1c6db64c35935a89e46902993f",
+				"9a8646ca583a4c2eb79fbf67c14841f4",
+				"fd050baaabf94b59a05d38a38de261b7")
+		elseif preset == "monster-1859" then
+			return self:GetMonsterVisualRUIDFromState(state,
+				"5acdccae3bd24089bb18b5f0c8c8a081",
+				"b7e6bbb9c04a4d9d8d2196bd76ad645e",
+				"fe8e8e9226644d8e8c852b5a00c97b21",
+				"930ade7b0c88406e8f36238644c842c8")
+		elseif preset == "monster-531" then
+			return self:GetMonsterVisualRUIDFromState(state,
+				"f3687ed4444d41c6b640e6da1da46924",
+				"d473319f4f11425c8207a12fbbefdb54",
+				"a285deb5eda24250ba37c861b9a67d9b",
+				"5436ad26396b450196b1c30d29cffe26")
+		elseif preset == "monster-3367" then
+			return self:GetMonsterVisualRUIDFromState(state,
+				"cc19ff7ffbc744fca9a35ce0e4d3ca89",
+				"c3b4aaa8a64c44f9b1f09fa4174a6445",
+				"92a1040bf0504bb48c1cf034e142c35e",
+				"58a1032a261249f5a20257dc92fd788a")
+		end
+		return self:GetMonsterVisualRUIDFromState(state,
+			"9cd156b021944812adee08038f82731f",
+			"b44d5aa5e1704deab2dab7ef512b4a70",
+			"bbd6d46426ff40a3ba7796d3c3dc8d0f",
+			"fbde4fab716a4e658eb88a27a2d321df")
+	end
+
+	method string GetMonsterVisualRUIDFromState(string state, string standRuid, string moveRuid, string attackRuid, string dieRuid)
+		local stateKey = string.lower(self:ReadString(state, "stand"))
+		if stateKey == "move" then
+			return self:ReadString(moveRuid, standRuid)
+		elseif stateKey == "attack" or stateKey == "attack1" then
+			return self:ReadString(attackRuid, standRuid)
+		elseif stateKey == "die" or stateKey == "die1" then
+			return self:ReadString(dieRuid, standRuid)
+		end
+		return self:ReadString(standRuid, "")
+	end
+
+	method number SpawnBossForMap(string mapName)
+		-- Spawns the last monster.csv row as the phase-7 center boss.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local rowIndex = self:GetLastMonsterRowIndex()
+		if rowIndex <= 0 then
+			self:Log("boss skipped reason=noMonsterData map=" .. targetMapName)
+			return 0
+		end
+		local center = self:GetMapCenterPosition(targetMapName)
+		local spawnPosition = self:GetMonsterSpawnPositionNear(targetMapName, center)
+		local boss = self:SpawnConfiguredMonster(targetMapName, rowIndex, spawnPosition, true)
+		if boss == nil then
+			return 0
+		end
+		self:RememberRuntimeMonster(targetMapName, boss, rowIndex, "boss")
+		local data = self:GetMonsterDataRow(rowIndex)
+		local name = ""
+		if data ~= nil then
+			name = self:ReadString(data.Name, "")
+		end
+		self:Log("boss spawned row=" .. tostring(rowIndex)
+			.. " name=" .. name
+			.. " map=" .. targetMapName)
+		return 1
 	end
 
 	method number SpawnOneSkillChestPerRoom(string mapName, any candidates)
@@ -256,30 +663,6 @@ script BRSupplySystem extends Logic
 		local spawned = self:ActivateRandomCandidates(targetMapName, candidates, math.max(1, math.floor(self:ReadNumber(count, 1))), "kiosk", "K")
 		self:Log("kiosk spawn map=" .. targetMapName .. " count=" .. tostring(spawned))
 		return spawned
-	end
-
-	method number SpawnBossForMap(string mapName)
-		-- Spawns the configured boss monster at the current map center when possible.
-		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
-		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. targetMapName)
-		if mapEntity == nil then
-			self:Log("boss skipped reason=noMap map=" .. targetMapName)
-			return 0
-		end
-		local modelId = self:ReadString(self.BossMonsterModelId, "")
-		if modelId == "" then
-			self:Log("boss skipped reason=noModelId map=" .. targetMapName)
-			return 0
-		end
-		local center = self:GetMapCenterPosition(targetMapName)
-		local spawnPosition = Vector3(center.x, center.y + self:ReadNumber(self.BossSpawnYOffset, 0), 0)
-		local boss = _SpawnService:SpawnByModelId(modelId, "Phase7Boss_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000)), spawnPosition, mapEntity)
-		if boss == nil then
-			self:Log("boss spawn failed modelId=" .. modelId .. " map=" .. targetMapName)
-			return 0
-		end
-		self:Log("boss spawned modelId=" .. modelId .. " map=" .. targetMapName)
-		return 1
 	end
 
 	method number LevelUpMonstersForMap(string mapName)
@@ -581,24 +964,515 @@ script BRSupplySystem extends Logic
 		return result
 	end
 
-	method Vector2 GetMapCenterPosition(string mapName)
-		-- Uses the center logical room if available, falling back to map origin.
-		local graph = self:GetGraphForMap(mapName)
+	method any GetMonsterAnchorsForMap(string mapName)
+		-- Returns cached monster anchors or recollects them from generated rooms.
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local anchors = self._T.monsterAnchorsByMap[targetMapName]
+		if anchors == nil or #anchors <= 0 then
+			anchors = self:CollectMonsterAnchors(targetMapName, nil)
+			self._T.monsterAnchorsByMap[targetMapName] = anchors
+		end
+		return anchors
+	end
+
+	method any CollectMonsterAnchors(string mapName, any graph)
+		-- Collects authored Monster children from assigned generated rooms.
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local anchors = {}
+		local seen = {}
 		if graph ~= nil and graph.Rooms ~= nil then
-			local centerRow = math.floor((self:ReadNumber(graph.Rows, 1) + 1) * 0.5)
-			local centerColumn = math.floor((self:ReadNumber(graph.Columns, 1) + 1) * 0.5)
-			for index, room in ipairs(graph.Rooms) do
-				if math.floor(self:ReadNumber(room.Row, 0)) == centerRow and math.floor(self:ReadNumber(room.Column, 0)) == centerColumn then
-					local roomName = self:ReadString(room.AssignedRoomName, self:ReadString(room.Name, ""))
-					local physicalRoom = self:GetPhysicalRoom(mapName, self:GetPhysicalRoomRoot(mapName), roomName)
-					if physicalRoom ~= nil and physicalRoom.TransformComponent ~= nil then
-						local position = physicalRoom.TransformComponent.WorldPosition
-						return Vector2(position.x, position.y)
+			for index, graphRoom in ipairs(graph.Rooms) do
+				local roomName = self:ReadString(graphRoom.AssignedRoomName, self:ReadString(graphRoom.Name, ""))
+				self:CollectMonsterAnchorsForRoomName(targetMapName, roomName, anchors, seen)
+			end
+		end
+		if #anchors <= 0 then
+			self:CollectDefaultMonsterAnchors(targetMapName, anchors, seen)
+		end
+		self:Log("monster anchors collected map=" .. targetMapName .. " count=" .. tostring(#anchors))
+		return anchors
+	end
+
+	method void CollectDefaultMonsterAnchors(string mapName, any anchors, any seen)
+		-- Uses stable generated-room paths without walking the runtime entity tree.
+		self:CollectMonsterAnchorsForRoomName(mapName, "CornerNW", anchors, seen)
+		self:CollectMonsterAnchorsForRoomName(mapName, "CornerNE", anchors, seen)
+		self:CollectMonsterAnchorsForRoomName(mapName, "CornerSW", anchors, seen)
+		self:CollectMonsterAnchorsForRoomName(mapName, "CornerSE", anchors, seen)
+		for index = 1, self:GetMonsterFallbackRoomScanCount() do
+			self:CollectMonsterAnchorsForRoomName(mapName, self:GetGeneratedRoomIndexedName(index), anchors, seen)
+		end
+	end
+
+	method void CollectMonsterAnchorsForRoomName(string mapName, string roomName, any anchors, any seen)
+		-- Finds Monster marker children by direct entity path under generated and direct map rooms.
+		local safeMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local safeRoomName = self:ReadString(roomName, "")
+		if safeRoomName == "" then
+			return
+		end
+		self:CollectMonsterAnchorsAtBasePath("/maps/" .. safeMapName .. "/EditorGeneratedGrid/" .. safeRoomName, anchors, seen)
+		self:CollectMonsterAnchorsAtBasePath("/maps/" .. safeMapName .. "/" .. safeRoomName, anchors, seen)
+	end
+
+	method void CollectMonsterAnchorsAtBasePath(string basePath, any anchors, any seen)
+		-- Adds every configured marker name from one known room path.
+		local safeBasePath = self:ReadString(basePath, "")
+		if safeBasePath == "" then
+			return
+		end
+		self:AddMonsterAnchor(anchors, seen, _EntityService:GetEntityByPath(safeBasePath .. "/" .. self:GetMonsterAnchorChildName()))
+		local names = self:GetFallbackMonsterAnchorNames()
+		for index, childName in ipairs(names) do
+			self:AddMonsterAnchor(anchors, seen, _EntityService:GetEntityByPath(safeBasePath .. "/" .. childName))
+		end
+	end
+
+	method void CollectRoomMonsterAnchors(Entity room, any anchors, any seen)
+		-- Adds direct and nested Monster markers from one generated room.
+		if room == nil then
+			return
+		end
+
+		self:AddMonsterAnchor(anchors, seen, room:GetChildByName(self:GetMonsterAnchorChildName(), false))
+		local names = self:GetFallbackMonsterAnchorNames()
+		for index, childName in ipairs(names) do
+			self:AddMonsterAnchor(anchors, seen, room:GetChildByName(childName, false))
+		end
+
+		if room.Children ~= nil then
+			local children = room.Children:ToTable()
+			for index, child in ipairs(children) do
+				if child ~= nil and self:IsMonsterAnchorName(child.Name) == true then
+					self:AddMonsterAnchor(anchors, seen, child)
+				end
+			end
+		end
+		self:CollectMonsterAnchorsRecursive(room, anchors, seen, 0)
+	end
+
+	method void CollectMonsterAnchorsRecursive(Entity entity, any anchors, any seen, number depth)
+		-- Finds nested monster markers without depending on direct-child placement.
+		if entity == nil or entity.Children == nil then
+			return
+		end
+		local safeDepth = math.floor(self:ReadNumber(depth, 0))
+		if safeDepth > 16 then
+			return
+		end
+		local children = entity.Children:ToTable()
+		for index, child in ipairs(children) do
+			if child ~= nil then
+				if self:IsMonsterAnchorName(child.Name) == true then
+					self:AddMonsterAnchor(anchors, seen, child)
+				end
+				self:CollectMonsterAnchorsRecursive(child, anchors, seen, safeDepth + 1)
+			end
+		end
+	end
+
+	method void AddMonsterAnchor(any anchors, any seen, Entity anchor)
+		-- Adds one monster anchor once by stable entity key.
+		if anchor == nil then
+			return
+		end
+		if self:IsMonsterAnchorName(anchor.Name) ~= true then
+			return
+		end
+		local key = self:GetEntityKey(anchor)
+		if key == "" or seen[key] == true then
+			return
+		end
+		table.insert(anchors, anchor)
+		seen[key] = true
+	end
+
+	method boolean IsMonsterAnchorName(string childName)
+		-- Checks authored monster marker names while excluding runtime-spawned monsters.
+		local value = self:ReadString(childName, "")
+		if value == "" then
+			return false
+		end
+		local lowerValue = string.lower(value)
+		if self:StartsWith(lowerValue, string.lower(self:ReadString(self.RuntimeMonsterNamePrefix, "RuntimeBattleMonster"))) == true then
+			return false
+		end
+		if self:StartsWith(lowerValue, "phase7boss") == true then
+			return false
+		end
+		if lowerValue == string.lower(self:GetMonsterAnchorChildName()) then
+			return true
+		end
+		local names = self:GetFallbackMonsterAnchorNames()
+		for index, name in ipairs(names) do
+			if lowerValue == string.lower(name) then
+				return true
+			end
+		end
+		return false
+	end
+
+	method string GetMonsterAnchorChildName()
+		return self:ReadString(self.MonsterAnchorChildName, "Monster")
+	end
+
+	method any GetFallbackMonsterAnchorNames()
+		-- Parses comma-delimited fallback monster anchor names.
+		local result = {}
+		local text = self:ReadString(self.FallbackMonsterAnchorChildNames, "")
+		for name in string.gmatch(text, "([^,]+)") do
+			local trimmed = self:Trim(name)
+			if trimmed ~= "" then
+				table.insert(result, trimmed)
+			end
+		end
+		return result
+	end
+
+	method void HideMonsterAnchor(Entity anchor)
+		-- Keeps authored Monster objects as invisible spawn markers.
+		if anchor == nil or isvalid(anchor) ~= true then
+			return
+		end
+		local partBox = anchor:GetComponent("script.BRPartBox")
+		if partBox == nil then
+			partBox = anchor:GetComponent("BRPartBox")
+		end
+		if partBox ~= nil then
+			---@type BRPartBox
+			local box = partBox
+			box:ConfigureAsSpawnMarker()
+		end
+		self:SetSupplyAnchorVisibleRecursive(anchor, false, 0)
+	end
+
+	method Vector3 GetMonsterAnchorSpawnPosition(string mapName, Entity anchor)
+		-- Reads an anchor world position and nudges it to the nearest foothold.
+		if anchor ~= nil and anchor.TransformComponent ~= nil then
+			local position = anchor.TransformComponent.WorldPosition
+			return self:GetMonsterSpawnPositionNear(mapName, Vector2(position.x, position.y))
+		end
+		return self:GetMonsterSpawnPositionNear(mapName, Vector2(0, 0))
+	end
+
+	method Vector3 GetMonsterSpawnPositionNear(string mapName, Vector2 rawPosition)
+		-- Aligns a requested monster spawn to a nearby MapleTile foothold.
+		local point = rawPosition
+		if point == nil then
+			point = Vector2(0, 0)
+		end
+		local offsetY = self:GetMonsterSpawnYOffset()
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap")))
+		if mapEntity ~= nil and mapEntity.FootholdComponent ~= nil then
+			local searchDistance = 24
+			local rayStart = Vector2(point.x, point.y + 8)
+			local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDistance + 8)
+			if foothold == nil then
+				foothold = mapEntity.FootholdComponent:GetNearestFootholdByPoint(point, searchDistance)
+			end
+			local landing = self:GetFootholdLandingPosition(foothold, point.x)
+			if landing ~= nil then
+				return Vector3(landing.x, landing.y + offsetY, 0)
+			end
+		end
+		return Vector3(point.x, point.y + offsetY, 0)
+	end
+
+	method any GetFootholdLandingPosition(any foothold, number requestedX)
+		-- Converts a foothold to a safe standing point.
+		if foothold == nil then
+			return nil
+		end
+		if foothold:IsVertical() == true then
+			return nil
+		end
+		local x = self:ReadNumber(requestedX, 0)
+		local startPoint = foothold.StartPoint
+		local endPoint = foothold.EndPoint
+		if startPoint ~= nil and endPoint ~= nil then
+			local minX = math.min(startPoint.x, endPoint.x) + 0.03
+			local maxX = math.max(startPoint.x, endPoint.x) - 0.03
+			if maxX < minX then
+				minX = math.min(startPoint.x, endPoint.x)
+				maxX = math.max(startPoint.x, endPoint.x)
+			end
+			x = math.max(minX, math.min(maxX, x))
+		end
+		return Vector2(x, foothold:GetYByX(x))
+	end
+
+	method number GetMonsterSpawnYOffset()
+		return math.max(0, self:ReadNumber(self.MonsterSpawnYOffset, 0.03))
+	end
+
+	method integer GetMonsterFallbackRoomScanCount()
+		return math.max(0, math.floor(self:ReadNumber(self.MonsterFallbackRoomScanCount, 36)))
+	end
+
+	method void RememberRuntimeMonster(string mapName, Entity monster, number rowIndex, string anchorKey)
+		-- Tracks runtime monsters so phase changes and cleanup can remove them deterministically.
+		if monster == nil then
+			return
+		end
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		if self._T.runtimeMonstersByMap[targetMapName] == nil then
+			self._T.runtimeMonstersByMap[targetMapName] = {}
+		end
+		table.insert(self._T.runtimeMonstersByMap[targetMapName], {
+			Entity = monster,
+			RowIndex = math.floor(self:ReadNumber(rowIndex, 0)),
+			AnchorKey = self:ReadString(anchorKey, "")
+		})
+	end
+
+	method number ClearRuntimeMonstersForMap(string mapName)
+		-- Destroys all runtime battle monsters on a map.
+		self:EnsureRuntime()
+		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
+		local count = 0
+		local seen = {}
+		local records = self._T.runtimeMonstersByMap[targetMapName]
+		if records ~= nil then
+			for index, record in ipairs(records) do
+				if record ~= nil and record.Entity ~= nil then
+					local key = self:GetEntityKey(record.Entity)
+					if key ~= "" then
+						seen[key] = true
+					end
+					if self:DestroyRuntimeMonster(record.Entity) == true then
+						count = count + 1
 					end
 				end
 			end
 		end
+		self._T.runtimeMonstersByMap[targetMapName] = {}
+
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. targetMapName)
+		if mapEntity ~= nil then
+			local dummyComponents = mapEntity:GetChildComponentsByTypeName("script.BRTrainingDummy", true)
+			if dummyComponents == nil or #dummyComponents <= 0 then
+				dummyComponents = mapEntity:GetChildComponentsByTypeName("BRTrainingDummy", true)
+			end
+			if dummyComponents ~= nil then
+				for index, dummy in ipairs(dummyComponents) do
+					if dummy ~= nil and dummy.Entity ~= nil and self:IsRuntimeBattleMonster(dummy.Entity, dummy) == true then
+						local key = self:GetEntityKey(dummy.Entity)
+						if key == "" or seen[key] ~= true then
+							if self:DestroyRuntimeMonster(dummy.Entity) == true then
+								count = count + 1
+							end
+						end
+					end
+				end
+			end
+		end
+		if count > 0 then
+			self:Log("runtime monsters cleared map=" .. targetMapName .. " count=" .. tostring(count))
+		end
+		return count
+	end
+
+	method boolean DestroyRuntimeMonster(Entity monster)
+		if monster == nil or isvalid(monster) ~= true then
+			return false
+		end
+		local dummy = monster:GetComponent("script.BRTrainingDummy")
+		if dummy == nil then
+			dummy = monster:GetComponent("BRTrainingDummy")
+		end
+		if dummy ~= nil then
+			---@type BRTrainingDummy
+			local trainingDummy = dummy
+			trainingDummy:KillForEvolution()
+		else
+			monster:SetVisible(false)
+			monster:SetEnable(false)
+			monster:Destroy()
+		end
+		return true
+	end
+
+	method boolean IsRuntimeBattleMonster(Entity monster, any dummy)
+		if monster == nil then
+			return false
+		end
+		if dummy ~= nil and dummy.IsBattleRuntimeMonster == true then
+			return true
+		end
+		local name = string.lower(self:ReadString(monster.Name, ""))
+		return self:StartsWith(name, string.lower(self:ReadString(self.RuntimeMonsterNamePrefix, "RuntimeBattleMonster")))
+			or self:StartsWith(name, "phase7boss")
+	end
+
+	method any GetMonsterDataRow(number rowIndex)
+		-- Returns one cached monster.csv row as normalized runtime data.
+		self:EnsureMonsterData()
+		local row = math.floor(self:ReadNumber(rowIndex, 0))
+		if row <= 0 or self._T.monsterRows == nil then
+			return nil
+		end
+		return self._T.monsterRows[row]
+	end
+
+	method void EnsureMonsterData()
+		-- Loads monster.csv through its UserDataSet wrapper once per session.
+		self:EnsureRuntime()
+		if self._T.monsterRows ~= nil then
+			return
+		end
+		self._T.monsterRows = {}
+		local data = self:GetDataTable(self:ReadString(self.MonsterDataSetName, "monster"))
+		if data == nil then
+			self:Log("monster data missing table=" .. self:ReadString(self.MonsterDataSetName, "monster"))
+			return
+		end
+		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
+		for row = 1, rowCount do
+			table.insert(self._T.monsterRows, {
+				Name = self:GetDataCell(data, row, "몬스터 이름", ""),
+				ModelId = self:GetDataCell(data, row, "몬스터 preset 이름", ""),
+				Level = self:ReadNumber(self:GetDataCell(data, row, "레벨", "1"), 1),
+				EvolutionPhase = self:ReadNumber(self:GetDataCell(data, row, "진화 페이즈", "0"), 0),
+				MaxHp = self:ReadNumber(self:GetDataCell(data, row, "체력", "1"), 1),
+				HitDamage = self:ReadNumber(self:GetDataCell(data, row, "피격 데미지", "0"), 0),
+				MesoReward = self:ReadNumber(self:GetDataCell(data, row, "드랍 메소", "0"), 0),
+				ExpReward = self:ReadNumber(self:GetDataCell(data, row, "주는 경험치", "0"), 0),
+				Note = self:GetDataCell(data, row, "비고", "")
+			})
+		end
+		self:Log("monster data loaded rows=" .. tostring(#self._T.monsterRows))
+	end
+
+	method number GetStartMonsterRowIndex()
+		local row = self:GetMonsterRowByName(self:ReadString(self.StartMonsterName, "갈리나"))
+		if row > 0 then
+			return row
+		end
+		if self:GetMonsterDataRow(1) ~= nil then
+			return 1
+		end
+		return 0
+	end
+
+	method number GetFinalEvolutionRowIndex()
+		return self:GetMonsterRowByName(self:ReadString(self.FinalEvolutionMonsterName, "푸른 눈의 가고일"))
+	end
+
+	method number GetLastMonsterRowIndex()
+		self:EnsureMonsterData()
+		if self._T.monsterRows == nil then
+			return 0
+		end
+		return #self._T.monsterRows
+	end
+
+	method number GetMonsterRowByName(string monsterName)
+		self:EnsureMonsterData()
+		local targetName = self:NormalizeMonsterName(monsterName)
+		if targetName == "" or self._T.monsterRows == nil then
+			return 0
+		end
+		for row, data in ipairs(self._T.monsterRows) do
+			if self:NormalizeMonsterName(data.Name) == targetName then
+				return row
+			end
+		end
+		return 0
+	end
+
+	method string GetMonsterModelId(number rowIndex)
+		local data = self:GetMonsterDataRow(rowIndex)
+		if data == nil then
+			return self:GetFallbackMonsterModelId()
+		end
+		local modelId = string.lower(self:ReadString(data.ModelId, ""))
+		if modelId == "" then
+			return self:GetFallbackMonsterModelId()
+		end
+		return modelId
+	end
+
+	method string GetFallbackMonsterModelId()
+		return string.lower(self:ReadString(self.FallbackMonsterModelId, "battlechainmonster"))
+	end
+
+	method string GetRuntimeMonsterName(number rowIndex, boolean boss)
+		local prefix = self:ReadString(self.RuntimeMonsterNamePrefix, "RuntimeBattleMonster")
+		if boss == true then
+			prefix = "Phase7Boss"
+		end
+		return prefix .. "_" .. tostring(math.floor(self:ReadNumber(rowIndex, 0)))
+			.. "_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000))
+			.. "_" .. tostring(_UtilLogic:RandomIntegerRange(1000, 9999))
+	end
+
+	method string NormalizeMonsterName(string value)
+		local text = string.lower(self:ReadString(value, ""))
+		return string.gsub(text, "%s+", "")
+	end
+
+	method any GetDataTable(string tableName)
+		-- Reads a UserDataSet by table name. Missing datasets are allowed during authoring.
+		local safeName = self:ReadString(tableName, "")
+		if safeName == "" or _DataService == nil then
+			return nil
+		end
+		return _DataService:GetTable(safeName)
+	end
+
+	method string GetDataCell(any dataSet, number row, string columnName, string fallback)
+		-- Reads one DataSet cell as a trimmed string.
+		if dataSet == nil then
+			return self:ReadString(fallback, "")
+		end
+		local value = dataSet:GetCell(math.max(1, math.floor(self:ReadNumber(row, 1))), self:ReadString(columnName, ""))
+		if value == nil then
+			return self:ReadString(fallback, "")
+		end
+		return self:Trim(tostring(value))
+	end
+
+	method Vector2 GetMapCenterPosition(string mapName)
+		-- Uses generated-room bounds so phase-7 boss spawn never depends on graph cache calls.
+		local bounds = { Count = 0, MinX = 0, MaxX = 0, MinY = 0, MaxY = 0 }
+		self:AddRoomBounds(mapName, "CornerNW", bounds)
+		self:AddRoomBounds(mapName, "CornerNE", bounds)
+		self:AddRoomBounds(mapName, "CornerSW", bounds)
+		self:AddRoomBounds(mapName, "CornerSE", bounds)
+		for index = 1, self:GetMonsterFallbackRoomScanCount() do
+			self:AddRoomBounds(mapName, self:GetGeneratedRoomIndexedName(index), bounds)
+		end
+		if bounds.Count > 0 then
+			return Vector2((bounds.MinX + bounds.MaxX) * 0.5, (bounds.MinY + bounds.MaxY) * 0.5)
+		end
 		return Vector2(0, 0)
+	end
+
+	method void AddRoomBounds(string mapName, string roomName, any bounds)
+		-- Extends a simple bounds table with one generated room position.
+		if bounds == nil then
+			return
+		end
+		local room = self:GetPhysicalRoom(mapName, nil, roomName)
+		if room == nil or room.TransformComponent == nil then
+			return
+		end
+		local position = room.TransformComponent.WorldPosition
+		local count = math.floor(self:ReadNumber(bounds.Count, 0))
+		if count <= 0 then
+			bounds.MinX = position.x
+			bounds.MaxX = position.x
+			bounds.MinY = position.y
+			bounds.MaxY = position.y
+		else
+			bounds.MinX = math.min(self:ReadNumber(bounds.MinX, position.x), position.x)
+			bounds.MaxX = math.max(self:ReadNumber(bounds.MaxX, position.x), position.x)
+			bounds.MinY = math.min(self:ReadNumber(bounds.MinY, position.y), position.y)
+			bounds.MaxY = math.max(self:ReadNumber(bounds.MaxY, position.y), position.y)
+		end
+		bounds.Count = count + 1
 	end
 
 	method void PublishSupplyEvent(string mapName, string state, number count, string alertCells)
@@ -1074,6 +1948,18 @@ script BRSupplySystem extends Logic
 		return _EntityService:GetEntityByPath("/maps/" .. safeMapName .. "/" .. safeRoomName)
 	end
 
+	method string GetGeneratedRoomIndexedName(number index)
+		-- Builds generated room names such as Room_001.
+		local safeIndex = math.max(1, math.floor(self:ReadNumber(index, 1)))
+		if safeIndex < 10 then
+			return "Room_00" .. tostring(safeIndex)
+		end
+		if safeIndex < 100 then
+			return "Room_0" .. tostring(safeIndex)
+		end
+		return "Room_" .. tostring(safeIndex)
+	end
+
 	method boolean IsGeneratedRoomName(string roomName)
 		-- Checks whether a name follows the generated room naming pattern.
 		local value = self:ReadString(roomName, "")
@@ -1228,6 +2114,25 @@ script BRSupplySystem extends Logic
 		if self._T.runtimeSupplyByAnchor == nil then
 			self._T.runtimeSupplyByAnchor = {}
 		end
+		if self._T.monsterAnchorsByMap == nil then
+			self._T.monsterAnchorsByMap = {}
+		end
+		if self._T.runtimeMonstersByMap == nil then
+			self._T.runtimeMonstersByMap = {}
+		end
+		if self._T.currentMonsterRowByMap == nil then
+			self._T.currentMonsterRowByMap = {}
+		end
+	end
+
+	method boolean StartsWith(string value, string prefix)
+		-- Checks a string prefix while safely handling empty values.
+		local safeValue = self:ReadString(value, "")
+		local safePrefix = self:ReadString(prefix, "")
+		if safeValue == "" or safePrefix == "" then
+			return false
+		end
+		return string.sub(safeValue, 1, string.len(safePrefix)) == safePrefix
 	end
 
 	method string ReadString(any value, string fallback)

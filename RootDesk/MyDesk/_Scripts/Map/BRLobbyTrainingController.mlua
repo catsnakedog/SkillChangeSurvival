@@ -315,8 +315,8 @@ script BRLobbyTrainingController extends Component
 
 		local userId = attackerEntity.PlayerComponent.UserId
 		if _BRSkillSystem ~= nil then
-			_BRSkillSystem:RequestCastNextChainSkill(userId)
-			self:Log("skill-chain input user=" .. userId)
+			_BRSkillSystem:RequestCastBasicAttackSkill(userId)
+			self:Log("basic-attack input user=" .. userId)
 			return
 		end
 

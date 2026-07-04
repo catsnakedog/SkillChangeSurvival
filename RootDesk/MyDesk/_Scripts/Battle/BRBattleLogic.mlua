@@ -834,7 +834,7 @@ script BRBattleLogic extends Component
 		local oldHp = math.max(0, math.floor(self:ReadNumber(playerComponent.Hp, 0)))
 		local damage = 0
 		if now >= self:ReadNumber(self._T.outOfBoundsDamageUntil[userId], 0) then
-			damage = self:GetOutOfBoundsDamage(playerEntity)
+			damage = self:GetIncomingDamageAfterSkillReduction(playerEntity, self:GetOutOfBoundsDamage(playerEntity), 1)
 			playerComponent.Hp = math.max(0, oldHp - damage)
 			self._T.outOfBoundsDamageUntil[userId] = now + self:GetOutOfBoundsDamageCooldownSeconds()
 			self:LockPortalUse(userId, now)
@@ -952,8 +952,8 @@ script BRBattleLogic extends Component
 		
 		local userId = attackerEntity.PlayerComponent.UserId
 		if _BRSkillSystem ~= nil then
-			_BRSkillSystem:RequestCastNextChainSkill(userId)
-			self:Log("skill-chain input user=" .. userId)
+			_BRSkillSystem:RequestCastBasicAttackSkill(userId)
+			self:Log("basic-attack input user=" .. userId)
 			return
 		end
 
@@ -1017,6 +1017,20 @@ script BRBattleLogic extends Component
 		return math.abs(targetPosition.x - centerX) <= halfWidth and math.abs((targetPosition.y + self:GetAttackOffsetYFromFeet()) - centerY) <= halfHeight
 	end
 
+	method number GetIncomingDamageAfterSkillReduction(Entity targetEntity, number rawDamage, number minimumDamage)
+		-- Applies BRSkillSystem damage-taken statuses such as Iron Wall.
+		local baseDamage = math.floor(self:ReadNumber(rawDamage, 0))
+		local minDamage = math.max(0, math.floor(self:ReadNumber(minimumDamage, 0)))
+		if baseDamage <= 0 then
+			return 0
+		end
+		local rate = 1.0
+		if _BRSkillSystem ~= nil then
+			rate = math.max(0, self:ReadNumber(_BRSkillSystem:GetDamageTakenRate(targetEntity), 1))
+		end
+		return math.max(minDamage, math.floor(baseDamage * rate))
+	end
+
 	@ExecSpace("ServerOnly")
 	method void DamageTarget(Entity attackerEntity, Entity targetEntity, number now)
 		self:EnsureServerRuntimeTables()
@@ -1025,7 +1039,7 @@ script BRBattleLogic extends Component
 			return
 		end
 		
-		local damage = self:GetAdjustedBasicAttackDamage(attackerEntity)
+		local damage = self:GetIncomingDamageAfterSkillReduction(targetEntity, self:GetAdjustedBasicAttackDamage(attackerEntity), 1)
 		targetPlayer.Hp = math.max(0, targetPlayer.Hp - damage)
 		self._T.invincibleUntil[targetPlayer.UserId] = now + self:GetHitInvincibleSeconds()
 		self:LockPortalUse(targetPlayer.UserId, now)
@@ -1063,7 +1077,7 @@ script BRBattleLogic extends Component
 			return
 		end
 
-		local damage = math.max(1, math.floor(self:ReadNumber(rawDamage, self:GetBasicAttackDamage())))
+		local damage = self:GetIncomingDamageAfterSkillReduction(targetEntity, self:ReadNumber(rawDamage, self:GetBasicAttackDamage()), 1)
 		targetPlayer.Hp = math.max(0, targetPlayer.Hp - damage)
 		self._T.invincibleUntil[userId] = now + self:GetHitInvincibleSeconds()
 		self:LockPortalUse(userId, now)

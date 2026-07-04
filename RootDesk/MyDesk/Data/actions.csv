@@ -18,9 +18,7 @@ PirateProjectileTrigger4/trigger,trigger,위치|방향|시전자
 브랜디쉬/피해,damage,시전자|대상
 브랜디쉬2/피해,damage,시전자|대상
 브랜디쉬3/피해,damage,시전자|대상
-브랜디쉬4/피해,damage,시전자|대상
-크루얼 스텝/피해,damage,시전자|대상
-디바인스윙/피해,damage,시전자|대상
+브랜디쉬4/피해,damage,시전자|대상디바인스윙/피해,damage,시전자|대상
 디바인스윙/스턴,debuff,대상
 디바인스윙2/피해,damage,시전자|대상
 디바인스윙2/스턴,debuff,대상

@@ -1,0 +1,138 @@
+@Component
+script BRSkillDebugUI extends Component
+
+	-- Debug-mode HUD: a master "디버그" button reveals two per-player toggles that turn the skill range
+	-- telegraph (선딜 범위 표시) and the skill hitbox debug boxes on/off for the local caster.
+	property Entity DebugButton = "eb85c9e2-aa2d-4988-aba0-3a0dd1c57580"
+
+	property Entity TelegraphButton = "852c5b5d-1695-423f-8002-16e50dcdae1e"
+
+	property Entity HitboxButton = "a3fbe417-23a3-4536-ae8a-433b9f26b325"
+
+	property boolean debugMode = false
+
+	property boolean telegraphOn = true
+
+	property boolean hitboxOn = false
+
+	property any debugHandler = nil
+
+	property any telegraphHandler = nil
+
+	property any hitboxHandler = nil
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		if isvalid(self.DebugButton) == true then
+			self.debugHandler = self.DebugButton:ConnectEvent(ButtonClickEvent, self.OnDebugClick)
+		end
+		if isvalid(self.TelegraphButton) == true then
+			self.telegraphHandler = self.TelegraphButton:ConnectEvent(ButtonClickEvent, self.OnTelegraphClick)
+		end
+		if isvalid(self.HitboxButton) == true then
+			self.hitboxHandler = self.HitboxButton:ConnectEvent(ButtonClickEvent, self.OnHitboxClick)
+		end
+		-- Push the current defaults to the server so per-player state matches the labels shown.
+		self:ApplyTelegraph()
+		self:ApplyHitbox()
+		self:RefreshUI()
+		log("[BRSkillDebugUI] ready")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		if self.debugHandler ~= nil and isvalid(self.DebugButton) == true then
+			self.DebugButton:DisconnectEvent(ButtonClickEvent, self.debugHandler)
+		end
+		if self.telegraphHandler ~= nil and isvalid(self.TelegraphButton) == true then
+			self.TelegraphButton:DisconnectEvent(ButtonClickEvent, self.telegraphHandler)
+		end
+		if self.hitboxHandler ~= nil and isvalid(self.HitboxButton) == true then
+			self.HitboxButton:DisconnectEvent(ButtonClickEvent, self.hitboxHandler)
+		end
+		self.debugHandler = nil
+		self.telegraphHandler = nil
+		self.hitboxHandler = nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnDebugClick(ButtonClickEvent event)
+		self.debugMode = self.debugMode ~= true
+		self:RefreshUI()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnTelegraphClick(ButtonClickEvent event)
+		self.telegraphOn = self.telegraphOn ~= true
+		self:ApplyTelegraph()
+		self:RefreshUI()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnHitboxClick(ButtonClickEvent event)
+		self.hitboxOn = self.hitboxOn ~= true
+		self:ApplyHitbox()
+		self:RefreshUI()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyTelegraph()
+		if _BRSkillSystem ~= nil then
+			_BRSkillSystem:SetTelegraphEnabled(self:LocalUserId(), self.telegraphOn == true)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyHitbox()
+		if _BRSkillSystem ~= nil then
+			_BRSkillSystem:SetHitboxDebugEnabled(self:LocalUserId(), self.hitboxOn == true)
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method string LocalUserId()
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return ""
+		end
+		local uid = localPlayer.PlayerComponent.UserId
+		if uid == nil then
+			return ""
+		end
+		return uid
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshUI()
+		-- The two per-player toggles are only shown while debug mode is on.
+		if isvalid(self.TelegraphButton) == true then
+			self.TelegraphButton.Enable = self.debugMode == true
+		end
+		if isvalid(self.HitboxButton) == true then
+			self.HitboxButton.Enable = self.debugMode == true
+		end
+		if self.debugMode == true then
+			self:SetButtonText(self.DebugButton, "디버그 ON")
+		else
+			self:SetButtonText(self.DebugButton, "디버그")
+		end
+		if self.telegraphOn == true then
+			self:SetButtonText(self.TelegraphButton, "범위표시: ON")
+		else
+			self:SetButtonText(self.TelegraphButton, "범위표시: OFF")
+		end
+		if self.hitboxOn == true then
+			self:SetButtonText(self.HitboxButton, "히트박스: ON")
+		else
+			self:SetButtonText(self.HitboxButton, "히트박스: OFF")
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetButtonText(Entity button, string text)
+		if isvalid(button) == true and button.TextComponent ~= nil then
+			button.TextComponent.Text = text
+		end
+	end
+
+end

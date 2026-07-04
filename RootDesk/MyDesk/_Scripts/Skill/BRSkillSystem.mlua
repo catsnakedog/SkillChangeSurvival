@@ -218,6 +218,9 @@ script BRSkillSystem extends Logic
 		if self._T.casterLocks == nil then
 			self._T.casterLocks = {}
 		end
+		if self._T.slowLocks == nil then
+			self._T.slowLocks = {}
+		end
 		if self._T.randomSeeded ~= true then
 			self._T.randomSeeded = true
 			math.randomseed(math.floor(_UtilLogic.ElapsedSeconds * 100000) + 17)
@@ -1678,6 +1681,7 @@ script BRSkillSystem extends Logic
 			FixedOriginY = fixedOriginY,
 			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(step.MesoFollowUpCount, 0))),
 			MesoAttacker = casterEntity,
+			DamageRate = math.max(0, self:ReadNumber(step.DamageRate, 1)),
 			Completed = false,
 			Cancelled = false
 		}
@@ -1718,12 +1722,103 @@ script BRSkillSystem extends Logic
 			EffectIds = context.EndSkillDef.EffectIds,
 			Tier = math.max(1, math.floor(self:ReadNumber(context.EndTier, 1))),
 			Role = "end",
+			DamageRate = self:GetPiercingEndSkillDamageRate(context),
 			EndPart = nil,
 			EndSkillDef = nil,
 			EndTier = 0
 		}
 		self:StartSkillCast(context.SourceEntity, self:ReadString(context.UserId, ""), step, true, originX, originY)
-		self:Log("trigger cast user=" .. self:ReadString(context.UserId, "") .. " endSkill=" .. self:ReadString(step.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(step.Tier, 1)))) .. " at=(" .. tostring(originX) .. "," .. tostring(originY) .. ")")
+		self:Log("trigger cast user=" .. self:ReadString(context.UserId, "") .. " endSkill=" .. self:ReadString(step.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(step.Tier, 1)))) .. " rate=" .. tostring(self:ReadNumber(step.DamageRate, 1)) .. " at=(" .. tostring(originX) .. "," .. tostring(originY) .. ")")
+	end
+
+	method string GetPiercingBaseSkillKey()
+		-- Base skill key of the piercing chain part; tier variants are 피어싱2/3/4.
+		return "피어싱"
+	end
+
+	method boolean IsPiercingSkillKey(string skillKey)
+		-- True when a skill key belongs to the piercing part family (base or tier variant).
+		local baseKey = self:GetPiercingBaseSkillKey()
+		local safeKey = self:ReadString(skillKey, "")
+		return safeKey == baseKey or string.sub(safeKey, 1, #baseKey) == baseKey
+	end
+
+	method number GetPiercingEndSkillDamageRate(any context)
+		-- Hardcoded piercing trigger amp for the paired end skill (2=+30%,3=+50%,4=+70%); 1.0 otherwise.
+		if context == nil or self:IsPiercingSkillKey(self:ReadString(context.SkillKey, "")) ~= true then
+			return 1
+		end
+		local tier = self:ClampSkillTier(context.Tier)
+		if tier == 2 then
+			return 1.3
+		elseif tier == 3 then
+			return 1.5
+		elseif tier == 4 then
+			return 1.7
+		end
+		return 1
+	end
+
+	method string GetPiercingExplosionEffectRUID()
+		-- Hardcoded burst effect played on piercing tier 3+ projectile expiry (인핸스 피어싱 ll effect).
+		return "b73f45d4c26e400d8a618296b04db0d2"
+	end
+
+	method void TryPlayPiercingExplosionBurst(any projectile)
+		-- Plays the central explosion burst when a tier 3+ piercing projectile expires.
+		if projectile == nil or self:IsPiercingSkillKey(self:ReadString(projectile.SkillKey, "")) ~= true then
+			return
+		end
+		if self:ClampSkillTier(projectile.Tier) < 3 then
+			return
+		end
+		self:PlaySkillVisualAt(projectile, self:GetPiercingExplosionEffectRUID(), self:ReadNumber(projectile.X, 0), self:ReadNumber(projectile.Y, 0), self:ReadNumber(projectile.Direction, 1), 1.0, "piercing:explosion")
+	end
+
+	method number GetHardcodedStatusMoveSpeedRate(string statusId)
+		-- Hardcoded target move-speed multiplier per status id (둔화 slow = 0.7); 1.0 means no slow.
+		if self:ReadString(statusId, "") == "둔화" then
+			return 0.7
+		end
+		return 1.0
+	end
+
+	method void ApplyTargetSlow(Entity targetEntity, number rate)
+		-- Reduces a slowed target's InputSpeed, capturing the original value once until restored.
+		if targetEntity == nil or isvalid(targetEntity) == false or self:ReadNumber(rate, 1) >= 0.999 then
+			return
+		end
+		local key = self:GetEntityKey(targetEntity)
+		if key == "" or self._T.slowLocks[key] ~= nil then
+			return
+		end
+		if targetEntity.MovementComponent == nil then
+			return
+		end
+		local original = targetEntity.MovementComponent.InputSpeed
+		targetEntity.MovementComponent.InputSpeed = math.max(0.05, self:ReadNumber(original, 1) * self:ReadNumber(rate, 1))
+		self._T.slowLocks[key] = { Entity = targetEntity, InputSpeed = original }
+		self:Log("slow apply target=" .. targetEntity.Name .. " rate=" .. tostring(rate))
+	end
+
+	method void RestoreTargetSlow(Entity targetEntity)
+		-- Restores a slowed target's InputSpeed when its slow status expires.
+		if targetEntity == nil then
+			return
+		end
+		local key = self:GetEntityKey(targetEntity)
+		if key == "" then
+			return
+		end
+		local lock = self._T.slowLocks[key]
+		if lock == nil then
+			return
+		end
+		if lock.Entity ~= nil and isvalid(lock.Entity) and lock.Entity.MovementComponent ~= nil and lock.InputSpeed ~= nil then
+			lock.Entity.MovementComponent.InputSpeed = lock.InputSpeed
+		end
+		self._T.slowLocks[key] = nil
+		self:Log("slow restore target=" .. tostring(key))
 	end
 
 	method void TickActiveCasts(number delta)
@@ -1854,7 +1949,7 @@ script BRSkillSystem extends Logic
 		local origin = self:GetContextOrigin(context)
 		local fixedOriginX = nil
 		local fixedOriginY = nil
-		if context.IsVirtualCaster == true or context.FixedOriginX ~= nil then
+		if context.IsVirtualCaster == true or context.FixedOriginX ~= nil or (context.X ~= nil and context.Y ~= nil) then
 			fixedOriginX = origin.x
 			fixedOriginY = origin.y
 		end
@@ -1884,8 +1979,9 @@ script BRSkillSystem extends Logic
 			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0))),
 			MesoAttacker = context.MesoAttacker,
 			TriggerFired = false,
-			SuppressMainEffect = context.MainEffectPlayed == true,
-			MesoSeenTargets = {}
+			SuppressMainEffect = context.MainEffectPlayed == true or (context.X ~= nil and context.Y ~= nil),
+			MesoSeenTargets = {},
+			DamageRate = self:ReadNumber(context.DamageRate, 1)
 		}
 		table.insert(self._T.activeAreas, area)
 		if area.SuppressMainEffect ~= true then
@@ -1973,6 +2069,7 @@ script BRSkillSystem extends Logic
 			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0))),
 			MesoAttacker = context.MesoAttacker,
 			MesoSeenTargets = {},
+			DamageRate = self:ReadNumber(context.DamageRate, 1),
 			VisualEntity = nil
 		}
 		table.insert(self._T.activeProjectiles, projectile)
@@ -2008,6 +2105,7 @@ script BRSkillSystem extends Logic
 				if projectile.Remove == true or projectile.Travelled >= projectile.Range then
 					if projectile.Expired ~= true then
 						projectile.Expired = true
+						self:TryPlayPiercingExplosionBurst(projectile)
 						self:ExecuteEventsForContext(projectile, projectile.ExpireEventIds, nil, projectile.X, projectile.Y, self:ReadString(projectile.EventId, "projectile") .. ":expire")
 					end
 					self:Log("projectile end user=" .. self:ReadString(projectile.UserId, "") .. " event=" .. self:ReadString(projectile.EventId, ""))
@@ -2199,6 +2297,7 @@ script BRSkillSystem extends Logic
 			MesoAttacker = context.MesoAttacker,
 			MesoSeenTargets = {},
 			TriggerFired = false,
+			DamageRate = self:ReadNumber(context.DamageRate, 1),
 			VisualTimer = 0
 		}
 		table.insert(self._T.activeFields, field)
@@ -3009,7 +3108,7 @@ script BRSkillSystem extends Logic
 		local attackerEntity = context.SourceEntity
 		local attackPower = self:GetSkillAttackPower(attackerEntity)
 		local coefficient = math.max(0, self:ReadNumber(actionDef.Coefficient, 100))
-		local damage = math.max(1, math.floor(attackPower * coefficient / 100 * self:GetAttackBuffRate(attackerEntity)))
+		local damage = math.max(1, math.floor(attackPower * coefficient / 100 * self:GetAttackBuffRate(attackerEntity) * math.max(0, self:ReadNumber(context.DamageRate, 1))))
 		local critical = self:RollCritical(attackerEntity)
 		if critical == true then
 			damage = math.max(1, math.floor(damage * self:GetCriticalDamageRate(attackerEntity)))
@@ -3736,6 +3835,7 @@ script BRSkillSystem extends Logic
 		end
 		local statusId = self:ReadString(actionDef.StatusId, self:ReadString(actionDef.ActionId, "status"))
 		local tickIntervalSeconds = math.max(self:GetSkillFrameSeconds(), math.floor(self:ReadNumber(actionDef.TickIntervalFrames, 33)) * self:GetSkillFrameSeconds())
+		local moveSpeedRate = self:GetHardcodedStatusMoveSpeedRate(statusId)
 		self._T.statusByEntityId[key][statusId] = {
 			StatusId = statusId,
 			TargetEntity = targetEntity,
@@ -3743,12 +3843,16 @@ script BRSkillSystem extends Logic
 			ExpiresAt = self:Now() + self:ReadNumber(actionDef.DurationFrames, 1) * self:GetSkillFrameSeconds(),
 			DamageTakenRate = self:ReadNumber(actionDef.DamageTakenRate, 1),
 			AttackPowerRate = self:ReadNumber(actionDef.AttackPowerRate, 1),
+			MoveSpeedRate = moveSpeedRate,
 			CancelChain = actionDef.CancelChain == true,
 			DotCoefficient = self:ReadNumber(actionDef.DotCoefficient, 0),
 			TickIntervalSeconds = tickIntervalSeconds,
 			NextTickAt = self:Now() + tickIntervalSeconds,
 			SourceId = self:ReadString(sourceId, "")
 		}
+		if moveSpeedRate < 0.999 then
+			self:ApplyTargetSlow(targetEntity, moveSpeedRate)
+		end
 		self:Log("status apply target=" .. targetEntity.Name .. " status=" .. statusId .. " source=" .. self:ReadString(sourceId, ""))
 		return true
 	end
@@ -3800,6 +3904,9 @@ script BRSkillSystem extends Logic
 			local empty = true
 			for statusId, status in pairs(statusMap) do
 				if status == nil or now >= self:ReadNumber(status.ExpiresAt, 0) then
+					if status ~= nil and self:ReadNumber(status.MoveSpeedRate, 1) < 0.999 then
+						self:RestoreTargetSlow(status.TargetEntity)
+					end
 					statusMap[statusId] = nil
 					self:Log("status expire entity=" .. tostring(entityId) .. " status=" .. tostring(statusId))
 				else
@@ -3873,6 +3980,10 @@ script BRSkillSystem extends Logic
 		if isField == true then
 			offsetX = 0
 			offsetY = 0.25
+		end
+		if self:IsPiercingSkillKey(self:ReadString(context.SkillKey, "")) == true then
+			-- 활(피어싱) 시전 이펙트만 지면 높이(y 오프셋 0)에서 재생. 다른 스킬은 +0.35 유지.
+			offsetY = 0
 		end
 		self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, safeEventId), x + direction * offsetX, y + offsetY, direction, self:GetSkillEffectScaleRate(safeEventId) * self:GetContextVisualScale(context, safeEventId), "event:" .. safeEventId)
 	end

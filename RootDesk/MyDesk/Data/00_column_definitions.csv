@@ -44,8 +44,8 @@ effects.csv,이펙트,1,effect_id,이펙트 id,string,,N,,스킬 데이터의 �
 effects.csv,이펙트,2,effect_ruid,이펙트 RUID,string,,N,,이펙트 RUID,p22
 effects.csv,이펙트,3,is_loop,루프 여부,bool,,N,,루프 여부,p22
 effects.csv,이펙트,4,total_length_frames,전체 길이,int,,N,,전체 길이,p22
-effects.csv,이펙트,5,scale,이펙트 스케일 배율,decimal,1,N,,이펙트 시각 크기 배율(1=기본,0.5=절반). 미입력 시 1.0. BRSkillSystem PlaySkillVisualForEvent에서 곱산 적용,추가
-buff_actions.csv,버프 액션 데이터,7,attack_power_rate,공격력 배율,decimal,1,N,,버프 대상의 공격력 배율(1=기본,1.7=+70%). 미입력 시 1.0. BRSkillSystem ApplySkillDamage에서 시전자 활성 버프 곱산,추가
+effects.csv,이펙트,5,scale,이펙트 스케일 배율,decimal,1,N,,이펙트 시각 크기 배율(1=기본,0.5=절반). 미입력 시 1.0. BRSkillSystem PlaySkillVisualForEvent에서 곱산 적용
+buff_actions.csv,버프 액션 데이터,7,attack_power_rate,공격력 배율,decimal,1,N,,버프 대상의 공격력 배율(1=기본,1.7=+70%). 미입력 시 1.0. BRSkillSystem ApplySkillDamage에서 시전자 활성 버프 곱산
 skill_action_restrictions.csv,행동제한 데이터,1,skill_id,스킬 id,string,,N,,행동제한이 적용되는 스킬 id,"p22,p30"
 skill_action_restrictions.csv,행동제한 데이터,2,start_frame,행동 제한 시작 프레임,int,,N,,행동 제한 구간 시작,"p22,p30"
 skill_action_restrictions.csv,행동제한 데이터,3,end_frame,행동 제한 종료 프레임,int,,N,,행동 제한 구간 종료,"p22,p30"

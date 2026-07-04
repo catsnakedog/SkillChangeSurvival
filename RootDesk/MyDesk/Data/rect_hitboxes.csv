@@ -1,4 +1,4 @@
-hitbox_id,offset_x,offset_y,width,height
+﻿hitbox_id,offset_x,offset_y,width,height
 front_short,0,0,180,65
 front_mid,0,0,260,70
 front_wide,0,0,340,75

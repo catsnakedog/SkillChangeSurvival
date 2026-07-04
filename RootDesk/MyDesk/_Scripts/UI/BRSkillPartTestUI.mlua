@@ -13,6 +13,16 @@ script BRSkillPartTestUI extends Logic
 
 	property boolean VerboseLog = true
 
+	property boolean kioskMode = false
+
+	property string kioskMapName = ""
+
+	property number kioskX = 0
+
+	property number kioskY = 0
+
+	property number kioskPrice = 10
+
 	property any closeHandler = nil
 
 	property any inputTouchStartHandler = nil
@@ -58,8 +68,25 @@ script BRSkillPartTestUI extends Logic
 	end
 
 	@ExecSpace("Client")
+	method void OpenKiosk(string userId, string mapName, number x, number y, number price)
+		-- Opens the catalog in kiosk-purchase mode; dragging an icon orders a world drop.
+		local localUserId = self:GetLocalUserId()
+		if localUserId == "" or localUserId ~= self:ReadString(userId, "") then
+			return
+		end
+		self.kioskMode = true
+		self.kioskMapName = self:ReadString(mapName, "")
+		self.kioskX = self:ReadNumber(x, 0)
+		self.kioskY = self:ReadNumber(y, 0)
+		self.kioskPrice = math.max(0, math.floor(self:ReadNumber(price, 10)))
+		self:Open()
+		self:Log("kiosk open map=" .. self.kioskMapName .. " price=" .. tostring(self.kioskPrice))
+	end
+
+	@ExecSpace("Client")
 	method void Close()
 		self:CancelDrag()
+		self.kioskMode = false
 		self:SetPanelActive(false)
 		self:RefreshRootRaycastBlocked()
 		self:Log("closed")
@@ -246,14 +273,13 @@ script BRSkillPartTestUI extends Logic
 		end
 		self:MoveGhostToTouch(screenPoint)
 		self:UpdateDragMoved(screenPoint)
-		local targetSlot = self:GetHudChainSlotAtScreenPoint(screenPoint)
+		local targetSlot = 0
+		if self.kioskMode ~= true then
+			targetSlot = self:GetHudChainSlotAtScreenPoint(screenPoint)
+		end
 		local partId = self.draggingPartId
 		local skillKey = self.draggingSkillKey
 		self:CancelDrag()
-		if targetSlot <= 0 then
-			self:Log("drop ignored skill=" .. skillKey .. " reason=noTargetSlot")
-			return
-		end
 		local userId = self:GetLocalUserId()
 		if userId == "" then
 			self:Log("drop ignored skill=" .. skillKey .. " reason=noLocalUser")
@@ -261,6 +287,15 @@ script BRSkillPartTestUI extends Logic
 		end
 		if _BRSkillSystem == nil then
 			self:Log("drop ignored skill=" .. skillKey .. " reason=noSkillSystem")
+			return
+		end
+		if self.kioskMode == true then
+			_BRSkillSystem:RequestKioskPurchase(userId, partId, self.kioskMapName, self.kioskX, self.kioskY, self.kioskPrice)
+			self:Log("kiosk purchase requested skill=" .. skillKey .. " price=" .. tostring(self.kioskPrice))
+			return
+		end
+		if targetSlot <= 0 then
+			self:Log("drop ignored skill=" .. skillKey .. " reason=noTargetSlot")
 			return
 		end
 		_BRSkillSystem:RequestGrantTestPartToChainSlot(userId, partId, targetSlot)

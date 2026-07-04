@@ -6,9 +6,16 @@ script BRSkillUIDatabase extends Logic
 	property boolean VerboseLog = false
 
 	method string GetSlotIconRUID(string skillKey, number tier, boolean isLeadSlot)
-		-- Returns the temporary UI icon RUID for a skill slot.
-		local data = self:GetIconData(skillKey)
 		local order = self:ClampTier(tier)
+		local resolvedSkillKey = self:ReadString(skillKey, "Default")
+		if isLeadSlot == true and order > 1 then
+			resolvedSkillKey = self:ResolveSkillKeyForTier(resolvedSkillKey, order)
+		end
+
+		local data = self:GetIconData(resolvedSkillKey)
+		if data == nil and resolvedSkillKey ~= skillKey then
+			data = self:GetIconData(skillKey)
+		end
 		if data == nil then
 			data = self:GetIconData("Default")
 		end
@@ -76,6 +83,103 @@ script BRSkillUIDatabase extends Logic
 			return catalog[key]
 		end
 		return catalog[self:GetBaseSkillKey(key)]
+	end
+
+	method any GetSkillDisplayData(string skillKey, number tier)
+		-- Returns Maple-style tooltip display data for one skill tier.
+		local catalog = self:GetSkillDisplayCatalog()
+		local order = self:ClampTier(tier)
+		local resolvedKey = self:ResolveSkillKeyForTier(skillKey, order)
+		local data = catalog[resolvedKey]
+		if data == nil then
+			data = catalog[self:GetBaseSkillKey(skillKey)]
+		end
+		if data == nil then
+			data = catalog[self:ReadString(skillKey, "Default")]
+		end
+		if data == nil then
+			data = catalog.Default
+		end
+		if data == nil then
+			data = {
+				SkillKey = "Default",
+				Name = "Skill",
+				Description = "",
+				Category = "",
+				IconRUID = self:ReadString(self.PlaceholderIconRUID, ""),
+				Tier = order
+			}
+		end
+		return {
+			SkillKey = self:ReadString(data.SkillKey, resolvedKey),
+			Name = self:ReadString(data.Name, "Skill"),
+			Description = self:ReadString(data.Description, ""),
+			Category = self:ReadString(data.Category, ""),
+			IconRUID = self:ReadString(data.IconRUID, self.PlaceholderIconRUID),
+			Tier = order
+		}
+	end
+
+	method string ResolveSkillKeyForTier(string skillKey, number tier)
+		-- Maps a base skill key and visible tier to the CSV row that describes that tier.
+		local catalog = self:GetSkillDisplayCatalog()
+		local key = self:ReadString(skillKey, "Default")
+		local order = self:ClampTier(tier)
+		local baseKey = self:GetBaseSkillKey(key)
+		if order <= 1 then
+			if catalog[baseKey] ~= nil then
+				return baseKey
+			end
+			return key
+		end
+		local tieredKey = baseKey .. tostring(order)
+		if catalog[tieredKey] ~= nil then
+			return tieredKey
+		end
+		if catalog[key] ~= nil then
+			return key
+		end
+		return baseKey
+	end
+
+	method any GetSkillDisplayCatalog()
+		-- Caches the CSV fields needed by skill icon tooltips.
+		if self._T.skillDisplayCatalog == nil then
+			self._T.skillDisplayCatalog = {
+				Default = {
+					SkillKey = "Default",
+					Name = "Skill",
+					Description = "",
+					Category = "",
+					IconRUID = self:ReadString(self.PlaceholderIconRUID, "")
+				}
+			}
+			local skills = self:GetDataTable("skills")
+			if skills ~= nil then
+				local rowCount = math.max(0, math.floor(self:ReadNumber(skills:GetRowCount(), 0)))
+				for row = 1, rowCount do
+					local skillId = self:GetDataCell(skills, row, "id", "")
+					if skillId ~= "" then
+						local iconRuid = self:GetDataCell(skills, row, "icon_ruid", "")
+						if iconRuid == "" then
+							iconRuid = self:GetFirstEffectRUID(self:GetDataCell(skills, row, "effect_ids", ""))
+						end
+						if iconRuid == "" then
+							iconRuid = self:ReadString(self.PlaceholderIconRUID, "")
+						end
+						self._T.skillDisplayCatalog[skillId] = {
+							SkillKey = skillId,
+							Name = self:GetDataCell(skills, row, "name", skillId),
+							Description = self:GetDataCell(skills, row, "description", ""),
+							Category = self:GetDataCell(skills, row, "skill_category", ""),
+							IconRUID = iconRuid
+						}
+					end
+				end
+			end
+			self:Log("tooltip display db ready")
+		end
+		return self._T.skillDisplayCatalog
 	end
 
 	method any GetIconCatalog()

@@ -75,6 +75,12 @@ script BRSkillSystem extends Logic
 
 	property number SummonAttackVisualHoldSeconds = 0.28
 
+	property string ProjectileObjectModelId = "brskillsummonobject"
+
+	property number ProjectileObjectYOffset = 0.35
+
+	property number ProjectileObjectScale = 0.85
+
 	property boolean EnableSkillHitboxDebug = true
 
 	property string HitboxDebugModelId = "brskillhitboxdebug"
@@ -113,6 +119,9 @@ script BRSkillSystem extends Logic
 		-- Initializes runtime-only skill data tables from Data/*.csv-backed DataSets.
 		if self._T.userStates == nil then
 			self._T.userStates = {}
+		end
+		if self._T.userMeso == nil then
+			self._T.userMeso = {}
 		end
 		if self._T.snapshotVersions == nil then
 			self._T.snapshotVersions = {}
@@ -588,6 +597,22 @@ script BRSkillSystem extends Logic
 		return fallback == true
 	end
 
+	method number ReadProjectilePierce(any value)
+		-- Reads projectile pierce count; negative means infinite pierce.
+		local safeValue = string.lower(self:TrimString(tostring(self:ReadString(value, ""))))
+		if safeValue == "" then
+			return 0
+		end
+		if safeValue == "always" or safeValue == "infinite" or safeValue == "inf" or safeValue == "all" then
+			return -1
+		end
+		local pierce = math.floor(self:ReadNumber(safeValue, 0))
+		if pierce < 0 then
+			return -1
+		end
+		return pierce
+	end
+
 	method any ParseDelimitedList(string value, string delimiter)
 		-- Parses pipe/semicolon-delimited ids while keeping Korean ids intact.
 		local result = {}
@@ -891,9 +916,10 @@ script BRSkillSystem extends Logic
 				actionDef.ProjectileEffectRUID = actionDef.ProjectileSpriteRUID
 				actionDef.Range = self:PixelsToWorld(self:GetDataCell(data, row, "projectile_range", "500"), 500)
 				actionDef.Speed = self:PixelsToWorld(self:GetDataCell(data, row, "projectile_speed", "600"), 600)
+				actionDef.ProjectileSpinDegreesPerSecond = self:ReadNumber(self:GetDataCell(data, row, "projectile_spin_degrees_per_second", "0"), 0)
 				actionDef.FrontDirection = self:ReadDataBoolean(data, row, "projectile_front_direction", true)
 				actionDef.HitboxIds = self:ParseDelimitedList(self:GetDataCell(data, row, "projectile_hitbox_id", ""), "|")
-				actionDef.Pierce = math.max(0, math.floor(self:ReadNumber(self:GetDataCell(data, row, "projectile_pierce", "0"), 0)))
+				actionDef.Pierce = self:ReadProjectilePierce(self:GetDataCell(data, row, "projectile_pierce", "0"))
 				actionDef.CollisionEventIds = self:ParseDelimitedList(self:GetDataCell(data, row, "collision_event_ids", ""), "|")
 				actionDef.ExpireEventIds = self:ParseDelimitedList(self:GetDataCell(data, row, "expire_event_ids", ""), "|")
 			end
@@ -1048,7 +1074,7 @@ script BRSkillSystem extends Logic
 
 	@ExecSpace("Server")
 	method void RequestCastNextChainSkill(string requestUserId)
-		-- Casts every player-castable skill in the local user's chain together.
+		-- Casts the resolved local user's chain as an ordered sequence.
 		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
 		if userId == "" then
 			self:Log("cast request skipped reason=noUser")
@@ -1201,7 +1227,7 @@ script BRSkillSystem extends Logic
 	end
 
 	method boolean TryCastNextChainSkill(Entity casterEntity)
-		-- Starts all executable chain steps together for one player input.
+		-- Starts one resolved chain sequence, executing each step in order.
 		self:EnsureRuntime()
 		if casterEntity == nil or casterEntity.PlayerComponent == nil then
 			return false
@@ -1223,7 +1249,7 @@ script BRSkillSystem extends Logic
 
 		local runtime = self:GetChainRuntime(userId)
 		local now = self:Now()
-		if self:ReadNumber(runtime.ActiveCastCount, 0) > 0 and now < self:ReadNumber(runtime.ActiveUntil, 0) then
+		if self:ReadNumber(runtime.ActiveCastCount, 0) > 0 or self:HasPendingChainSteps(runtime) == true then
 			return true
 		end
 		if now < self:ReadNumber(runtime.NextCastAt, 0) then
@@ -1231,29 +1257,21 @@ script BRSkillSystem extends Logic
 		end
 
 		runtime.Signature = resolved.Signature
-		runtime.NextStepIndex = 1
 
-		local maxDuration = 0
 		local maxCooldown = self:GetChainCastCooldownSeconds()
 		local castCount = 0
 		local skillSummary = ""
 		for stepIndex, step in ipairs(resolved.Steps) do
 			if step ~= nil and step.SkillDef ~= nil then
 				castCount = castCount + 1
-				local skillDuration = self:GetSkillDurationSeconds(step.SkillDef)
 				local skillCooldown = self:GetSkillCooldownSeconds(step.SkillDef)
-				if skillDuration > maxDuration then
-					maxDuration = skillDuration
-				end
 				if skillCooldown > maxCooldown then
 					maxCooldown = skillCooldown
 				end
 				if skillSummary ~= "" then
-					skillSummary = skillSummary .. "+"
+					skillSummary = skillSummary .. ">"
 				end
 				skillSummary = skillSummary .. self:ReadString(step.SkillKey, "") .. "#" .. tostring(math.max(1, math.floor(self:ReadNumber(step.Tier, 1))))
-				self:StartSkillCast(casterEntity, userId, step, false, nil, nil)
-				self:Log("cast start user=" .. userId .. " step=" .. tostring(stepIndex) .. "/" .. tostring(resolved.Count) .. " skill=" .. self:ReadString(step.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(step.Tier, 1)))) .. " role=" .. self:ReadString(step.Role, "normal"))
 			end
 		end
 
@@ -1261,12 +1279,70 @@ script BRSkillSystem extends Logic
 			return false
 		end
 
+		runtime.PendingSteps = resolved.Steps
+		runtime.PendingStepIndex = 1
+		runtime.PendingStepCount = castCount
+		runtime.PendingSummary = skillSummary
+		runtime.PendingCooldownSeconds = maxCooldown
 		runtime.NextCastAt = now + maxCooldown
 		runtime.ResetAt = now + self:GetSkillChainResetSeconds()
-		runtime.ActiveUntil = now + maxDuration
 
-		self:Log("chain cast start user=" .. userId .. " count=" .. tostring(castCount) .. " skills=" .. skillSummary .. " cooldown=" .. tostring(maxCooldown))
-		return true
+		self:Log("chain sequence start user=" .. userId .. " count=" .. tostring(castCount) .. " skills=" .. skillSummary .. " cooldown=" .. tostring(maxCooldown))
+		return self:StartNextQueuedChainStep(casterEntity, userId, runtime)
+	end
+
+	method boolean HasPendingChainSteps(any runtime)
+		-- Returns whether the current chain sequence has more steps to start.
+		if runtime == nil or runtime.PendingSteps == nil then
+			return false
+		end
+		local nextIndex = math.max(1, math.floor(self:ReadNumber(runtime.PendingStepIndex, 1)))
+		local count = math.max(0, math.floor(self:ReadNumber(runtime.PendingStepCount, #runtime.PendingSteps)))
+		return nextIndex <= count
+	end
+
+	method void ClearQueuedChainRuntime(any runtime)
+		-- Clears the queued chain sequence without touching cooldowns.
+		if runtime == nil then
+			return
+		end
+		runtime.PendingSteps = nil
+		runtime.PendingStepIndex = 1
+		runtime.PendingStepCount = 0
+		runtime.PendingSummary = ""
+		runtime.PendingCooldownSeconds = 0
+	end
+
+	method boolean StartNextQueuedChainStep(Entity casterEntity, string userId, any runtime)
+		-- Starts the next chain step after the previous cast has fully ended.
+		if runtime == nil then
+			return false
+		end
+		if casterEntity == nil or isvalid(casterEntity) == false or casterEntity.PlayerComponent == nil then
+			self:ClearQueuedChainRuntime(runtime)
+			return false
+		end
+		if casterEntity.PlayerComponent:IsDead() == true or casterEntity.PlayerComponent.Hp <= 0 then
+			self:ClearQueuedChainRuntime(runtime)
+			return false
+		end
+
+		local count = math.max(0, math.floor(self:ReadNumber(runtime.PendingStepCount, 0)))
+		local nextIndex = math.max(1, math.floor(self:ReadNumber(runtime.PendingStepIndex, 1)))
+		while runtime.PendingSteps ~= nil and nextIndex <= count do
+			local step = runtime.PendingSteps[nextIndex]
+			runtime.PendingStepIndex = nextIndex + 1
+			if step ~= nil and step.SkillDef ~= nil then
+				self:Log("chain step start user=" .. self:ReadString(userId, "") .. " step=" .. tostring(nextIndex) .. "/" .. tostring(count) .. " skill=" .. self:ReadString(step.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(step.Tier, 1)))) .. " role=" .. self:ReadString(step.Role, "normal"))
+				self:StartSkillCast(casterEntity, userId, step, false, nil, nil)
+				return true
+			end
+			nextIndex = nextIndex + 1
+		end
+
+		self:Log("chain sequence end user=" .. self:ReadString(userId, "") .. " skills=" .. self:ReadString(runtime.PendingSummary, ""))
+		self:ClearQueuedChainRuntime(runtime)
+		return false
 	end
 
 	method any BuildResolvedChain(any state)
@@ -1365,7 +1441,7 @@ script BRSkillSystem extends Logic
 	end
 
 	method string BuildResolvedChainSummary(any state)
-		-- Builds a readable simultaneous cast summary such as A 1 + B 2->C 1.
+		-- Builds a readable ordered cast summary such as A 1 + B 2->C 1.
 		local resolved = self:BuildResolvedChain(state)
 		if resolved == nil or resolved.Count <= 0 then
 			return self:BuildEmptyRecipeText()
@@ -1432,16 +1508,71 @@ script BRSkillSystem extends Logic
 		for frame, eventIds in pairs(skillDef.EventsByFrame) do
 			if eventIds ~= nil then
 				for index, eventId in ipairs(eventIds) do
-					local eventDef = self._T.skillEventCatalog[eventId]
-					if eventDef ~= nil and eventDef.ActionIds ~= nil then
-						for actionIndex, actionId in ipairs(eventDef.ActionIds) do
-							local actionDef = self._T.skillActionCatalog[actionId]
-							if actionDef ~= nil and actionDef.Type == "trigger" then
-								return true
-							end
-						end
+					if self:SkillEventHasTrigger(eventId, {}) == true then
+						return true
 					end
 				end
+			end
+		end
+		return false
+	end
+
+	method boolean SkillEventHasTrigger(string eventId, any visitedEvents)
+		local safeEventId = self:ReadString(eventId, "")
+		if safeEventId == "" or self._T.skillEventCatalog == nil then
+			return false
+		end
+		if visitedEvents == nil then
+			visitedEvents = {}
+		end
+		if visitedEvents[safeEventId] == true then
+			return false
+		end
+		visitedEvents[safeEventId] = true
+		local eventDef = self._T.skillEventCatalog[safeEventId]
+		if eventDef == nil then
+			return false
+		end
+		if eventDef.ActionIds ~= nil then
+			for actionIndex, actionId in ipairs(eventDef.ActionIds) do
+				local actionDef = self._T.skillActionCatalog[actionId]
+				if self:SkillActionHasTrigger(actionDef, visitedEvents) == true then
+					return true
+				end
+			end
+		end
+		if self:SkillEventListHasTrigger(eventDef.CollisionEventIds, visitedEvents) == true then
+			return true
+		end
+		if self:SkillEventListHasTrigger(eventDef.ExpireEventIds, visitedEvents) == true then
+			return true
+		end
+		return false
+	end
+
+	method boolean SkillActionHasTrigger(any actionDef, any visitedEvents)
+		if actionDef == nil then
+			return false
+		end
+		if self:ReadString(actionDef.Type, "") == "trigger" then
+			return true
+		end
+		if self:SkillEventListHasTrigger(actionDef.CollisionEventIds, visitedEvents) == true then
+			return true
+		end
+		if self:SkillEventListHasTrigger(actionDef.ExpireEventIds, visitedEvents) == true then
+			return true
+		end
+		return false
+	end
+
+	method boolean SkillEventListHasTrigger(any eventIds, any visitedEvents)
+		if eventIds == nil then
+			return false
+		end
+		for index, eventId in ipairs(eventIds) do
+			if self:SkillEventHasTrigger(eventId, visitedEvents) == true then
+				return true
 			end
 		end
 		return false
@@ -1454,11 +1585,15 @@ script BRSkillSystem extends Logic
 		if self._T.chainRuntimeByUser[safeUserId] == nil then
 			self._T.chainRuntimeByUser[safeUserId] = {
 				Signature = "",
-				NextStepIndex = 1,
 				NextCastAt = 0,
 				ResetAt = 0,
 				ActiveUntil = 0,
-				ActiveCastCount = 0
+				ActiveCastCount = 0,
+				PendingSteps = nil,
+				PendingStepIndex = 1,
+				PendingStepCount = 0,
+				PendingSummary = "",
+				PendingCooldownSeconds = 0
 			}
 		end
 		return self._T.chainRuntimeByUser[safeUserId]
@@ -1514,6 +1649,7 @@ script BRSkillSystem extends Logic
 		table.insert(self._T.activeCasts, cast)
 		if cast.IsVirtualCaster ~= true and self:ReadString(cast.SkillKey, "") == self:GetMesoExplosionSkillKey() then
 			self:PlayCasterMesoEffect(casterEntity)
+			self:ArmActiveMesoFollowUps(cast.UserId, self:CoinCountForTier(cast.Tier), casterEntity)
 		end
 		if cast.IsVirtualCaster ~= true then
 			local runtime = self:GetChainRuntime(cast.UserId)
@@ -1626,23 +1762,34 @@ script BRSkillSystem extends Logic
 	end
 
 	method void FinishSkillCast(any cast, boolean cancelled)
-		-- Restores action limits when a non-virtual skill cast ends.
+		-- Restores action limits and advances the queued chain after one cast ends.
 		if cast == nil then
 			return
-		end
-		if cast.IsVirtualCaster ~= true then
-			local runtime = self:GetChainRuntime(self:ReadString(cast.UserId, ""))
-			local activeCount = math.max(0, math.floor(self:ReadNumber(runtime.ActiveCastCount, 0)) - 1)
-			runtime.ActiveCastCount = activeCount
-			if activeCount <= 0 then
-				self:RestoreCasterActionLimit(cast)
-				runtime.ActiveUntil = 0
-			end
 		end
 		if cancelled == true then
 			self:Log("skill cancelled user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, ""))
 		else
 			self:Log("skill end user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, ""))
+		end
+		if cast.IsVirtualCaster ~= true then
+			local userId = self:ReadString(cast.UserId, "")
+			local runtime = self:GetChainRuntime(userId)
+			local activeCount = math.max(0, math.floor(self:ReadNumber(runtime.ActiveCastCount, 0)) - 1)
+			runtime.ActiveCastCount = activeCount
+			if activeCount <= 0 then
+				self:RestoreCasterActionLimit(cast)
+				runtime.ActiveUntil = 0
+				if cancelled == true then
+					self:ClearQueuedChainRuntime(runtime)
+				elseif self:HasPendingChainSteps(runtime) == true then
+					self:StartNextQueuedChainStep(cast.CasterEntity, userId, runtime)
+				else
+					if runtime.PendingSteps ~= nil then
+						self:Log("chain sequence end user=" .. userId .. " skills=" .. self:ReadString(runtime.PendingSummary, ""))
+					end
+					self:ClearQueuedChainRuntime(runtime)
+				end
+			end
 		end
 	end
 
@@ -1680,6 +1827,7 @@ script BRSkillSystem extends Logic
 			SeenTargets = {},
 			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0))),
 			MesoAttacker = context.MesoAttacker,
+			MesoSeenTargets = {},
 			TriggerFired = false
 		}
 		table.insert(self._T.activeAreas, area)
@@ -1725,9 +1873,6 @@ script BRSkillSystem extends Logic
 					area.HitCount = self:ReadNumber(area.HitCount, 0) + 1
 					local pos = self:GetEntityPosition2(targetEntity)
 					self:ExecuteActions(area, area.ActionIds, targetEntity, pos.x, pos.y, self:ReadString(area.EventId, "area"))
-					if self:ReadNumber(area.MesoFollowUpCount, 0) > 0 then
-						self:SpawnMesoCoins(targetEntity, area.MesoFollowUpCount, area.MesoAttacker)
-					end
 				end
 			end
 		end
@@ -1756,7 +1901,9 @@ script BRSkillSystem extends Logic
 			Travelled = 0,
 			Speed = math.max(0.1, self:ReadNumber(eventDef.Speed, 6)),
 			Range = math.max(0.1, self:ReadNumber(eventDef.Range, 5)),
-			Pierce = math.max(0, math.floor(self:ReadNumber(eventDef.Pierce, 0))),
+			SpinDegreesPerSecond = self:ReadNumber(eventDef.ProjectileSpinDegreesPerSecond, 0),
+			SpinAngle = 0,
+			Pierce = self:ReadProjectilePierce(eventDef.Pierce),
 			HitboxIds = eventDef.HitboxIds,
 			ActionIds = eventDef.ActionIds,
 			CollisionEventIds = eventDef.CollisionEventIds,
@@ -1764,11 +1911,14 @@ script BRSkillSystem extends Logic
 			SeenTargets = {},
 			EndSkillDef = context.EndSkillDef,
 			EndTier = math.max(0, math.floor(self:ReadNumber(context.EndTier, 0))),
-			VisualTimer = 0
+			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0))),
+			MesoAttacker = context.MesoAttacker,
+			MesoSeenTargets = {},
+			VisualEntity = nil
 		}
 		table.insert(self._T.activeProjectiles, projectile)
-		self:PlaySkillVisualForEvent(projectile, projectile.EventId, projectile.X, projectile.Y, false)
-		self:Log("projectile start user=" .. projectile.UserId .. " event=" .. projectile.EventId)
+		self:SpawnProjectileObject(projectile)
+		self:Log("projectile start user=" .. projectile.UserId .. " event=" .. projectile.EventId .. " speed=" .. tostring(projectile.Speed) .. " spin=" .. tostring(projectile.SpinDegreesPerSecond) .. " pierce=" .. tostring(projectile.Pierce))
 	end
 
 	method void TickActiveProjectiles(number delta)
@@ -1781,7 +1931,10 @@ script BRSkillSystem extends Logic
 				local move = projectile.Speed * self:ReadNumber(delta, 0)
 				projectile.X = self:ReadNumber(projectile.X, 0) + projectile.Direction * move
 				projectile.Travelled = self:ReadNumber(projectile.Travelled, 0) + math.abs(move)
-				projectile.VisualTimer = self:ReadNumber(projectile.VisualTimer, 0) + self:ReadNumber(delta, 0)
+				local spinDegrees = self:ReadNumber(projectile.SpinDegreesPerSecond, 0)
+				if spinDegrees ~= 0 then
+					projectile.SpinAngle = self:ReadNumber(projectile.SpinAngle, 0) + spinDegrees * self:ReadNumber(projectile.Direction, 1) * self:ReadNumber(delta, 0)
+				end
 				local clampedProjectilePosition = self:ClampContextPositionToMapBounds(projectile, Vector2(projectile.X, projectile.Y))
 				if math.abs(clampedProjectilePosition.x - projectile.X) > 0.001 or math.abs(clampedProjectilePosition.y - projectile.Y) > 0.001 then
 					projectile.X = clampedProjectilePosition.x
@@ -1789,10 +1942,7 @@ script BRSkillSystem extends Logic
 					projectile.Remove = true
 					self:Log("projectile bound stop user=" .. self:ReadString(projectile.UserId, "") .. " event=" .. self:ReadString(projectile.EventId, ""))
 				end
-				if projectile.VisualTimer >= 0.09 then
-					projectile.VisualTimer = 0
-					self:PlaySkillVisualForEvent(projectile, self:ReadString(projectile.EventId, ""), projectile.X, projectile.Y, false)
-				end
+				self:UpdateProjectileObjectTransform(projectile)
 				if projectile.Remove ~= true then
 					self:ProcessProjectileContact(projectile)
 				end
@@ -1802,6 +1952,7 @@ script BRSkillSystem extends Logic
 						self:ExecuteEventsForContext(projectile, projectile.ExpireEventIds, nil, projectile.X, projectile.Y, self:ReadString(projectile.EventId, "projectile") .. ":expire")
 					end
 					self:Log("projectile end user=" .. self:ReadString(projectile.UserId, "") .. " event=" .. self:ReadString(projectile.EventId, ""))
+					self:DestroyProjectileObject(projectile, 0)
 					table.remove(self._T.activeProjectiles, index)
 				end
 			end
@@ -1817,20 +1968,145 @@ script BRSkillSystem extends Logic
 				local targetKey = self:GetEntityKey(targetEntity)
 				if projectile.SeenTargets[targetKey] ~= true then
 					projectile.SeenTargets[targetKey] = true
-					local pos = self:GetEntityPosition2(targetEntity)
+					local hitX = self:ReadNumber(projectile.X, 0)
+					local hitY = self:ReadNumber(projectile.Y, 0)
+					self:Log("projectile hit user=" .. self:ReadString(projectile.UserId, "") .. " event=" .. self:ReadString(projectile.EventId, "projectile") .. " target=" .. targetKey .. " at=(" .. tostring(hitX) .. "," .. tostring(hitY) .. ")")
 					if projectile.CollisionEventIds ~= nil and #projectile.CollisionEventIds > 0 then
-						self:ExecuteEventsForContext(projectile, projectile.CollisionEventIds, targetEntity, pos.x, pos.y, self:ReadString(projectile.EventId, "projectile") .. ":collision")
+						-- Collision events run gameplay actions only. Target hit visuals are handled by damage action data.
+						self:ExecuteEventsForContext(projectile, projectile.CollisionEventIds, targetEntity, hitX, hitY, self:ReadString(projectile.EventId, "projectile") .. ":collision")
 					else
-						self:ExecuteActions(projectile, projectile.ActionIds, targetEntity, pos.x, pos.y, self:ReadString(projectile.EventId, "projectile"))
+						self:ExecuteActions(projectile, projectile.ActionIds, targetEntity, hitX, hitY, self:ReadString(projectile.EventId, "projectile"))
 					end
-					if projectile.Pierce <= 0 then
+					local pierce = math.floor(self:ReadNumber(projectile.Pierce, 0))
+					if pierce == 0 then
 						projectile.Remove = true
 						return
 					end
-					projectile.Pierce = projectile.Pierce - 1
+					if pierce > 0 then
+						projectile.Pierce = pierce - 1
+					end
 				end
 			end
 		end
+	end
+
+	method void PlayProjectileCollisionVisual(any projectile, any collisionEventIds, number hitX, number hitY, string sourceId)
+		-- Plays the impact effect mapped to a projectile collision event.
+		if collisionEventIds == nil then
+			return
+		end
+		for index, eventId in ipairs(collisionEventIds) do
+			local safeEventId = self:ReadString(eventId, "")
+			local ruid = self:GetSkillEffectRUID(safeEventId)
+			if ruid ~= "" then
+				local scale = math.max(0.05, self:GetSkillEffectScale(safeEventId) * 0.7)
+				self:PlaySkillVisualAt(projectile, ruid, hitX, hitY + 0.35, self:GetContextDirection(projectile), scale, "projectile-hit:" .. safeEventId)
+				self:Log("projectile hit visual source=" .. self:ReadString(sourceId, "projectile") .. " event=" .. safeEventId .. " ruid=" .. ruid)
+				return
+			end
+		end
+		self:Log("projectile hit visual skipped source=" .. self:ReadString(sourceId, "projectile") .. " reason=missing-effect")
+	end
+
+	method void SpawnProjectileObject(any projectile)
+		if projectile == nil then
+			return
+		end
+		local visualRuid = self:ReadString(projectile.VisualRUID, "")
+		if visualRuid == "" then
+			self:Log("projectile visual skipped: ruid empty event=" .. self:ReadString(projectile.EventId, "projectile"))
+			return
+		end
+		local mapName = self:GetContextMapName(projectile)
+		if mapName == "" then
+			self:Log("projectile visual skipped: map empty event=" .. self:ReadString(projectile.EventId, "projectile"))
+			return
+		end
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
+		if mapEntity == nil or isvalid(mapEntity) == false then
+			self:Log("projectile visual skipped: map missing map=" .. mapName)
+			return
+		end
+		local modelId = self:ReadString(self.ProjectileObjectModelId, "")
+		if modelId == "" then
+			modelId = self:ReadString(self.SummonObjectModelId, "")
+		end
+		if modelId == "" then
+			self:Log("projectile visual skipped: model id empty")
+			return
+		end
+		if self._T.projectileObjectSeq == nil then
+			self._T.projectileObjectSeq = 0
+		end
+		self._T.projectileObjectSeq = self._T.projectileObjectSeq + 1
+		local name = "SkillProjectile_" .. tostring(self._T.projectileObjectSeq) .. "_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000))
+		local entity = _SpawnService:SpawnByModelId(modelId, name, Vector3(self:ReadNumber(projectile.X, 0), self:ReadNumber(projectile.Y, 0) + self:GetProjectileVisualYOffset(), 0), mapEntity)
+		if entity == nil then
+			self:Log("projectile visual spawn failed model=" .. modelId .. " event=" .. self:ReadString(projectile.EventId, "projectile"))
+			return
+		end
+		projectile.VisualEntity = entity
+		self:ApplyProjectileObjectRenderer(entity, projectile)
+		self:Log("projectile visual spawned event=" .. self:ReadString(projectile.EventId, "projectile") .. " name=" .. self:ReadString(entity.Name, "") .. " speed=" .. tostring(self:ReadNumber(projectile.Speed, 0)) .. " spin=" .. tostring(self:ReadNumber(projectile.SpinDegreesPerSecond, 0)))
+	end
+
+	method void ApplyProjectileObjectRenderer(Entity entity, any projectile)
+		if entity == nil or isvalid(entity) == false then
+			return
+		end
+		local scale = self:GetProjectileVisualScale()
+		if entity.TransformComponent ~= nil then
+			entity.TransformComponent.Scale = Vector3(scale, scale, 1)
+			entity.TransformComponent.ZRotation = self:ReadNumber(projectile.SpinAngle, 0)
+		end
+		if entity.SpriteRendererComponent ~= nil then
+			entity.SpriteRendererComponent.SpriteRUID = self:ReadString(projectile.VisualRUID, "")
+			entity.SpriteRendererComponent.SortingLayer = "MapLayer0"
+			entity.SpriteRendererComponent.OrderInLayer = math.floor(self:ReadNumber(self.SkillEffectOrderInLayer, 30))
+			entity.SpriteRendererComponent.IgnoreMapLayerCheck = true
+			entity.SpriteRendererComponent.PlayRate = 1.0
+			entity.SpriteRendererComponent.FlipX = self:GetContextDirection(projectile) > 0
+			entity.SpriteRendererComponent:SetAlpha(math.max(0, math.min(1, self:ReadNumber(self.SkillEffectAlpha, 1))))
+		end
+	end
+
+	method void UpdateProjectileObjectTransform(any projectile)
+		if projectile == nil or projectile.VisualEntity == nil then
+			return
+		end
+		local entity = projectile.VisualEntity
+		if entity == nil or isvalid(entity) == false then
+			projectile.VisualEntity = nil
+			return
+		end
+		local scale = self:GetProjectileVisualScale()
+		if entity.TransformComponent ~= nil then
+			entity.TransformComponent.Position = Vector3(self:ReadNumber(projectile.X, 0), self:ReadNumber(projectile.Y, 0) + self:GetProjectileVisualYOffset(), 0)
+			entity.TransformComponent.Scale = Vector3(scale, scale, 1)
+			entity.TransformComponent.ZRotation = self:ReadNumber(projectile.SpinAngle, 0)
+		end
+		if entity.SpriteRendererComponent ~= nil then
+			entity.SpriteRendererComponent.FlipX = self:GetContextDirection(projectile) > 0
+		end
+	end
+
+	method void DestroyProjectileObject(any projectile, number delaySeconds)
+		if projectile == nil or projectile.VisualEntity == nil then
+			return
+		end
+		local entity = projectile.VisualEntity
+		projectile.VisualEntity = nil
+		if entity ~= nil and isvalid(entity) == true then
+			entity:Destroy(math.max(0, self:ReadNumber(delaySeconds, 0)))
+		end
+	end
+
+	method number GetProjectileVisualYOffset()
+		return self:ReadNumber(self.ProjectileObjectYOffset, 0.35)
+	end
+
+	method number GetProjectileVisualScale()
+		return math.max(0.05, self:ReadNumber(self.ProjectileObjectScale, 0.85) * math.max(0.05, self:ReadNumber(self.SkillEffectScale, 1)))
 	end
 
 	method void StartField(any context, any eventDef)
@@ -1860,6 +2136,10 @@ script BRSkillSystem extends Logic
 			SeenTargets = {},
 			EndSkillDef = context.EndSkillDef,
 			EndTier = math.max(0, math.floor(self:ReadNumber(context.EndTier, 0))),
+			MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0))),
+			MesoAttacker = context.MesoAttacker,
+			MesoSeenTargets = {},
+			TriggerFired = false,
 			VisualTimer = 0
 		}
 		table.insert(self._T.activeFields, field)
@@ -1947,6 +2227,13 @@ script BRSkillSystem extends Logic
 				SummonIndex = index,
 				Entity = nil,
 				IsMoving = false,
+				EndSkillDef = context.EndSkillDef,
+				EndTier = math.max(0, math.floor(self:ReadNumber(context.EndTier, 0))),
+				IsVirtualCaster = context.IsVirtualCaster == true,
+				MesoFollowUpCount = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0))),
+				MesoAttacker = context.MesoAttacker,
+				MesoSeenTargets = {},
+				TriggerFired = false,
 				VisualState = "",
 				VisualRUID = "",
 				VisualHoldSeconds = 0
@@ -2053,6 +2340,7 @@ script BRSkillSystem extends Logic
 				local pos = self:GetEntityPosition2(targetEntity)
 				self:ApplySkillDamage(summon, targetEntity, damageAction, "summon:" .. self:ReadString(summon.ActionId, "summon"))
 				self:PlaySkillHitVisual(summon, pos.x, pos.y, "summon:" .. self:ReadString(summon.ActionId, "summon"), damageAction.HitEffectRUID)
+				self:TrySpawnMesoFollowUp(summon, targetEntity)
 			end
 		end
 	end
@@ -2266,6 +2554,7 @@ script BRSkillSystem extends Logic
 			ProjectileEffectRUID = actionDef.ProjectileEffectRUID,
 			Speed = actionDef.Speed,
 			Range = actionDef.Range,
+			ProjectileSpinDegreesPerSecond = actionDef.ProjectileSpinDegreesPerSecond,
 			Pierce = actionDef.Pierce,
 			FrontDirection = actionDef.FrontDirection ~= false,
 			HitboxIds = actionDef.HitboxIds,
@@ -2300,6 +2589,7 @@ script BRSkillSystem extends Logic
 			self:ApplySkillDamage(context, targetEntity, actionDef, sourceId)
 			if targetEntity ~= nil then
 				self:PlaySkillHitVisual(context, triggerX, triggerY, sourceId, actionDef.HitEffectRUID)
+				self:TrySpawnMesoFollowUp(context, targetEntity)
 			end
 		elseif actionType == "buff" then
 			if self:RollActionChance(actionDef) == true and self:ApplySkillStatus(context.SourceEntity, actionDef, self:ReadString(context.UserId, ""), sourceId) == true then
@@ -2674,6 +2964,14 @@ script BRSkillSystem extends Logic
 			return
 		end
 
+		---@type any
+		local partBox = self:GetPartBoxComponent(targetEntity)
+		if partBox ~= nil and partBox:IsDamageBox() == true then
+			partBox:ApplyPartBoxDamage(attackerEntity, damage, self:ReadString(sourceId, "skill"))
+			self:Log("damage partbox user=" .. self:ReadString(context.UserId, "") .. " target=" .. targetEntity.Name .. " amount=" .. tostring(damage) .. " critical=" .. tostring(critical))
+			return
+		end
+
 		local bot = self:GetBattleBotComponent(targetEntity)
 		if bot ~= nil then
 			bot:ApplyBotDamage(attackerEntity, damage, self:ReadString(sourceId, "skill"))
@@ -2689,6 +2987,64 @@ script BRSkillSystem extends Logic
 				self:HandleSkillFatalDamage(attackerEntity, targetEntity, sourceId)
 			end
 		end
+	end
+
+	method boolean TrySpawnMesoFollowUp(any context, Entity targetEntity)
+		-- Spawns the meso follow-up once per target for the current hit context.
+		if context == nil or targetEntity == nil or isvalid(targetEntity) ~= true then
+			return false
+		end
+		local count = math.max(0, math.floor(self:ReadNumber(context.MesoFollowUpCount, 0)))
+		if count <= 0 then
+			return false
+		end
+		if context.MesoSeenTargets == nil then
+			context.MesoSeenTargets = {}
+		end
+		local targetKey = self:GetEntityKey(targetEntity)
+		if context.MesoSeenTargets[targetKey] == true then
+			return false
+		end
+		context.MesoSeenTargets[targetKey] = true
+		local attacker = context.MesoAttacker
+		if attacker == nil then
+			attacker = context.SourceEntity
+		end
+		self:SpawnMesoCoins(targetEntity, count, attacker)
+		self:Log("meso follow-up user=" .. self:ReadString(context.UserId, "") .. " source=" .. self:ReadString(context.SkillKey, self:ReadString(context.EventId, self:ReadString(context.ActionId, ""))) .. " target=" .. targetKey .. " count=" .. tostring(count))
+		return true
+	end
+
+	method number ArmActiveMesoFollowUps(string userId, number count, Entity attacker)
+		-- Lets Meso Explosion arm persistent objects that were already installed before it.
+		local safeUserId = self:ReadString(userId, "")
+		local safeCount = math.max(0, math.floor(self:ReadNumber(count, 0)))
+		if safeUserId == "" or safeCount <= 0 then
+			return 0
+		end
+		local armedCount = 0
+		armedCount = armedCount + self:ArmMesoFollowUpsForList(self._T.activeAreas, safeUserId, safeCount, attacker)
+		armedCount = armedCount + self:ArmMesoFollowUpsForList(self._T.activeFields, safeUserId, safeCount, attacker)
+		armedCount = armedCount + self:ArmMesoFollowUpsForList(self._T.activeProjectiles, safeUserId, safeCount, attacker)
+		armedCount = armedCount + self:ArmMesoFollowUpsForList(self._T.activeSummons, safeUserId, safeCount, attacker)
+		self:Log("meso arm user=" .. safeUserId .. " count=" .. tostring(safeCount) .. " contexts=" .. tostring(armedCount))
+		return armedCount
+	end
+
+	method number ArmMesoFollowUpsForList(any contexts, string userId, number count, Entity attacker)
+		if contexts == nil then
+			return 0
+		end
+		local armedCount = 0
+		for index, context in ipairs(contexts) do
+			if context ~= nil and self:ReadString(context.UserId, "") == self:ReadString(userId, "") then
+				context.MesoFollowUpCount = math.max(math.floor(self:ReadNumber(context.MesoFollowUpCount, 0)), math.floor(self:ReadNumber(count, 0)))
+				context.MesoAttacker = attacker
+				context.MesoSeenTargets = {}
+				armedCount = armedCount + 1
+			end
+		end
+		return armedCount
 	end
 
 	method string GetMesoExplosionSkillKey()
@@ -2741,10 +3097,11 @@ script BRSkillSystem extends Logic
 			local angle = _UtilLogic:RandomDouble() * 2 * math.pi
 			local coin = _SpawnService:SpawnByModelId(self:GetMesoCoinModelId(), coinName, basePos, parent)
 			if coin ~= nil then
-				---@type MesoCoinProjectile
 				local projectile = coin:GetComponent("script.MesoCoinProjectile")
 				if projectile ~= nil then
-					projectile:Fire(target, attacker, angle, damage)
+					---@type MesoCoinProjectile
+					local mesoProjectile = projectile
+					mesoProjectile:Fire(target, attacker, angle, damage)
 					self:Log("meso coin spawn index=" .. tostring(coinIndex) .. "/" .. tostring(safeCount) .. " target=" .. target.Name .. " dmg=" .. tostring(damage))
 				else
 					self:Log("meso coin spawn failed reason=noComponent index=" .. tostring(coinIndex))
@@ -2767,6 +3124,13 @@ script BRSkillSystem extends Logic
 		if dummy ~= nil then
 			dummy:ApplyTrainingDamage(attacker, dmg, "meso")
 			self:Log("meso coin damage dummy target=" .. target.Name .. " amount=" .. tostring(dmg))
+			return
+		end
+		---@type any
+		local partBox = self:GetPartBoxComponent(target)
+		if partBox ~= nil and partBox:IsDamageBox() == true then
+			partBox:ApplyPartBoxDamage(attacker, dmg, "meso")
+			self:Log("meso coin damage partbox target=" .. target.Name .. " amount=" .. tostring(dmg))
 			return
 		end
 		local bot = self:GetBattleBotComponent(target)
@@ -2929,8 +3293,8 @@ script BRSkillSystem extends Logic
 			return
 		end
 		local runtime = self:GetChainRuntime(userId)
-		runtime.NextStepIndex = 1
 		runtime.ActiveUntil = 0
+		self:ClearQueuedChainRuntime(runtime)
 		for index, cast in ipairs(self._T.activeCasts) do
 			if cast ~= nil and self:ReadString(cast.UserId, "") == userId then
 				cast.Cancelled = true
@@ -3100,6 +3464,17 @@ script BRSkillSystem extends Logic
 					end
 				end
 			end
+			local partBoxComponents = mapEntity:GetChildComponentsByTypeName("script.BRPartBox", true)
+			if partBoxComponents == nil or partBoxComponents[1] == nil then
+				partBoxComponents = mapEntity:GetChildComponentsByTypeName("BRPartBox", true)
+			end
+			if partBoxComponents ~= nil then
+				for index, partBox in ipairs(partBoxComponents) do
+					if partBox ~= nil and partBox.Entity ~= nil then
+						self:AddSkillTarget(targets, seenTargets, partBox.Entity)
+					end
+				end
+			end
 			local botComponents = mapEntity:GetChildComponentsByTypeName("script.BRBattleBotController", true)
 			if botComponents ~= nil then
 				for index, bot in ipairs(botComponents) do
@@ -3118,6 +3493,9 @@ script BRSkillSystem extends Logic
 			return
 		end
 		if self:IsTrainingDummyPlacementName(entity.Name) == true and self:GetTrainingDummyComponent(entity) ~= nil then
+			self:AddSkillTarget(targets, seenTargets, entity)
+		end
+		if self:IsPartBoxPlacementName(entity.Name) == true and self:GetPartBoxComponent(entity) ~= nil then
 			self:AddSkillTarget(targets, seenTargets, entity)
 		end
 		if entity.Children == nil then
@@ -3167,6 +3545,10 @@ script BRSkillSystem extends Logic
 		local bot = self:GetBattleBotComponent(targetEntity)
 		if bot ~= nil then
 			return bot:IsSkillTargetValid() == true
+		end
+		local partBox = self:GetPartBoxComponent(targetEntity)
+		if partBox ~= nil then
+			return partBox.EnablePartBox == true and partBox.available == true and partBox:IsDamageBox() == true
 		end
 		return self:GetTrainingDummyComponent(targetEntity) ~= nil
 	end
@@ -3914,6 +4296,49 @@ script BRSkillSystem extends Logic
 		return self._T.userStates[userId]
 	end
 
+	method number AddUserMeso(string userId, number amount, string sourceId)
+		-- Adds battle meso to a user's runtime balance.
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return 0
+		end
+		local addAmount = math.max(0, math.floor(self:ReadNumber(amount, 0)))
+		local current = math.max(0, math.floor(self:ReadNumber(self._T.userMeso[safeUserId], 0)))
+		local nextValue = current + addAmount
+		self._T.userMeso[safeUserId] = nextValue
+		self:Log("meso add user=" .. safeUserId .. " amount=" .. tostring(addAmount) .. " balance=" .. tostring(nextValue) .. " source=" .. self:ReadString(sourceId, ""))
+		return nextValue
+	end
+
+	method boolean SpendUserMeso(string userId, number amount, string sourceId)
+		-- Spends battle meso if the user has enough.
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return false
+		end
+		local spendAmount = math.max(0, math.floor(self:ReadNumber(amount, 0)))
+		local current = self:GetUserMeso(safeUserId)
+		if current < spendAmount then
+			self:Log("meso spend skipped user=" .. safeUserId .. " need=" .. tostring(spendAmount) .. " balance=" .. tostring(current) .. " source=" .. self:ReadString(sourceId, ""))
+			return false
+		end
+		self._T.userMeso[safeUserId] = current - spendAmount
+		self:Log("meso spend user=" .. safeUserId .. " amount=" .. tostring(spendAmount) .. " balance=" .. tostring(current - spendAmount) .. " source=" .. self:ReadString(sourceId, ""))
+		return true
+	end
+
+	method number GetUserMeso(string userId)
+		-- Returns a user's runtime battle meso balance.
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return 0
+		end
+		return math.max(0, math.floor(self:ReadNumber(self._T.userMeso[safeUserId], 0)))
+	end
+
 	method any OpenBoxForUser(string userId, number dropCount, boolean autoEquip, string sourceId)
 		-- Grants one or more random first-order parts from a supply box.
 		self:EnsureRuntime()
@@ -4009,6 +4434,81 @@ script BRSkillSystem extends Logic
 			IconRUID = self:ReadString(definition.IconRUID, ""),
 			SourceId = self:ReadString(sourceId, "")
 		}
+	end
+
+	method any CreateWorldPartInstance(string partId, string sourceId)
+		-- Creates a transient skill-part payload that can be picked up from the world.
+		self:EnsureRuntime()
+		local safePartId = self:ReadString(partId, "")
+		local definition = self._T.catalog[safePartId]
+		if definition == nil then
+			return nil
+		end
+		return {
+			InstanceId = 0,
+			PartId = definition.PartId,
+			SlotKey = definition.SlotKey,
+			SkillKey = definition.SkillKey,
+			DisplayName = definition.DisplayName,
+			ShortKey = definition.ShortKey,
+			IconRUID = self:ReadString(definition.IconRUID, ""),
+			SourceId = self:ReadString(sourceId, "")
+		}
+	end
+
+	method number DropRandomPartsAt(Entity mapEntity, Vector3 worldPosition, number dropCount, string sourceId)
+		-- Drops random skill parts directly into the world without first granting ownership.
+		self:EnsureRuntime()
+		if mapEntity == nil or worldPosition == nil then
+			return 0
+		end
+		local count = math.max(1, math.floor(self:ReadNumber(dropCount, 1)))
+		local dropped = 0
+		for index = 1, count do
+			local partId = self:RollPartId()
+			local part = self:CreateWorldPartInstance(partId, sourceId)
+			if part ~= nil then
+				local offsetIndex = index - ((count + 1) * 0.5)
+				local spawnPosition = Vector3(worldPosition.x + offsetIndex * 0.32, worldPosition.y + 0.08, worldPosition.z)
+				local dropEntity = self:SpawnDroppedPartAt(mapEntity, spawnPosition, part, "")
+				if dropEntity ~= nil then
+					dropped = dropped + 1
+				end
+			end
+		end
+		self:Log("world random drop source=" .. self:ReadString(sourceId, "") .. " count=" .. tostring(dropped) .. "/" .. tostring(count))
+		return dropped
+	end
+
+	@ExecSpace("Server")
+	method boolean RequestKioskPurchase(string userId, string partId, string mapName, number x, number y, number price)
+		-- Purchases one desired skill part from a kiosk and drops it at the kiosk position.
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		local safePartId = self:ReadString(partId, "")
+		local targetMapName = self:ReadString(mapName, "")
+		if safeUserId == "" or safePartId == "" or targetMapName == "" then
+			self:Log("kiosk purchase skipped reason=badRequest user=" .. safeUserId .. " part=" .. safePartId .. " map=" .. targetMapName)
+			return false
+		end
+		local cost = math.max(0, math.floor(self:ReadNumber(price, 0)))
+		if cost > 0 and self:SpendUserMeso(safeUserId, cost, "kiosk") ~= true then
+			return false
+		end
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. targetMapName)
+		if mapEntity == nil then
+			self:Log("kiosk purchase skipped reason=noMap map=" .. targetMapName)
+			return false
+		end
+		local part = self:CreateWorldPartInstance(safePartId, "kiosk:" .. safeUserId)
+		if part == nil then
+			self:Log("kiosk purchase skipped reason=noPart part=" .. safePartId)
+			return false
+		end
+		local drop = self:SpawnDroppedPartAt(mapEntity, Vector3(self:ReadNumber(x, 0), self:ReadNumber(y, 0) + 0.08, 0), part, safeUserId)
+		local success = drop ~= nil
+		self:Log("kiosk purchase user=" .. safeUserId .. " part=" .. safePartId .. " cost=" .. tostring(cost) .. " success=" .. tostring(success))
+		return success
 	end
 
 	method boolean EquipPartInstance(string userId, number instanceId)
@@ -4207,6 +4707,14 @@ script BRSkillSystem extends Logic
 		end
 		local playerPosition = self:GetEntityPosition2(playerEntity)
 		local spawnPosition = Vector3(playerPosition.x, playerPosition.y, 0)
+		return self:SpawnDroppedPartAt(mapEntity, spawnPosition, part, self:GetUserIdFromPlayer(playerEntity))
+	end
+
+	method Entity SpawnDroppedPartAt(Entity mapEntity, Vector3 spawnPosition, any part, string sourceUserId)
+		-- Spawns a Maple-style dropped skill part entity at an explicit world position.
+		if mapEntity == nil or spawnPosition == nil or part == nil then
+			return nil
+		end
 		local name = "DroppedSkillPart_" .. tostring(math.floor(self:ReadNumber(part.InstanceId, 0))) .. "_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000))
 		local dropEntity = self:SpawnDroppedPartEntity(name, spawnPosition, mapEntity)
 		if dropEntity == nil then
@@ -4227,7 +4735,7 @@ script BRSkillSystem extends Logic
 				self:ReadString(part.PartId, self:GetDefaultBasicSkillId() .. "_part"),
 				self:GetSkillName(part),
 				self:GetPartShortText(part),
-				self:GetUserIdFromPlayer(playerEntity),
+				self:ReadString(sourceUserId, ""),
 				self:ReadNumber(part.InstanceId, 0),
 				self:GetPartIconRUID(part)
 			)

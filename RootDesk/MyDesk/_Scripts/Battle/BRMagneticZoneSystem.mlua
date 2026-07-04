@@ -90,6 +90,8 @@ script BRMagneticZoneSystem extends Logic
 	@Sync
 	property integer PhaseNumber = 1
 
+	property integer ProtectCenterRoomUntilPhase = 7
+
 	@Sync
 	property number SafeMinX = 0
 
@@ -272,6 +274,12 @@ script BRMagneticZoneSystem extends Logic
 		self.PhaseTimeRemaining = self.phaseTimer
 		self.PhaseNumber = math.min(9, self.PhaseNumber + 1)
 		self:Log("activated face=" .. face .. " active=" .. self.ActiveFacesSummary .. " phase=" .. tostring(self.PhaseNumber) .. " safe=" .. self:GetSafeRectText())
+		if _BRSupplySystem ~= nil then
+			local phaseHandler = _BRSupplySystem["OnBattlePhaseChanged"]
+			if phaseHandler ~= nil then
+				phaseHandler(_BRSupplySystem, self.ZoneMapName, self.PhaseNumber)
+			end
+		end
 	end
 
 	method string SelectNextFace()
@@ -494,8 +502,26 @@ script BRMagneticZoneSystem extends Logic
 			return false
 		end
 
-		return nextMaxRow - nextMinRow + 1 >= minRows
-			and nextMaxColumn - nextMinColumn + 1 >= minColumns
+		if nextMaxRow - nextMinRow + 1 < minRows then
+			return false
+		end
+		if nextMaxColumn - nextMinColumn + 1 < minColumns then
+			return false
+		end
+		return self:KeepsProtectedCenterRoom(nextMinRow, nextMaxRow, nextMinColumn, nextMaxColumn)
+	end
+
+	method boolean KeepsProtectedCenterRoom(number minRow, number maxRow, number minColumn, number maxColumn)
+		-- Preserves the center room until the configured phase threshold has passed.
+		if self.PhaseNumber > self:GetProtectCenterRoomUntilPhase() then
+			return true
+		end
+		if self.ZoneRows <= 0 or self.ZoneColumns <= 0 then
+			return true
+		end
+		local centerRow = math.floor((self.ZoneRows + 1) * 0.5)
+		local centerColumn = math.floor((self.ZoneColumns + 1) * 0.5)
+		return centerRow >= minRow and centerRow <= maxRow and centerColumn >= minColumn and centerColumn <= maxColumn
 	end
 
 	method void ShrinkLogicalFace(string face)
@@ -1192,6 +1218,11 @@ script BRMagneticZoneSystem extends Logic
 	method number GetLogicalShrinkCells()
 		-- Returns the logical grid shrink amount in cells.
 		return math.max(1, math.floor(self:ReadNumber(self.LogicalShrinkCells, 1)))
+	end
+
+	method number GetProtectCenterRoomUntilPhase()
+		-- Returns the last phase where the center room is guaranteed to remain safe.
+		return math.max(0, math.floor(self:ReadNumber(self.ProtectCenterRoomUntilPhase, 7)))
 	end
 
 	method number GetMinSafeWidth()

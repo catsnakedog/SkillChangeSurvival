@@ -13,6 +13,8 @@ script BRBattleBotController extends Component
 
 	property number AttackDamage = 18
 
+	property number MesoReward = 8
+
 	property number AttackCooldownSeconds = 0.8
 
 	property number AttackRangeX = 1.25
@@ -787,6 +789,13 @@ script BRBattleBotController extends Component
 			return
 		end
 		_BRSkillSystem:GrantUserExperience(userId, 1, "bot:" .. self:ReadString(source, "kill"))
+		local meso = self:GetMesoReward()
+		if meso > 0 then
+			local addUserMeso = _BRSkillSystem["AddUserMeso"]
+			if addUserMeso ~= nil then
+				addUserMeso(_BRSkillSystem, userId, meso, "bot:" .. self:ReadString(self.BotId, "BOT"))
+			end
+		end
 	end
 
 	method void FlashHit()
@@ -929,6 +938,10 @@ script BRBattleBotController extends Component
 
 	method number GetAttackDamage()
 		return math.max(1, math.floor(self:ReadNumber(self.AttackDamage, 18)))
+	end
+
+	method number GetMesoReward()
+		return math.max(0, math.floor(self:ReadNumber(self.MesoReward, 8)))
 	end
 
 	method number GetAttackCooldownSeconds()

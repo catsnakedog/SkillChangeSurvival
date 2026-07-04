@@ -886,9 +886,16 @@ script BRPortalConnectionSystem extends Logic
 	end
 
 	method Vector2 ResolvePortalExitPosition(string mapName, Entity destinationPortal, string arrivalDirection)
-		-- Resolves the destination portal offset, then lands it on the nearest foothold.
-		local exitPosition = self:GetPortalExitPosition(destinationPortal, arrivalDirection)
-		return self:AlignPortalExitToFoothold(mapName, exitPosition)
+		-- Resolves the destination portal offset while anchoring to the portal's nearest foothold.
+		local portalPosition = self:GetEntityPosition2(destinationPortal)
+		local desiredPosition = self:GetPortalExitPosition(destinationPortal, arrivalDirection)
+		local exitPosition = self:AlignPortalExitToFootholdNearReference(mapName, portalPosition, desiredPosition)
+		self:Log("exit aligned map=" .. self:ReadString(mapName, "")
+			.. " direction=" .. self:ReadString(arrivalDirection, "")
+			.. " portal=(" .. tostring(portalPosition.x) .. "," .. tostring(portalPosition.y) .. ")"
+			.. " desired=(" .. tostring(desiredPosition.x) .. "," .. tostring(desiredPosition.y) .. ")"
+			.. " grounded=(" .. tostring(exitPosition.x) .. "," .. tostring(exitPosition.y) .. ")")
+		return exitPosition
 	end
 
 	method Vector2 AlignPortalExitToFoothold(string mapName, Vector2 position)
@@ -916,16 +923,77 @@ script BRPortalConnectionSystem extends Logic
 			return position
 		end
 
+		return self:BuildPortalExitPositionOnFoothold(foothold, position)
+	end
+
+	method Vector2 AlignPortalExitToFootholdNearReference(string mapName, Vector2 referencePosition, Vector2 desiredPosition)
+		-- Aligns the desired exit to the platform nearest the destination portal marker.
+		if desiredPosition == nil then
+			if referencePosition == nil then
+				return Vector2(0, 0)
+			end
+			desiredPosition = referencePosition
+		end
+		if referencePosition == nil then
+			return self:AlignPortalExitToFoothold(mapName, desiredPosition)
+		end
+
+		local safeMapName = self:ReadString(mapName, "")
+		if safeMapName == "" then
+			return desiredPosition
+		end
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. safeMapName)
+		if mapEntity == nil or mapEntity.FootholdComponent == nil then
+			return desiredPosition
+		end
+
+		local searchDistance = self:GetPortalExitGroundSearchUp() + self:GetPortalExitGroundSearchDown()
+		local foothold = self:GetNearestPortalFoothold(mapEntity, referencePosition, searchDistance)
+		if foothold == nil then
+			return self:AlignPortalExitToFoothold(mapName, desiredPosition)
+		end
+
+		return self:BuildPortalExitPositionOnFoothold(foothold, desiredPosition)
+	end
+
+	method any GetNearestPortalFoothold(Entity mapEntity, Vector2 position, number maxDistance)
+		-- Finds the closest non-vertical foothold to the portal marker.
+		if mapEntity == nil or mapEntity.FootholdComponent == nil or position == nil then
+			return nil
+		end
+
+		local maxDistanceValue = math.max(0.1, self:ReadNumber(maxDistance, 0.1))
+		local searchUp = self:GetPortalExitGroundSearchUp()
+		local rayStart = Vector2(position.x, position.y + searchUp)
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), maxDistanceValue)
+		if foothold ~= nil and foothold:IsVertical() ~= true then
+			return foothold
+		end
+
+		local fallbackFoothold = mapEntity.FootholdComponent:GetNearestFootholdByPoint(position, maxDistanceValue)
+		if fallbackFoothold ~= nil and fallbackFoothold:IsVertical() ~= true then
+			return fallbackFoothold
+		end
+		return nil
+	end
+
+	method Vector2 BuildPortalExitPositionOnFoothold(any foothold, Vector2 desiredPosition)
+		-- Projects the desired exit point onto the chosen foothold.
+		if foothold == nil or desiredPosition == nil then
+			return desiredPosition
+		end
 		local startPoint = foothold.StartPoint
 		local endPoint = foothold.EndPoint
 		if startPoint == nil or endPoint == nil then
-			return position
+			return desiredPosition
 		end
 		local minX = math.min(startPoint.x, endPoint.x) + 0.05
 		local maxX = math.max(startPoint.x, endPoint.x) - 0.05
-		local x = position.x
+		local x = desiredPosition.x
 		if maxX >= minX then
-			x = math.max(minX, math.min(maxX, position.x))
+			x = math.max(minX, math.min(maxX, desiredPosition.x))
+		else
+			x = (startPoint.x + endPoint.x) * 0.5
 		end
 		return Vector2(x, foothold:GetYByX(x) + self:GetPortalExitGroundYOffset())
 	end

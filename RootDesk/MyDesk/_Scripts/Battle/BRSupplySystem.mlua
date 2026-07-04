@@ -41,6 +41,12 @@ script BRSupplySystem extends Logic
 
 	property number SupplyDropCount = 1
 
+	property number SupplyGroundYOffset = 0.03
+
+	property number SupplyGroundSearchUp = 3
+
+	property number SupplyGroundSearchDown = 24
+
 	property string BossMonsterModelId = "battlechainmonster"
 
 	property number BossSpawnYOffset = 0
@@ -1630,6 +1636,8 @@ script BRSupplySystem extends Logic
 			if runtimeSupply == nil then
 				runtimeSupply = self:SpawnRuntimeSupplyForAnchor(supply, kind)
 				self:SetRuntimeSupplyForAnchor(supply, runtimeSupply)
+			else
+				self:AlignRuntimeSupplyToAnchor(runtimeSupply, supply)
 			end
 			return self:ConfigureRuntimeSupplyBox(runtimeSupply, true, kind)
 		else
@@ -1735,7 +1743,8 @@ script BRSupplySystem extends Logic
 			self:Log("runtime supply skipped reason=noMap anchor=" .. self:ReadString(supply.Name, ""))
 			return nil
 		end
-		local position = self:GetSupplyAnchorPosition(supply)
+		local rawPosition = self:GetSupplyAnchorPosition(supply)
+		local position = self:ResolveSupplyGroundPosition(mapEntity, rawPosition)
 		local runtimeName = self:GetRuntimeSupplyName(kind)
 		local modelId = self:GetRuntimeSupplyBoxModelId()
 		local runtimeSupply = nil
@@ -1762,8 +1771,73 @@ script BRSupplySystem extends Logic
 		runtimeSupply:SetVisible(true)
 		self:Log("runtime supply spawned anchor=" .. self:ReadString(supply.Name, "")
 			.. " box=" .. self:ReadString(runtimeSupply.Name, "")
-			.. " modelId=" .. modelId)
+			.. " modelId=" .. modelId
+			.. " raw=(" .. tostring(rawPosition.x) .. "," .. tostring(rawPosition.y) .. ")"
+			.. " grounded=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
 		return runtimeSupply
+	end
+
+	method void AlignRuntimeSupplyToAnchor(Entity runtimeSupply, Entity supply)
+		-- Repositions an already-spawned runtime box to the grounded anchor position.
+		if runtimeSupply == nil or isvalid(runtimeSupply) ~= true or supply == nil or isvalid(supply) ~= true then
+			return
+		end
+		local mapEntity = self:GetSupplyAnchorMapEntity(supply)
+		if mapEntity == nil then
+			return
+		end
+		local rawPosition = self:GetSupplyAnchorPosition(supply)
+		local position = self:ResolveSupplyGroundPosition(mapEntity, rawPosition)
+		self:MoveRuntimeSupplyToPosition(runtimeSupply, position)
+		self:Log("runtime supply realigned anchor=" .. self:ReadString(supply.Name, "")
+			.. " box=" .. self:ReadString(runtimeSupply.Name, "")
+			.. " raw=(" .. tostring(rawPosition.x) .. "," .. tostring(rawPosition.y) .. ")"
+			.. " grounded=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
+	end
+
+	method void MoveRuntimeSupplyToPosition(Entity runtimeSupply, Vector3 position)
+		-- Applies a world-space position to a runtime supply, using body APIs when present.
+		if runtimeSupply == nil or isvalid(runtimeSupply) ~= true or position == nil then
+			return
+		end
+		local position2 = Vector2(self:ReadNumber(position.x, 0), self:ReadNumber(position.y, 0))
+		if runtimeSupply.RigidbodyComponent ~= nil then
+			runtimeSupply.RigidbodyComponent:SetWorldPosition(position2)
+		elseif runtimeSupply.MovementComponent ~= nil then
+			runtimeSupply.MovementComponent:SetWorldPosition(position2)
+		elseif runtimeSupply.TransformComponent ~= nil then
+			runtimeSupply.TransformComponent.WorldPosition = position
+		end
+	end
+
+	method Vector3 ResolveSupplyGroundPosition(Entity mapEntity, Vector3 rawPosition)
+		-- Snaps a supply anchor position down to the nearest MapleTile foothold.
+		if rawPosition == nil then
+			return Vector3(0, 0, 0)
+		end
+		local x = self:ReadNumber(rawPosition.x, 0)
+		local y = self:ReadNumber(rawPosition.y, 0)
+		local z = self:ReadNumber(rawPosition.z, 0)
+		if mapEntity == nil or mapEntity.FootholdComponent == nil then
+			return Vector3(x, y, z)
+		end
+
+		local searchUp = self:GetSupplyGroundSearchUp()
+		local searchDown = self:GetSupplyGroundSearchDown()
+		local rayStart = Vector2(x, y + 0.05)
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDown + 0.05)
+		if foothold == nil then
+			rayStart = Vector2(x, y + searchUp)
+			foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchUp + searchDown)
+		end
+		if foothold == nil then
+			foothold = mapEntity.FootholdComponent:GetNearestFootholdByPoint(Vector2(x, y), searchUp + searchDown)
+		end
+		local landing = self:GetFootholdLandingPosition(foothold, x)
+		if landing == nil then
+			return Vector3(x, y, z)
+		end
+		return Vector3(landing.x, landing.y + self:GetSupplyGroundYOffset(), z)
 	end
 
 	method boolean ConfigureRuntimeSupplyBox(Entity runtimeSupply, boolean active, string kind)
@@ -2043,6 +2117,21 @@ script BRSupplySystem extends Logic
 	method number GetSupplyDropCount()
 		-- Returns the number of phase-5 supply drops.
 		return math.max(0, math.floor(self:ReadNumber(self.SupplyDropCount, 1)))
+	end
+
+	method number GetSupplyGroundYOffset()
+		-- Returns the vertical foothold offset used for spawned supply boxes.
+		return math.max(0, self:ReadNumber(self.SupplyGroundYOffset, 0.03))
+	end
+
+	method number GetSupplyGroundSearchUp()
+		-- Returns how far above an anchor the supply-ground ray begins.
+		return math.max(0, self:ReadNumber(self.SupplyGroundSearchUp, 3))
+	end
+
+	method number GetSupplyGroundSearchDown()
+		-- Returns how far below an anchor supply boxes search for a foothold.
+		return math.max(0.1, self:ReadNumber(self.SupplyGroundSearchDown, 24))
 	end
 
 	method number GetMonsterLevelUpHpMultiplier()

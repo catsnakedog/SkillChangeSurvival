@@ -1583,6 +1583,99 @@
           ],
           "@version": 1
         }
+      },
+      {
+        "id": "29423e89-2752-48e0-82fb-28a09fbecd45",
+        "path": "/ui/BRClassSelectGroup/Bg/ChrataterFull",
+        "componentNames": "MOD.Core.UITransformComponent,MOD.Core.SpriteGUIRendererComponent",
+        "jsonString": {
+          "name": "ChrataterFull",
+          "path": "/ui/BRClassSelectGroup/Bg/ChrataterFull",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": true,
+          "displayOrder": 6,
+          "pathConstraints": "////",
+          "revision": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "uisprite",
+            "sub_entity_id": null,
+            "root_entity_id": "29423e89-2752-48e0-82fb-28a09fbecd45",
+            "replaced_model_id": null
+          },
+          "modelId": "uisprite",
+          "@components": [
+            {
+              "@type": "MOD.Core.UITransformComponent",
+              "AlignmentOption": 0,
+              "AnchorsMax": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "AnchorsMin": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "MobileOnly": false,
+              "OffsetMax": {
+                "x": 367.318359,
+                "y": 229.209
+              },
+              "OffsetMin": {
+                "x": -119.043152,
+                "y": -218.02
+              },
+              "Pivot": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "RectSize": {
+                "x": 486.3615,
+                "y": 447.229
+              },
+              "UIMode": 1,
+              "UIScale": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
+              },
+              "UIVersion": 2,
+              "anchoredPosition": {
+                "x": 124.1376,
+                "y": 5.5945
+              },
+              "Position": {
+                "x": 124.1376,
+                "y": 5.5945,
+                "z": 0.0
+              },
+              "QuaternionRotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 1.0
+              },
+              "Scale": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteGUIRendererComponent",
+              "ImageRUID": {
+                "DataId": "abf31eebac1d4b22ada89b049ca3b5ba"
+              },
+              "OverrideSorting": false,
+              "Type": 0,
+              "Enable": true
+            }
+          ],
+          "@version": 1
+        }
       }
     ]
   }

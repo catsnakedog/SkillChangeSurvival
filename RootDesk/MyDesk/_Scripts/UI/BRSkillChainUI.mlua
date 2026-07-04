@@ -1353,7 +1353,7 @@ script BRSkillChainUI extends Component
 					occupiedCount = occupiedCount + 1
 				end
 			end
-			self:RenderBagSlotVisualByKey(index, skillKey, occupied, equipped)
+			self:RenderBagSlotVisual(index, part, equipped)
 		end
 		self:LogBagRenderSummary(occupiedCount)
 	end
@@ -1379,7 +1379,7 @@ script BRSkillChainUI extends Component
 		if occupied == true then
 			skillKey = self:GetRecordSkillKey(part)
 		end
-		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Sobie_1", skillKey, 1, occupied, false, false)
+		self:SetSkillSlotVisualWithIcon("CHAIN", "Panel/Chain/Sobie_1", skillKey, 1, occupied, false, false, self:GetRecordIconRUID(part))
 		self:ApplySlotCooldownVisual("CHAIN", "Panel/Chain/Sobie_1", "consumable", occupied)
 		self:SetSlotFrameColor("CHAIN", "Panel/Chain/Sobie_1", Color(0.45, 0.95, 0.78, 0.95))
 	end
@@ -1410,7 +1410,7 @@ script BRSkillChainUI extends Component
 		else
 			displayTier = 0
 		end
-		self:SetSkillSlotVisual("CHAIN", basePath, skillKey, displayTier, occupied, isLeadSlot, false)
+		self:SetSkillSlotVisualWithIcon("CHAIN", basePath, skillKey, displayTier, occupied, isLeadSlot, false, self:GetRecordIconRUID(record))
 		self:SetChainSlotChainEffectVisual(safeSlotIndex, displayTier, occupied == true and isLeadSlot == true and displayTier > 1)
 		self:SetChainSlotConnectVisual(safeSlotIndex, self:ShouldShowLeftConnect(safeSlotIndex, record), self:ShouldShowRightConnect(safeSlotIndex, record))
 	end
@@ -1478,7 +1478,7 @@ script BRSkillChainUI extends Component
 		if occupied == true then
 			skillKey = self:GetRecordSkillKey(part)
 		end
-		self:SetSkillSlotVisual("BAG", "Panel/Inventory/Item_" .. tostring(safeBagIndex), skillKey, 1, occupied == true, false, equipped == true)
+		self:SetSkillSlotVisualWithIcon("BAG", "Panel/Inventory/Item_" .. tostring(safeBagIndex), skillKey, 1, occupied == true, false, equipped == true, self:GetRecordIconRUID(part))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1497,17 +1497,27 @@ script BRSkillChainUI extends Component
 			skillKey = self:GetRecordSkillKey(record)
 		end
 		self:SetChainTextByPath("DragGhost/Label", "")
-		self:SetSkillSlotVisual("CHAIN", "DragGhost", skillKey, self:ReadNumber(tier, 1), occupied, isLeadSlot == true, false)
+		self:SetSkillSlotVisualWithIcon("CHAIN", "DragGhost", skillKey, self:ReadNumber(tier, 1), occupied, isLeadSlot == true, false, self:GetRecordIconRUID(record))
 	end
 
 	@ExecSpace("ClientOnly")
 	method void SetSkillSlotVisual(string rootKind, string basePath, string skillKey, number tier, boolean occupied, boolean isLeadSlot, boolean equipped)
 		-- Updates one slot from the canonical skill UI database.
+		self:SetSkillSlotVisualWithIcon(rootKind, basePath, skillKey, tier, occupied, isLeadSlot, equipped, "")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetSkillSlotVisualWithIcon(string rootKind, string basePath, string skillKey, number tier, boolean occupied, boolean isLeadSlot, boolean equipped, string iconRuidOverride)
+		-- Updates one slot, preferring a snapshot icon when it is available.
 		local safeRootKind = self:ReadString(rootKind, "CHAIN")
 		local safeBasePath = self:ReadString(basePath, "")
 		local safeTier = math.max(1, math.floor(self:ReadNumber(tier, 1)))
 		local useSolidIcon = false
 		local iconRuid = self:GetSlotIconRUID(skillKey, safeTier, isLeadSlot == true, useSolidIcon)
+		local overrideRuid = self:ReadString(iconRuidOverride, "")
+		if occupied == true and overrideRuid ~= "" then
+			iconRuid = overrideRuid
+		end
 		local baseColor = self:GetSlotBaseColor(occupied == true, safeTier, equipped == true)
 		local borderColor = self:GetSlotBorderColor(safeTier, occupied == true, isLeadSlot == true)
 		local iconColor = self:GetSlotIconDisplayColor(skillKey, safeTier, occupied == true, isLeadSlot == true, useSolidIcon)
@@ -1521,7 +1531,7 @@ script BRSkillChainUI extends Component
 				iconEntity.SpriteGUIRendererComponent.Type = ImageType.Simple
 				iconEntity.SpriteGUIRendererComponent.FillAmount = 1
 			end
-		else
+		elseif self:ShouldUseBattleHudIconChildOnly(safeRootKind, safeBasePath) ~= true then
 			self:SetVisualSpriteImage(safeRootKind, safeBasePath, iconRuid)
 			local baseEntity = self:GetVisualEntity(safeRootKind, safeBasePath)
 			if baseEntity ~= nil and baseEntity.SpriteGUIRendererComponent ~= nil then
@@ -1541,6 +1551,14 @@ script BRSkillChainUI extends Component
 	method string ApplySlotIconVisual(string rootKind, string basePath, string iconRuid, Color iconColor)
 		-- Authored slots do not all use the same child name, so try every known icon surface.
 		local safeBasePath = self:ReadString(basePath, "")
+		if self:ShouldUseBattleHudIconChildOnly(rootKind, safeBasePath) == true then
+			local iconPath = safeBasePath .. "/Icon"
+			if self:SetVisualSpriteImage(rootKind, iconPath, iconRuid) == true then
+				self:SetVisualSpriteColor(rootKind, iconPath, iconColor)
+				return iconPath
+			end
+			return ""
+		end
 		local candidates = {
 			safeBasePath .. "/Icon",
 			safeBasePath .. "/SkillIcon",
@@ -1600,6 +1618,14 @@ script BRSkillChainUI extends Component
 	method string FindSlotIconPath(string rootKind, string basePath)
 		-- Finds the authored icon surface used by SetSkillSlotVisual.
 		local safeBasePath = self:ReadString(basePath, "")
+		if self:ShouldUseBattleHudIconChildOnly(rootKind, safeBasePath) == true then
+			local iconPath = safeBasePath .. "/Icon"
+			local entity = self:GetVisualEntity(rootKind, iconPath)
+			if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
+				return iconPath
+			end
+			return ""
+		end
 		local candidates = {
 			safeBasePath .. "/Icon",
 			safeBasePath .. "/SkillIcon",
@@ -1616,6 +1642,33 @@ script BRSkillChainUI extends Component
 			end
 		end
 		return ""
+	end
+
+	method boolean ShouldUseBattleHudIconChildOnly(string rootKind, string basePath)
+		-- BattleHub slot backgrounds stay as authored art; skill images are injected only into the Icon child.
+		if self:ReadString(rootKind, "CHAIN") ~= "CHAIN" then
+			return false
+		end
+		if self:HasAuthoredBattleHudLayout() ~= true then
+			return false
+		end
+		local path = self:ReadString(basePath, "")
+		if path == "Panel/Chain/Representative" then
+			return true
+		end
+		if path == "Panel/Chain/Sobie_1" or path == "Panel/Chain/Consumable_1" then
+			return true
+		end
+		if self:StartsWith(path, "Panel/Chain/Slot_") == true then
+			return true
+		end
+		if self:StartsWith(path, "Panel/Chain/Common_") == true then
+			return true
+		end
+		if self:StartsWith(path, "BattleHub/") == true or self:StartsWith(path, "Bg/") == true then
+			return true
+		end
+		return false
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1848,6 +1901,21 @@ script BRSkillChainUI extends Component
 			return "Default"
 		end
 		return self:GetBaseSkillKey(self:ReadString(self:ReadRecordValue(record, "SkillKey"), self:InferSkillKey(self:ReadRecordValue(record, "Short"), self:ReadRecordValue(record, "DisplayName"))))
+	end
+
+	method string GetRecordIconRUID(any record)
+		-- Reads the exact icon RUID carried by a chain, bag, or consumable record.
+		if record == nil then
+			return ""
+		end
+		local iconRuid = self:ReadString(self:ReadRecordValue(record, "IconRUID"), "")
+		if iconRuid ~= "" then
+			return iconRuid
+		end
+		if _BRSkillSystem ~= nil and _BRSkillSystem["GetPartIconRUID"] ~= nil then
+			return self:ReadString(_BRSkillSystem:GetPartIconRUID(record), "")
+		end
+		return ""
 	end
 
 	method boolean IsLockedChainSlotRecord(any record)

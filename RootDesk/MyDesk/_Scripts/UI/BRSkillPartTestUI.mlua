@@ -33,6 +33,8 @@ script BRSkillPartTestUI extends Logic
 
 	property any inputMouseMoveHandler = nil
 
+	property any inputKeyDownHandler = nil
+
 	property number draggingIndex = 0
 
 	property string draggingSkillKey = ""
@@ -145,6 +147,7 @@ script BRSkillPartTestUI extends Logic
 			self.inputTouchStartHandler = _InputService:ConnectEvent(ScreenTouchEvent, self.OnScreenTouchStart)
 			self.inputTouchReleaseHandler = _InputService:ConnectEvent(ScreenTouchReleaseEvent, self.OnScreenTouchRelease)
 			self.inputMouseMoveHandler = _InputService:ConnectEvent(MouseMoveEvent, self.OnMouseMove)
+			self.inputKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnInputKeyDown)
 		end
 
 		self._T.handlersConnected = true
@@ -175,6 +178,11 @@ script BRSkillPartTestUI extends Logic
 		end
 		self.inputMouseMoveHandler = nil
 
+		if self.inputKeyDownHandler ~= nil and _InputService ~= nil then
+			_InputService:DisconnectEvent(KeyDownEvent, self.inputKeyDownHandler)
+		end
+		self.inputKeyDownHandler = nil
+
 		for index, entry in ipairs(self._T.handlers) do
 			if entry ~= nil and entry.Entity ~= nil and entry.Handler ~= nil then
 				if entry.EventType == "DOWN" then
@@ -194,6 +202,18 @@ script BRSkillPartTestUI extends Logic
 
 	@ExecSpace("ClientOnly")
 	method void OnClickClose(ButtonClickEvent event)
+		self:Close()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnInputKeyDown(KeyDownEvent event)
+		-- Closes the lobby skill catalog with Escape while the panel is open.
+		if event == nil or event.key ~= KeyboardKey.Escape then
+			return
+		end
+		if self:IsPanelActive() ~= true then
+			return
+		end
 		self:Close()
 	end
 

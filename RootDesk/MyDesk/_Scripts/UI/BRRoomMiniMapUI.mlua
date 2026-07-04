@@ -299,9 +299,12 @@ script BRRoomMiniMapUI extends Component
 		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
 		if mapEntity ~= nil then
 			local bots = mapEntity:GetChildComponentsByTypeName("script.BRBattleBotController", true)
+			if bots == nil or bots[1] == nil then
+				bots = mapEntity:GetChildComponentsByTypeName("BRBattleBotController", true)
+			end
 			if bots ~= nil then
 				for index, bot in ipairs(bots) do
-					if bot ~= nil and isvalid(bot.Entity) then
+					if bot ~= nil and isvalid(bot.Entity) and bot:IsAlive() == true then
 						table.insert(result, { Target = bot.Entity, MarkerColor = Color(0.8, 0.45, 1, 1) })
 					end
 				end
@@ -401,6 +404,13 @@ script BRRoomMiniMapUI extends Component
 			if target.PlayerComponent:IsDead() == true or target.PlayerComponent.Hp <= 0 then
 				return false
 			end
+		end
+		local bot = target:GetComponent("script.BRBattleBotController")
+		if bot == nil then
+			bot = target:GetComponent("BRBattleBotController")
+		end
+		if bot ~= nil then
+			return bot:IsAlive() == true
 		end
 		return true
 	end

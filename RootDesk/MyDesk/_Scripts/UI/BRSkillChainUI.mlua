@@ -3196,11 +3196,17 @@ script BRSkillChainUI extends Component
 		if path == "Panel/HudLevelText" then
 			return hubPath .. "/HudLevelText"
 		end
-		if path == "Panel/HudHpFill" or path == "Panel/HudHpBack" then
+		if path == "Panel/HudHpFill" then
 			return hubPath .. "/HudHpFill"
 		end
-		if path == "Panel/HudExpFill" or path == "Panel/HudExpBack" then
+		if path == "Panel/HudHpBack" then
+			return hubPath .. "/HudHpBack"
+		end
+		if path == "Panel/HudExpFill" then
 			return hubPath .. "/HudExpFill"
+		end
+		if path == "Panel/HudExpBack" then
+			return hubPath .. "/HudExpBack"
 		end
 		return ""
 	end
@@ -3723,7 +3729,7 @@ script BRSkillChainUI extends Component
 			maxHp = math.max(1, math.floor(self:ReadNumber(localPlayer.PlayerComponent.MaxHp, 1)))
 		end
 
-		self:SetHudText("HudLevelText", "Lv. " .. tostring(level), Color(1, 1, 1, 1))
+		self:SetHudText("HudLevelText", tostring(level), Color(1, 1, 1, 1))
 		self:SetHudText("HudHpValue", tostring(hp) .. "/" .. tostring(maxHp), Color(1, 1, 1, 1))
 		self:SetHudText("HudExpValue", tostring(exp) .. "/" .. tostring(expMax), Color(1, 1, 1, 1))
 		self:SetHudGaugeRatio("Hp", hp / maxHp)
@@ -3743,22 +3749,27 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method Entity EnsureHudText(string name, number x, number y, number width, number height, number fontSize, Color color)
+		local safeName = self:ReadString(name, "")
+		if self:HasAuthoredBattleHudLayout() == true then
+			local authoredEntity = self:GetAuthoredHudTextEntity(safeName)
+			if authoredEntity == nil then
+				return nil
+			end
+			authoredEntity.Enable = true
+			self:ApplyAuthoredHudTextStyle(authoredEntity, safeName, fontSize, color)
+			self:DisableLegacyAuthoredHudValueChild(safeName)
+			return authoredEntity
+		end
+
 		local panel = self:GetChainEntity("Panel")
 		if panel == nil then
 			return nil
 		end
-		local safeName = self:ReadString(name, "")
-		local entity = self:GetAuthoredHudTextEntity(safeName)
-		if entity == nil then
-			entity = panel:GetChildByName(safeName, false)
-		end
+		local entity = panel:GetChildByName(safeName, false)
 		if entity == nil then
 			return nil
 		end
 		entity.Enable = true
-		if self:HasAuthoredBattleHudLayout() == true then
-			return entity
-		end
 		self:ApplyHudRect(entity, x, y, width, height, Vector2(0, 0.5))
 		if entity.SpriteGUIRendererComponent ~= nil then
 			entity.SpriteGUIRendererComponent.Enable = false
@@ -3777,20 +3788,40 @@ script BRSkillChainUI extends Component
 	@ExecSpace("ClientOnly")
 	method void EnsureHudGauge(string key, number x, number y, number width, number height, Color fillColor)
 		-- Prepares a HUD gauge with a fixed max-size fill sprite.
-		local panel = self:GetChainEntity("Panel")
-		if panel == nil then
-			return
-		end
-
 		local safeKey = self:ReadString(key, "Gauge")
 		if self:HasAuthoredBattleHudLayout() == true then
+			local authoredBack = self:GetAuthoredHudGaugeBackEntity(safeKey)
+			if authoredBack ~= nil then
+				authoredBack.Enable = true
+				if authoredBack.SpriteGUIRendererComponent ~= nil then
+					authoredBack.SpriteGUIRendererComponent.Type = ImageType.Simple
+					authoredBack.SpriteGUIRendererComponent.FillAmount = 1
+					authoredBack.SpriteGUIRendererComponent.RaycastTarget = false
+				end
+				if authoredBack.UITransformComponent ~= nil then
+					authoredBack.UITransformComponent.Pivot = Vector2(0, 0.5)
+					authoredBack.UITransformComponent.RectSize = Vector2(self:GetAuthoredHudGaugeWidth(), authoredBack.UITransformComponent.RectSize.y)
+				end
+			end
 			local authoredFill = self:GetAuthoredHudGaugeFillEntity(safeKey)
 			if authoredFill ~= nil then
 				authoredFill.Enable = true
 				if authoredFill.SpriteGUIRendererComponent ~= nil then
+					authoredFill.SpriteGUIRendererComponent.Type = ImageType.Filled
+					authoredFill.SpriteGUIRendererComponent.FillMethod = FillMethodType.Horizontal
+					authoredFill.SpriteGUIRendererComponent.FillOrigin = 0
 					authoredFill.SpriteGUIRendererComponent.RaycastTarget = false
 				end
+				if authoredFill.UITransformComponent ~= nil then
+					authoredFill.UITransformComponent.Pivot = Vector2(0, 0.5)
+					authoredFill.UITransformComponent.RectSize = Vector2(self:GetAuthoredHudGaugeWidth(), authoredFill.UITransformComponent.RectSize.y)
+				end
 			end
+			return
+		end
+
+		local panel = self:GetChainEntity("Panel")
+		if panel == nil then
 			return
 		end
 		local back = panel:GetChildByName("Hud" .. safeKey .. "Back", false)
@@ -3820,10 +3851,6 @@ script BRSkillChainUI extends Component
 	@ExecSpace("ClientOnly")
 	method void SetHudGaugeRatio(string key, number ratio)
 		-- Updates the visible gauge amount without changing the authored max width.
-		local panel = self:GetChainEntity("Panel")
-		if panel == nil then
-			return
-		end
 		local safeKey = self:ReadString(key, "Gauge")
 		if self:HasAuthoredBattleHudLayout() == true then
 			local authoredFill = self:GetAuthoredHudGaugeFillEntity(safeKey)
@@ -3841,6 +3868,11 @@ script BRSkillChainUI extends Component
 				authoredFill.UITransformComponent.Pivot = Vector2(0, 0.5)
 				authoredFill.UITransformComponent.RectSize = Vector2(self:GetAuthoredHudGaugeWidth(), authoredFill.UITransformComponent.RectSize.y)
 			end
+			return
+		end
+
+		local panel = self:GetChainEntity("Panel")
+		if panel == nil then
 			return
 		end
 		local back = panel:GetChildByName("Hud" .. safeKey .. "Back", false)
@@ -3862,18 +3894,77 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void SetHudText(string name, string text, Color color)
+		local safeName = self:ReadString(name, "")
+		if self:HasAuthoredBattleHudLayout() == true then
+			local authoredEntity = self:GetAuthoredHudTextEntity(safeName)
+			if authoredEntity ~= nil and authoredEntity.TextComponent ~= nil then
+				authoredEntity.Enable = true
+				authoredEntity.TextComponent.Text = self:ReadString(text, "")
+				authoredEntity.TextComponent.FontColor = color
+				self:ApplyAuthoredHudTextStyle(authoredEntity, safeName, authoredEntity.TextComponent.FontSize, color)
+				self:DisableLegacyAuthoredHudValueChild(safeName)
+			end
+			return
+		end
+
 		local panel = self:GetChainEntity("Panel")
 		if panel == nil then
 			return
 		end
-		local safeName = self:ReadString(name, "")
-		local entity = self:GetAuthoredHudTextEntity(safeName)
-		if entity == nil then
-			entity = panel:GetChildByName(safeName, false)
-		end
+		local entity = panel:GetChildByName(safeName, false)
 		if entity ~= nil and entity.TextComponent ~= nil then
+			entity.Enable = true
 			entity.TextComponent.Text = self:ReadString(text, "")
 			entity.TextComponent.FontColor = color
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyAuthoredHudTextStyle(Entity entity, string name, number fontSize, Color color)
+		if entity == nil then
+			return
+		end
+		entity.Enable = true
+		if entity.SpriteGUIRendererComponent ~= nil then
+			entity.SpriteGUIRendererComponent.Color = Color(1, 1, 1, 0)
+			entity.SpriteGUIRendererComponent.RaycastTarget = false
+		end
+		if entity.TextComponent == nil then
+			return
+		end
+		local safeName = self:ReadString(name, "")
+		if safeName == "HudLevelText" then
+			entity.TextComponent.FontSize = math.max(16, math.floor(self:ReadNumber(fontSize, 24)))
+			entity.TextComponent.Alignment = TextAlignmentType.MiddleCenter
+		else
+			entity.TextComponent.FontSize = math.max(10, math.floor(self:ReadNumber(fontSize, 12)))
+			entity.TextComponent.Alignment = TextAlignmentType.MiddleLeft
+		end
+		entity.TextComponent.FontColor = color
+		entity.TextComponent.Bold = true
+		entity.TextComponent.DropShadow = true
+		entity.TextComponent.DropShadowColor = Color(0, 0, 0, 0.85)
+		entity.TextComponent.DropShadowDistance = 2
+		entity.TextComponent.UseOutLine = true
+		entity.TextComponent.OutlineColor = Color(0, 0, 0, 0.9)
+		entity.TextComponent.OutlineWidth = 1
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisableLegacyAuthoredHudValueChild(string name)
+		local safeName = self:ReadString(name, "")
+		local hubPath = self:GetAuthoredBattleHudContainerPath()
+		local legacy = nil
+		local current = nil
+		if safeName == "HudHpValue" then
+			current = self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpValue")
+			legacy = self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpFill/HudHpValue")
+		elseif safeName == "HudExpValue" then
+			current = self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpValue")
+			legacy = self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpFill/HudExpValue")
+		end
+		if current ~= nil and legacy ~= nil and current ~= legacy then
+			legacy.Enable = false
 		end
 	end
 
@@ -4133,9 +4224,17 @@ script BRSkillChainUI extends Component
 			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudLevelText")
 		end
 		if safeName == "HudHpValue" then
+			local value = self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpValue")
+			if value ~= nil then
+				return value
+			end
 			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpFill/HudHpValue")
 		end
 		if safeName == "HudExpValue" then
+			local value = self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpValue")
+			if value ~= nil then
+				return value
+			end
 			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpFill/HudExpValue")
 		end
 		return nil
@@ -4149,6 +4248,18 @@ script BRSkillChainUI extends Component
 		end
 		if safeKey == "Exp" then
 			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpFill")
+		end
+		return nil
+	end
+
+	method Entity GetAuthoredHudGaugeBackEntity(string key)
+		local safeKey = self:ReadString(key, "")
+		local hubPath = self:GetAuthoredBattleHudContainerPath()
+		if safeKey == "Hp" then
+			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpBack")
+		end
+		if safeKey == "Exp" then
+			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpBack")
 		end
 		return nil
 	end

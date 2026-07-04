@@ -9,6 +9,8 @@ script BRLifeUI extends Logic
 
 	property string LifeTextName = "BRLifeHudText"
 
+	property string CountTextName = "BRAliveCountHudText"
+
 	property number RefreshSeconds = 0.1
 
 	property boolean VerboseLog = true
@@ -17,17 +19,25 @@ script BRLifeUI extends Logic
 
 	property Entity lifeTextEntity = nil
 
+	property Entity countTextEntity = nil
+
 	property boolean lastVisible = false
+
+	property boolean lastCountVisible = false
 
 	property string lastDisplayText = ""
 
 	property string lastColorState = ""
 
+	property string lastCountText = ""
+
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
 		-- Starts the local life HUD refresh loop.
 		self:EnsureLifeText()
+		self:EnsureCountText()
 		self:SetLifeTextActive(false)
+		self:SetCountTextActive(false)
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds())
 		self:Log("ready")
 	end
@@ -45,13 +55,16 @@ script BRLifeUI extends Logic
 	method void Refresh()
 		-- Updates the local player's life and revive countdown text.
 		local lifeText = self:EnsureLifeText()
-		if lifeText == nil then
+		local countText = self:EnsureCountText()
+		if lifeText == nil and countText == nil then
 			return
 		end
 
+		local battleLogic = self:GetLocalBattleLogic()
 		local entry = self:GetLocalLifeEntry()
 		local visible = entry ~= nil
 		self:SetLifeTextActive(visible)
+		self:RefreshCountText(battleLogic, visible)
 		if visible ~= true then
 			return
 		end
@@ -103,6 +116,43 @@ script BRLifeUI extends Logic
 		return label
 	end
 
+	method Entity EnsureCountText()
+		-- Creates a separate alive-count HUD text from an existing UI text template.
+		if self.countTextEntity ~= nil then
+			return self.countTextEntity
+		end
+
+		local parent = _EntityService:GetEntityByPath(self:ReadString(self.HudParentPath, "/ui/DefaultGroup"))
+		if parent == nil then
+			return nil
+		end
+
+		local existing = parent:GetChildByName(self:ReadString(self.CountTextName, "BRAliveCountHudText"), false)
+		if existing ~= nil then
+			self.countTextEntity = existing
+			self:ApplyCountTextLayout(existing)
+			return existing
+		end
+
+		local template = _EntityService:GetEntityByPath(self:ReadString(self.TemplateTextPath, ""))
+		if template == nil then
+			template = _EntityService:GetEntityByPath(self:ReadString(self.FallbackTemplateTextPath, ""))
+		end
+		if template == nil then
+			return nil
+		end
+
+		local label = template:Clone(self:ReadString(self.CountTextName, "BRAliveCountHudText"))
+		if label == nil then
+			return nil
+		end
+		label:AttachTo(parent)
+		self.countTextEntity = label
+		self:ApplyCountTextLayout(label)
+		self:Log("count created")
+		return label
+	end
+
 	method void ApplyLifeTextLayout(Entity label)
 		-- Places the life text in the upper-left HUD area.
 		if label == nil then
@@ -126,6 +176,29 @@ script BRLifeUI extends Logic
 		end
 	end
 
+	method void ApplyCountTextLayout(Entity label)
+		-- Places the alive-count text below the life HUD text.
+		if label == nil then
+			return
+		end
+
+		label.Enable = false
+		if label.UITransformComponent ~= nil then
+			label.UITransformComponent.AnchorsMin = Vector2(0, 1)
+			label.UITransformComponent.AnchorsMax = Vector2(0, 1)
+			label.UITransformComponent.Pivot = Vector2(0, 1)
+			label.UITransformComponent.RectSize = Vector2(360, 36)
+			label.UITransformComponent.anchoredPosition = Vector2(32, -126)
+		end
+		if label.SpriteGUIRendererComponent ~= nil then
+			label.SpriteGUIRendererComponent.Enable = false
+		end
+		if label.TextComponent ~= nil then
+			label.TextComponent.Text = ""
+			label.TextComponent.FontColor = Color(0.72, 0.9, 1, 1)
+		end
+	end
+
 	method any GetLocalLifeEntry()
 		-- Reads the local player's synchronized life record from the active map battle logic.
 		local localPlayer = _UserService.LocalPlayer
@@ -138,7 +211,7 @@ script BRLifeUI extends Logic
 			return nil
 		end
 
-		local battleLogic = self:GetBattleLogic(mapName)
+		local battleLogic = self:GetLocalBattleLogic()
 		if battleLogic == nil then
 			return nil
 		end
@@ -149,6 +222,20 @@ script BRLifeUI extends Logic
 		end
 
 		return self:ParseLifeEntry(self:ReadString(battleLogic.LifeSummary, ""), self:ReadString(localPlayer.PlayerComponent.UserId, ""))
+	end
+
+	method any GetLocalBattleLogic()
+		-- Finds the battle logic component for the local player's current map.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return nil
+		end
+
+		local mapName = self:ReadString(localPlayer.CurrentMapName, "")
+		if mapName == "" then
+			return nil
+		end
+		return self:GetBattleLogic(mapName)
 	end
 
 	method any GetBattleLogic(string mapName)
@@ -230,6 +317,62 @@ script BRLifeUI extends Logic
 		end
 	end
 
+	method void RefreshCountText(any battleLogic, boolean visible)
+		-- Updates the separate alive-count HUD label.
+		if self.countTextEntity == nil then
+			self:EnsureCountText()
+		end
+		if self.countTextEntity == nil then
+			return
+		end
+
+		local show = visible == true and battleLogic ~= nil
+		self:SetCountTextActive(show)
+		if show ~= true then
+			return
+		end
+
+		local alive = math.max(0, math.floor(self:ReadNumber(battleLogic.AlivePlayerCount, 0)))
+		local total = math.max(0, math.floor(self:ReadNumber(battleLogic.TotalParticipantCount, 0)))
+		if total <= 0 then
+			total = self:GetLifeSummaryRecordCount(self:ReadString(battleLogic.LifeSummary, ""))
+		end
+		if total < alive then
+			total = alive
+		end
+
+		local displayText = "ALIVE " .. tostring(alive)
+		if total > 0 then
+			displayText = displayText .. "/" .. tostring(total)
+		end
+		if displayText ~= self.lastCountText then
+			self.lastCountText = displayText
+			self:ApplyCountText(displayText)
+			self:Log("count=" .. displayText)
+		end
+	end
+
+	method number GetLifeSummaryRecordCount(string summary)
+		-- Counts visible life records in the synchronized life summary.
+		local count = 0
+		for record in string.gmatch(self:ReadString(summary, ""), "([^;]+)") do
+			if self:ReadString(record, "") ~= "" then
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	method void ApplyCountText(string text)
+		-- Applies alive-count text and color.
+		if self.countTextEntity == nil or self.countTextEntity.TextComponent == nil then
+			return
+		end
+
+		self.countTextEntity.TextComponent.Text = self:ReadString(text, "")
+		self.countTextEntity.TextComponent.FontColor = Color(0.72, 0.9, 1, 1)
+	end
+
 	method void SetLifeTextActive(boolean visible)
 		-- Toggles the life HUD text entity.
 		if self.lifeTextEntity == nil then
@@ -239,6 +382,18 @@ script BRLifeUI extends Logic
 		if visible ~= self.lastVisible then
 			self.lastVisible = visible
 			self:Log("visible=" .. tostring(visible))
+		end
+	end
+
+	method void SetCountTextActive(boolean visible)
+		-- Toggles the alive-count HUD text entity.
+		if self.countTextEntity == nil then
+			return
+		end
+		self.countTextEntity.Enable = visible == true
+		if visible ~= self.lastCountVisible then
+			self.lastCountVisible = visible
+			self:Log("countVisible=" .. tostring(visible))
 		end
 	end
 

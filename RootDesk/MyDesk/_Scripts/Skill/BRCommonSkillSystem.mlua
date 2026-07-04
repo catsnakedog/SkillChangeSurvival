@@ -41,9 +41,11 @@ script BRCommonSkillSystem extends Logic
 
 	property boolean SnapBlinkToFoothold = true
 
-	property number BlinkFootholdSearchUp = 0.8
+	property number BlinkFootholdSearchUp = 1.4
 
 	property number BlinkFootholdSearchDown = 4.0
+
+	property number BlinkFootholdSearchSideOffset = 0.18
 
 	property number BlinkFootholdYOffset = 0.04
 
@@ -1524,26 +1526,43 @@ script BRCommonSkillSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method any FindBlinkFootholdPosition(Entity mapEntity, Vector2 requestedTarget)
-		-- Finds a valid foothold landing point below the requested Burst Step target.
+		-- Finds a valid foothold landing point near the requested Burst Step target.
 		if mapEntity == nil or mapEntity.FootholdComponent == nil or requestedTarget == nil then
 			return nil
 		end
-		local up = math.max(0, self:ReadNumber(self.BlinkFootholdSearchUp, 0.8))
+		local up = math.max(0, self:ReadNumber(self.BlinkFootholdSearchUp, 1.4))
 		local down = math.max(0.1, self:ReadNumber(self.BlinkFootholdSearchDown, 4.0))
 		local searchDistance = up + down
-		local rayStart = Vector2(requestedTarget.x, requestedTarget.y + up)
-		local hits = mapEntity.FootholdComponent:RaycastAll(rayStart, Vector2(0, -1), searchDistance)
-		if hits ~= nil then
-			for index, foothold in ipairs(hits) do
-				local position = self:GetBlinkFootholdLandingPosition(foothold, requestedTarget.x)
-				if position ~= nil then
-					return position
+		local sideOffset = math.max(0, self:ReadNumber(self.BlinkFootholdSearchSideOffset, 0.18))
+		local sampleOffsets = { 0 }
+		if sideOffset > 0 then
+			table.insert(sampleOffsets, -sideOffset)
+			table.insert(sampleOffsets, sideOffset)
+			table.insert(sampleOffsets, -sideOffset * 2)
+			table.insert(sampleOffsets, sideOffset * 2)
+		end
+
+		for _, offset in ipairs(sampleOffsets) do
+			local sampleX = requestedTarget.x + offset
+			local rayStart = Vector2(sampleX, requestedTarget.y + up)
+			local hits = mapEntity.FootholdComponent:RaycastAll(rayStart, Vector2(0, -1), searchDistance)
+			if hits ~= nil then
+				for index, foothold in ipairs(hits) do
+					local position = self:GetBlinkFootholdLandingPosition(foothold, sampleX)
+					if position ~= nil then
+						return position
+					end
 				end
+			end
+
+			local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDistance)
+			local position = self:GetBlinkFootholdLandingPosition(foothold, sampleX)
+			if position ~= nil then
+				return position
 			end
 		end
 
-		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDistance)
-		return self:GetBlinkFootholdLandingPosition(foothold, requestedTarget.x)
+		return nil
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1569,8 +1588,8 @@ script BRCommonSkillSystem extends Logic
 		if startPoint == nil or endPoint == nil then
 			return true
 		end
-		local minX = math.min(startPoint.x, endPoint.x) - 0.02
-		local maxX = math.max(startPoint.x, endPoint.x) + 0.02
+		local minX = math.min(startPoint.x, endPoint.x) - 0.08
+		local maxX = math.max(startPoint.x, endPoint.x) + 0.08
 		local safeX = self:ReadNumber(x, 0)
 		return safeX >= minX and safeX <= maxX
 	end

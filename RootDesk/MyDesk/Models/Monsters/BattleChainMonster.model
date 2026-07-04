@@ -474,15 +474,6 @@
         },
         {
           "TargetType": "script.BRBattleMonsterAI",
-          "Name": "AttackDamage",
-          "ValueType": {
-            "$type": "MODNativeType",
-            "type": "number"
-          },
-          "Value": 100
-        },
-        {
-          "TargetType": "script.BRBattleMonsterAI",
           "Name": "VerboseLog",
           "ValueType": {
             "$type": "MODNativeType",

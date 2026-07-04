@@ -17,7 +17,7 @@ script BRSkillSystem extends Logic
 
 	property number ChainSlotsPerLevel = 1
 
-	property number ExperiencePerLevel = 1
+	property number ExperiencePerLevel = 6
 
 	property string CharacterStatTableName = "CharacterStat"
 
@@ -43,13 +43,13 @@ script BRSkillSystem extends Logic
 
 	property number ConsumableUseSoundVolume = 0.9
 
-	property number HealthPotionHealPerTick = 500
+	property number HealthPotionHealPerTick = 8
 
 	property number HealthPotionTickIntervalSeconds = 0.5
 
 	property number HealthPotionDurationSeconds = 3
 
-	property number ShieldPotionAmount = 1500
+	property number ShieldPotionAmount = 55
 
 	property number ShieldPotionDurationSeconds = 3
 
@@ -73,11 +73,11 @@ script BRSkillSystem extends Logic
 
 	property number SafeFootholdSearchDistance = 8
 
-	property number DefaultSkillAttackPower = 300
+	property number DefaultSkillAttackPower = 34
 
-	property number DefaultCriticalRate = 0.2
+	property number DefaultCriticalRate = 0.25
 
-	property number DefaultCriticalDamageRate = 2.0
+	property number DefaultCriticalDamageRate = 2.2
 
 	property number SkillTargetPadding = 0.12
 
@@ -292,7 +292,10 @@ script BRSkillSystem extends Logic
 	method void ValidateSkillDataCatalogs()
 		-- Logs broken CSV/DataSet references early so silent skill failures are visible.
 		self:Log("data loaded skills=" .. tostring(self:GetTableCount(self._T.skillRuntimeCatalog)) .. " parts=" .. tostring(self:GetTableCount(self._T.catalog)) .. " events=" .. tostring(self:GetTableCount(self._T.skillEventCatalog)) .. " actions=" .. tostring(self:GetTableCount(self._T.skillActionCatalog)) .. " hitboxes=" .. tostring(self:GetTableCount(self._T.skillHitboxCatalog)) .. " characterStats=" .. tostring(self:GetCharacterStatCount()) .. " maxLevel=" .. tostring(self:GetMaxSkillLevel()))
-		self:Log("stat sample key=Knight level=1 hp=" .. tostring(self:GetScaledMaxHpForCharacter("Knight", 1, 100)) .. " attack=" .. tostring(self:GetScaledAttackPowerForCharacter("Knight", 1, self.DefaultSkillAttackPower)))
+		self:Log("stat sample key=Knight level=1 hp=" .. tostring(self:GetScaledMaxHpForCharacter("Knight", 1, 100)) .. " attack=" .. tostring(self:GetScaledAttackPowerForCharacter("Knight", 1, self.DefaultSkillAttackPower))
+			.. " healTick=" .. tostring(self.HealthPotionHealPerTick)
+			.. " shield=" .. tostring(self.ShieldPotionAmount)
+			.. " expPerLevel=" .. tostring(self:GetExperiencePerLevel()))
 		self:ValidateMesoStarterClassification()
 		self:ValidateSkillTimelineEvents()
 		self:ValidateSkillEventDefinitions()
@@ -491,10 +494,10 @@ script BRSkillSystem extends Logic
 			ItemType = "CONSUMABLE",
 			ConsumableKind = self:ReadString(consumableKind, ""),
 			UseSoundRUID = self:ReadString(self.ConsumableUseSoundRUID, ""),
-			HealPerTick = math.max(1, math.floor(self:ReadNumber(self.HealthPotionHealPerTick, 500))),
+			HealPerTick = math.max(1, math.floor(self:ReadNumber(self.HealthPotionHealPerTick, 8))),
 			HealIntervalSeconds = math.max(0.05, self:ReadNumber(self.HealthPotionTickIntervalSeconds, 0.5)),
 			HealDurationSeconds = math.max(0.05, self:ReadNumber(self.HealthPotionDurationSeconds, 3)),
-			ShieldAmount = math.max(1, math.floor(self:ReadNumber(self.ShieldPotionAmount, 1500))),
+			ShieldAmount = math.max(1, math.floor(self:ReadNumber(self.ShieldPotionAmount, 55))),
 			ShieldDurationSeconds = math.max(0.05, self:ReadNumber(self.ShieldPotionDurationSeconds, 3)),
 			Rollable = true
 		}
@@ -706,19 +709,19 @@ script BRSkillSystem extends Logic
 	method any CreateCharacterDefaults()
 		-- Loads character defaults used by skill formulas.
 		local defaults = {
-			Hp = 10000,
-			AttackPower = math.max(1, self:ReadNumber(self.DefaultSkillAttackPower, 300)),
+			Hp = 100,
+			AttackPower = self:NormalizeCharacterAttackPower(self.DefaultSkillAttackPower, 34),
 			BasicSkillId = ""
 		}
 		local stat = self:GetCharacterStatRecord(self:GetDefaultCharacterKeyForStats())
 		if stat ~= nil then
-			defaults.Hp = math.max(1, self:ReadNumber(stat.Hp, defaults.Hp))
-			defaults.AttackPower = math.max(1, self:ReadNumber(stat.AttackPower, defaults.AttackPower))
+			defaults.Hp = self:NormalizeCharacterHp(stat.Hp, defaults.Hp)
+			defaults.AttackPower = self:NormalizeCharacterAttackPower(stat.AttackPower, defaults.AttackPower)
 		else
 			local data = self:GetDataTable("characters")
 			if data ~= nil and self:ReadNumber(data:GetRowCount(), 0) > 0 then
-				defaults.Hp = math.max(1, self:ReadNumber(self:GetDataCell(data, 1, "hp", tostring(defaults.Hp)), defaults.Hp))
-				defaults.AttackPower = math.max(1, self:ReadNumber(self:GetDataCell(data, 1, "attack_power", tostring(defaults.AttackPower)), defaults.AttackPower))
+				defaults.Hp = self:NormalizeCharacterHp(self:GetDataCell(data, 1, "hp", tostring(defaults.Hp)), defaults.Hp)
+				defaults.AttackPower = self:NormalizeCharacterAttackPower(self:GetDataCell(data, 1, "attack_power", tostring(defaults.AttackPower)), defaults.AttackPower)
 				defaults.BasicSkillId = self:GetDataCell(data, 1, "basic_skill_id", "")
 			end
 		end
@@ -899,7 +902,7 @@ script BRSkillSystem extends Logic
 	end
 
 	method number GetLevelStatMultiplierForLevel(number level)
-		-- Calculates stat multiplier as 1 + growth * level.
+		-- Calculates stat multiplier from levels gained after the starting level.
 		local safeLevel = math.max(self:GetStartingSkillLevel(), math.min(self:GetMaxSkillLevel(), math.floor(self:ReadNumber(level, self:GetStartingSkillLevel()))))
 		local record = self:GetLevelStatRecord(safeLevel)
 		local catalog = self:GetLevelStatCatalog()
@@ -910,7 +913,26 @@ script BRSkillSystem extends Logic
 		if record ~= nil then
 			growth = self:ReadNumber(record.StatGrowth, growth)
 		end
-		return math.max(0, 1 + growth * safeLevel)
+		local levelSteps = math.max(0, safeLevel - self:GetStartingSkillLevel())
+		return math.max(0, 1 + growth * levelSteps)
+	end
+
+	method number NormalizeCharacterHp(any rawHp, number fallback)
+		-- CharacterStat.csv may use the old 100x balance scale; battle runtime uses HP around 100.
+		local value = math.max(1, self:ReadNumber(rawHp, fallback))
+		if value >= 1000 then
+			value = value * 0.01
+		end
+		return math.max(1, math.floor(value))
+	end
+
+	method number NormalizeCharacterAttackPower(any rawAttack, number fallback)
+		-- CharacterStat.csv attack values above 100 are old-scale values and are converted to battle scale.
+		local value = math.max(1, self:ReadNumber(rawAttack, fallback))
+		if value >= 100 then
+			value = value * 0.018
+		end
+		return math.max(1, math.floor(value))
 	end
 
 	method number GetLevelStatMultiplierForUser(string userId)
@@ -925,9 +947,9 @@ script BRSkillSystem extends Logic
 	method number GetScaledMaxHpForCharacter(string characterKey, number level, number fallback)
 		-- Calculates final HP for one character key and level.
 		local stat = self:GetCharacterStatRecord(characterKey)
-		local baseHp = math.max(1, self:ReadNumber(fallback, 100))
+		local baseHp = self:NormalizeCharacterHp(fallback, 100)
 		if stat ~= nil then
-			baseHp = math.max(1, self:ReadNumber(stat.Hp, baseHp))
+			baseHp = self:NormalizeCharacterHp(stat.Hp, baseHp)
 		end
 		return math.max(1, math.floor(baseHp * self:GetLevelStatMultiplierForLevel(level)))
 	end
@@ -935,9 +957,9 @@ script BRSkillSystem extends Logic
 	method number GetScaledAttackPowerForCharacter(string characterKey, number level, number fallback)
 		-- Calculates final attack power for one character key and level.
 		local stat = self:GetCharacterStatRecord(characterKey)
-		local baseAttack = math.max(1, self:ReadNumber(fallback, self.DefaultSkillAttackPower))
+		local baseAttack = self:NormalizeCharacterAttackPower(fallback, self.DefaultSkillAttackPower)
 		if stat ~= nil then
-			baseAttack = math.max(1, self:ReadNumber(stat.AttackPower, baseAttack))
+			baseAttack = self:NormalizeCharacterAttackPower(stat.AttackPower, baseAttack)
 		end
 		return math.max(1, math.floor(baseAttack * self:GetLevelStatMultiplierForLevel(level)))
 	end
@@ -5482,7 +5504,7 @@ script BRSkillSystem extends Logic
 		if entity ~= nil and entity.PlayerComponent ~= nil then
 			return self:GetBasicAttackDamage(entity.PlayerComponent.UserId, self.DefaultSkillAttackPower)
 		end
-		return math.max(1, self:ReadNumber(self.DefaultSkillAttackPower, 300))
+		return math.max(1, self:ReadNumber(self.DefaultSkillAttackPower, 34))
 	end
 
 	method boolean RollCritical(Entity entity)
@@ -5492,12 +5514,12 @@ script BRSkillSystem extends Logic
 
 	method number GetCriticalRate(Entity entity)
 		-- Returns final critical rate.
-		return math.max(0, math.min(1, self:ReadNumber(self.DefaultCriticalRate, 0.2)))
+		return math.max(0, math.min(1, self:ReadNumber(self.DefaultCriticalRate, 0.25)))
 	end
 
 	method number GetCriticalDamageRate(Entity entity)
 		-- Returns final critical damage multiplier.
-		return math.max(1, self:ReadNumber(self.DefaultCriticalDamageRate, 2.0))
+		return math.max(1, self:ReadNumber(self.DefaultCriticalDamageRate, 2.2))
 	end
 
 	method void ApplyCasterActionLimit(any cast)

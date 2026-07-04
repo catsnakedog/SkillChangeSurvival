@@ -1107,7 +1107,7 @@ script BRRoomGraphGenerator extends Logic
 	end
 
 	method string BuildMiniMapPlayerCountText(any graph)
-		-- Builds row,column,count records for living players currently inside assigned rooms.
+		-- Builds row,column,count records for living players and battle bots inside assigned rooms.
 		if graph == nil then
 			return ""
 		end
@@ -1117,21 +1117,16 @@ script BRRoomGraphGenerator extends Logic
 			return ""
 		end
 
-		local users = _UserService:GetUsersByMapName(mapName)
-		if users == nil then
-			return ""
-		end
-
 		local counts = {}
-		for index, playerEntity in ipairs(users) do
-			if self:IsCountableMiniMapPlayer(playerEntity) == true then
-				local room = self:GetLogicalRoomForPosition(graph, self:GetEntityPosition2(playerEntity))
-				if room ~= nil then
-					local key = self:GetRoomKey(room.Row, room.Column)
-					counts[key] = self:ReadNumber(counts[key], 0) + 1
+		local users = _UserService:GetUsersByMapName(mapName)
+		if users ~= nil then
+			for index, playerEntity in ipairs(users) do
+				if self:IsCountableMiniMapPlayer(playerEntity) == true then
+					self:AddMiniMapCountForEntity(graph, counts, playerEntity)
 				end
 			end
 		end
+		self:AddMiniMapBotCounts(graph, counts)
 
 		local result = ""
 		for index, room in ipairs(graph.Rooms) do
@@ -1148,12 +1143,67 @@ script BRRoomGraphGenerator extends Logic
 		return result
 	end
 
+	method void AddMiniMapCountForEntity(any graph, any counts, Entity entity)
+		-- Adds one entity to the logical-room minimap count table.
+		if graph == nil or counts == nil or entity == nil then
+			return
+		end
+
+		local room = self:GetLogicalRoomForPosition(graph, self:GetEntityPosition2(entity))
+		if room ~= nil then
+			local key = self:GetRoomKey(room.Row, room.Column)
+			counts[key] = self:ReadNumber(counts[key], 0) + 1
+		end
+	end
+
+	method void AddMiniMapBotCounts(any graph, any counts)
+		-- Adds alive battle bots to the logical-room minimap count table.
+		if graph == nil or counts == nil then
+			return
+		end
+
+		local mapName = self:ReadString(graph.MapName, "")
+		if mapName == "" then
+			return
+		end
+
+		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. mapName)
+		if mapEntity == nil then
+			return
+		end
+
+		local bots = mapEntity:GetChildComponentsByTypeName("script.BRBattleBotController", true)
+		if bots == nil or bots[1] == nil then
+			bots = mapEntity:GetChildComponentsByTypeName("BRBattleBotController", true)
+		end
+		if bots == nil then
+			return
+		end
+
+		for index, bot in ipairs(bots) do
+			if self:IsCountableMiniMapBot(bot) == true then
+				self:AddMiniMapCountForEntity(graph, counts, bot.Entity)
+			end
+		end
+	end
+
 	method boolean IsCountableMiniMapPlayer(Entity playerEntity)
 		-- Counts only living player entities for the battle minimap.
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return false
 		end
 		if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+			return false
+		end
+		return true
+	end
+
+	method boolean IsCountableMiniMapBot(any bot)
+		-- Counts only alive battle-bot entities for the battle minimap.
+		if bot == nil or bot.Entity == nil or isvalid(bot.Entity) == false then
+			return false
+		end
+		if bot:IsAlive() ~= true then
 			return false
 		end
 		return true

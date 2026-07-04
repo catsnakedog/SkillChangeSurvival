@@ -9,7 +9,7 @@ script BRLobbyTrainingController extends Component
 
 	property number PlayerScanSeconds = 0.15
 
-	property number BasicAttackDamage = 20
+	property number BasicAttackDamage = 32
 
 	property number AttackCooldownSeconds = 0.45
 
@@ -489,7 +489,7 @@ script BRLobbyTrainingController extends Component
 	end
 
 	method number GetBasicAttackDamage()
-		return math.max(1, math.floor(self:ReadNumber(self.BasicAttackDamage, 20)))
+		return math.max(1, math.floor(self:ReadNumber(self.BasicAttackDamage, 32)))
 	end
 
 	method number GetAttackCooldownSeconds()

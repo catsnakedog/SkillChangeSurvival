@@ -154,18 +154,9 @@ script BRSkillPartTestNPC extends Component
 	end
 
 	method boolean IsInteractionKey(KeyDownEvent event)
+		-- Uses F as the single NPC interaction key.
 		if event == nil then
 			return false
-		end
-		local keyName = self:GetInteractionKeyName()
-		if keyName == "C" then
-			return event.key == KeyboardKey.C
-		elseif keyName == "V" then
-			return event.key == KeyboardKey.V
-		elseif keyName == "F" then
-			return event.key == KeyboardKey.F
-		elseif keyName == "X" then
-			return event.key == KeyboardKey.X
 		end
 		return event.key == KeyboardKey.F
 	end
@@ -241,7 +232,8 @@ script BRSkillPartTestNPC extends Component
 	end
 
 	method string GetInteractionKeyName()
-		return self:ReadString(self.InteractionKeyName, "F")
+		-- Returns the fixed NPC interaction key label.
+		return "F"
 	end
 
 	method string ReadString(any value, string fallback)

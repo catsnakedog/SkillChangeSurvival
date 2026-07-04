@@ -3,7 +3,11 @@ script BRTrainingDummy extends Component
 
 	property boolean EnableTrainingDummy = true
 
-	property number MaxHp = 500
+	property number MaxHp = 82
+
+	property boolean NormalizeAuthoredDummyHp = true
+
+	property number AuthoredDummyQuickKillMaxHp = 82
 
 	property number ResetDelaySeconds = 3
 
@@ -28,16 +32,16 @@ script BRTrainingDummy extends Component
 
 	property boolean GrantSkillExperienceOnBreak = true
 
-	property number SkillExperienceReward = 1
+	property number SkillExperienceReward = 100
 
-	property number MesoReward = 5
+	property number MesoReward = 4
 
 	property number HitDamage = 1
 
 	property boolean PauseMovementWhenBroken = true
 
 	@Sync
-	property number CurrentHp = 500
+	property number CurrentHp = 82
 
 	@Sync
 	property string DummyStatus = "Ready"
@@ -52,6 +56,7 @@ script BRTrainingDummy extends Component
 			return
 		end
 
+		self:NormalizeAuthoredDummyBalance()
 		self:ResetDummy()
 		self:Log("ready hp=" .. tostring(self:GetMaxHp()) .. " map=" .. self:GetMapName())
 	end
@@ -181,6 +186,18 @@ script BRTrainingDummy extends Component
 		self:SetMovementPaused(false)
 		self:SetDummyColor(Color(0.87, 0.68, 0.32, 1))
 		self:UpdateNameTag()
+	end
+
+	method void NormalizeAuthoredDummyBalance()
+		-- Converts previously authored high-HP training monsters to the quick-kill target.
+		if self.IsBattleRuntimeMonster == true or self.NormalizeAuthoredDummyHp ~= true then
+			return
+		end
+		local targetHp = self:GetAuthoredDummyQuickKillMaxHp()
+		if self:ReadNumber(self.MaxHp, targetHp) > targetHp then
+			self.MaxHp = targetHp
+			self.CurrentHp = targetHp
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -362,7 +379,12 @@ script BRTrainingDummy extends Component
 	end
 
 	method number GetMaxHp()
-		return math.max(1, math.floor(self:ReadNumber(self.MaxHp, 500)))
+		return math.max(1, math.floor(self:ReadNumber(self.MaxHp, 82)))
+	end
+
+	method number GetAuthoredDummyQuickKillMaxHp()
+		-- Returns the HP target for authored non-boss training monsters.
+		return math.max(1, math.floor(self:ReadNumber(self.AuthoredDummyQuickKillMaxHp, 82)))
 	end
 
 	method number GetResetDelaySeconds()
@@ -382,11 +404,11 @@ script BRTrainingDummy extends Component
 	end
 
 	method number GetSkillExperienceReward()
-		return math.max(0, math.floor(self:ReadNumber(self.SkillExperienceReward, 1)))
+		return math.max(0, math.floor(self:ReadNumber(self.SkillExperienceReward, 100)))
 	end
 
 	method number GetMesoReward()
-		return math.max(0, math.floor(self:ReadNumber(self.MesoReward, 5)))
+		return math.max(0, math.floor(self:ReadNumber(self.MesoReward, 4)))
 	end
 
 	method number GetHitDamage()

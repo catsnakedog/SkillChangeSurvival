@@ -67,7 +67,7 @@ script BRBattleLauncher extends Logic
 
 	property number BattleBotMaxHp = 100
 
-	property number BattleBotLives = 2
+	property number BattleBotLives = 3
 
 	property number BattleBotMaxFillCount = 3
 
@@ -333,14 +333,18 @@ script BRBattleLauncher extends Logic
 	end
 
 	method any BuildBattleRoomStartPlayerPayload(any player)
+		-- Serializes one lobby player record for an instance-room battle start payload.
 		if player == nil then
 			return {}
 		end
+		local userId = self:ReadString(player.UserId, "")
+		local characterKey = self:ResolveBattleCharacterKey(userId, self:ReadString(player.CharacterKey, ""))
 		return {
-			UserId = self:ReadString(player.UserId, ""),
+			UserId = userId,
 			TicketId = self:ReadString(player.TicketId, ""),
 			ProfileCode = self:ReadString(player.ProfileCode, ""),
 			WorldInstanceId = self:ReadString(player.WorldInstanceId, ""),
+			CharacterKey = characterKey,
 			SpawnIndex = math.floor(self:ReadNumber(player.SpawnIndex, 0)),
 			SpawnCornerName = self:ReadString(player.SpawnCornerName, ""),
 			SpawnPositionX = self:ReadNumber(player.SpawnPositionX, 0),
@@ -437,6 +441,7 @@ script BRBattleLauncher extends Logic
 	end
 
 	method any BuildMatchRoomPlayerFromPayload(any player)
+		-- Restores one player record from an instance-room battle start payload.
 		if player == nil then
 			return {}
 		end
@@ -445,6 +450,7 @@ script BRBattleLauncher extends Logic
 			TicketId = self:ReadString(player.TicketId, ""),
 			ProfileCode = self:ReadString(player.ProfileCode, ""),
 			WorldInstanceId = self:ReadString(player.WorldInstanceId, ""),
+			CharacterKey = self:ResolveBattleCharacterKey(self:ReadString(player.UserId, ""), self:ReadString(player.CharacterKey, "")),
 			SpawnIndex = math.floor(self:ReadNumber(player.SpawnIndex, 0)),
 			SpawnCornerName = self:ReadString(player.SpawnCornerName, ""),
 			SpawnPositionX = self:ReadNumber(player.SpawnPositionX, 0),
@@ -1133,8 +1139,11 @@ script BRBattleLauncher extends Logic
 				local spawnIndex = math.max(1, math.floor(self:ReadNumber(requestedSpawnIndex, movedCount + 1)))
 				local spawnPosition = self:GetSpawnPosition(matchRoom, spawnIndex, total, owner)
 				local spawnCornerName = self:GetStartCornerRoomName(spawnIndex)
+				local characterKey = self:ResolveBattleCharacterKey(self:ReadString(player.UserId, ""), self:ReadString(player.CharacterKey, ""))
+				player.CharacterKey = characterKey
+				self:ApplyBattleCharacterSelection(playerEntity, characterKey, "battle-start:" .. self:ReadString(matchRoom.MatchId, ""))
 				self:ResetPlayerSkillStateForBattle(playerEntity, self:ReadString(matchRoom.MatchId, ""))
-				if self:MovePlayerToBattleStart(playerEntity, matchRoom, targetMapName, spawnPosition, spawnIndex) == true then
+				if self:MovePlayerToBattleStart(playerEntity, matchRoom, targetMapName, spawnPosition, spawnIndex, characterKey) == true then
 					self:SetGatherName(player.UserId, spawnIndex, total)
 					player.SpawnIndex = spawnIndex
 					player.SpawnCornerName = spawnCornerName
@@ -1165,6 +1174,42 @@ script BRBattleLauncher extends Logic
 		end
 		_BRSkillSystem:ResetUserForBattle(userId)
 		log("[BRBattleLauncher] skill battle reset user=" .. userId .. " match=" .. self:ReadString(matchId, ""))
+	end
+
+	method string ResolveBattleCharacterKey(string userId, string fallbackKey)
+		-- Resolves the chosen class without letting a fresh instance-room cache overwrite the payload value.
+		local safeKey = self:ReadString(fallbackKey, "")
+		local safeUserId = self:ReadString(userId, "")
+		if safeKey == "" and safeUserId ~= "" and _BRCharacterSystem ~= nil then
+			safeKey = self:ReadString(_BRCharacterSystem:GetServerCharacterKey(safeUserId), "")
+		end
+		if _BRCharacterSystem ~= nil then
+			return _BRCharacterSystem:NormalizeCharacterKey(safeKey)
+		end
+		if safeKey == "" then
+			return "Knight"
+		end
+		return safeKey
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyBattleCharacterSelection(Entity playerEntity, string characterKey, string reason)
+		-- Reapplies the selected class in the current room so battle transfer cannot fall back to default.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		if userId == "" then
+			return
+		end
+		local safeKey = self:ResolveBattleCharacterKey(userId, characterKey)
+		if _BRCharacterSystem ~= nil then
+			_BRCharacterSystem:SetServerCharacterKeyForUser(userId, safeKey, self:ReadString(reason, "battle"))
+		end
+		if _BRSkillSystem ~= nil then
+			_BRSkillSystem:ApplyCharacterStatsToUser(userId, self:ReadString(reason, "battle"))
+		end
+		log("[BRBattleLauncher] battle character applied user=" .. userId .. " key=" .. safeKey .. " reason=" .. self:ReadString(reason, "battle"))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -1256,7 +1301,7 @@ script BRBattleLauncher extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
-	method boolean MovePlayerToBattleStart(Entity playerEntity, any matchRoom, string targetMapName, Vector2 spawnPosition, number spawnIndex)
+	method boolean MovePlayerToBattleStart(Entity playerEntity, any matchRoom, string targetMapName, Vector2 spawnPosition, number spawnIndex, string characterKey)
 		-- Moves a player into the per-match instance room through RoomService.
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return false
@@ -1275,17 +1320,18 @@ script BRBattleLauncher extends Logic
 			return false
 		end
 		log("[BRBattleLauncher] start room move requested user=" .. userId .. " slot=" .. tostring(slotIndex) .. " from=" .. fromMapName .. " map=" .. safeMapName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
+		local safeCharacterKey = self:ReadString(characterKey, "")
 		_TimerService:SetTimerOnce(function()
-			self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, 1)
+			self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, safeCharacterKey, 1)
 		end, 0.35)
 		_TimerService:SetTimerOnce(function()
-			self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, 2)
+			self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, safeCharacterKey, 2)
 		end, 1.2)
 		return true
 	end
 
 	@ExecSpace("ServerOnly")
-	method void ConfirmBattleStartArrival(string userId, string targetMapName, Vector2 spawnPosition, number spawnIndex, number attempt)
+	method void ConfirmBattleStartArrival(string userId, string targetMapName, Vector2 spawnPosition, number spawnIndex, string characterKey, number attempt)
 		-- Confirms RoomService instance-room travel and applies the final body-position correction after the map switch lands.
 		local safeUserId = self:ReadString(userId, "")
 		local safeMapName = self:ReadString(targetMapName, "")
@@ -1321,7 +1367,8 @@ script BRBattleLauncher extends Logic
 		playerEntity.PlayerComponent.RespawnPosition = Vector3(spawnPosition.x, spawnPosition.y, 0)
 		self:ApplyPlayerWorldPosition(playerEntity, spawnPosition, "battle-start-confirm")
 		self:ApplyLocalPlayerWorldPosition(spawnPosition, "battle-start-confirm", safeUserId)
-		log("[BRBattleLauncher] battle start arrived user=" .. safeUserId .. " slot=" .. tostring(spawnIndex) .. " map=" .. safeMapName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ") attempt=" .. tostring(attempt))
+		self:ApplyBattleCharacterSelection(playerEntity, self:ReadString(characterKey, ""), "battle-arrival:" .. safeMapName .. ":" .. tostring(attempt))
+		log("[BRBattleLauncher] battle start arrived user=" .. safeUserId .. " slot=" .. tostring(spawnIndex) .. " map=" .. safeMapName .. " character=" .. self:ReadString(characterKey, "") .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ") attempt=" .. tostring(attempt))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -2537,7 +2584,7 @@ script BRBattleLauncher extends Logic
 		if owner ~= nil and owner.BattleBotLives ~= nil then
 			value = owner.BattleBotLives
 		end
-		return math.max(1, math.floor(self:ReadNumber(value, 2)))
+		return math.max(1, math.floor(self:ReadNumber(value, 3)))
 	end
 
 	method number GetBattleBotMaxFillCount(any owner)

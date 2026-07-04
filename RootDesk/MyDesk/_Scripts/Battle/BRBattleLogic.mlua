@@ -7,11 +7,11 @@ script BRBattleLogic extends Component
 
 	property number BattleMaxHp = 100
 
-	property number BasicAttackDamage = 20
+	property number BasicAttackDamage = 32
 
 	property number AttackCooldownSeconds = 0.45
 
-	property number HitInvincibleSeconds = 0.25
+	property number HitInvincibleSeconds = 0.3
 
 	property number PortalCombatLockSeconds = 1.25
 
@@ -33,9 +33,9 @@ script BRBattleLogic extends Component
 
 	property boolean EnableLastManStandingEnd = true
 
-	property number MinimumPlayersForLastManEnd = 2
+	property number MinimumPlayersForLastManEnd = 1
 
-	property number DefaultLives = 2
+	property number DefaultLives = 3
 
 	property number LifeReviveDelaySeconds = 4
 
@@ -73,9 +73,9 @@ script BRBattleLogic extends Component
 
 	property boolean EnableOutOfBoundsPenalty = true
 
-	property number OutOfBoundsDamage = 20
+	property number OutOfBoundsDamage = 18
 
-	property number OutOfBoundsDamageCooldownSeconds = 1
+	property number OutOfBoundsDamageCooldownSeconds = 1.25
 
 	property boolean EnableRoomBottomOutOfBounds = true
 
@@ -93,6 +93,9 @@ script BRBattleLogic extends Component
 
 	@Sync
 	property number AlivePlayerCount = 0
+
+	@Sync
+	property number TotalParticipantCount = 0
 
 	@Sync
 	property string BattlePhase = "Idle"
@@ -171,7 +174,12 @@ script BRBattleLogic extends Component
 		self.BattlePhase = "Ready"
 		self:LogMapFootholdState()
 		log("[BRBattle] started map=" .. self:GetBattleMapName())
-		self:Log("started map=" .. self:GetBattleMapName())
+		self:Log("started map=" .. self:GetBattleMapName()
+			.. " hp=" .. tostring(self:GetBattleMaxHp())
+			.. " basicDamage=" .. tostring(self:GetBasicAttackDamage())
+			.. " attackCooldown=" .. tostring(self:GetAttackCooldownSeconds())
+			.. " hitIFrame=" .. tostring(self:GetHitInvincibleSeconds())
+			.. " outDamage=" .. tostring(self.OutOfBoundsDamage))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -215,6 +223,7 @@ script BRBattleLogic extends Component
 		self._T.runtimeStarted = false
 		self.LifeMapName = ""
 		self.LifeSummary = ""
+		self.TotalParticipantCount = 0
 		self.LifeVersion = self.LifeVersion + 1
 	end
 
@@ -725,6 +734,9 @@ script BRBattleLogic extends Component
 			Entity = botEntity
 		}
 		self._T.knownBotParticipants[safeBotId] = true
+		self:UpdateAlivePlayerCount()
+		self:UpdateLifeSummary()
+		self:RefreshMiniMapPlayerCounts()
 	end
 
 	@ExecSpace("ServerOnly")
@@ -2316,7 +2328,7 @@ script BRBattleLogic extends Component
 		end
 
 		local summary = self:GetRemainingContenderSummary()
-		if summary.Count > 1 then
+		if summary.Count ~= 1 then
 			return
 		end
 
@@ -2416,6 +2428,7 @@ script BRBattleLogic extends Component
 		count = count + self:GetAliveBotCount()
 		
 		self.AlivePlayerCount = count
+		self.TotalParticipantCount = self:GetKnownParticipantCount()
 		if self._T.matchEndRequested == true then
 			self.BattlePhase = "Ending"
 			return
@@ -2434,6 +2447,7 @@ script BRBattleLogic extends Component
 				self.BattlePhase = "Waiting"
 			end
 		end
+		self:CheckLastManStanding("alive-count")
 	end
 
 	@ExecSpace("ServerOnly")
@@ -2585,15 +2599,15 @@ script BRBattleLogic extends Component
 	end
 
 	method number GetBasicAttackDamage()
-		return math.max(1, math.floor(self:ReadNumber(self.BasicAttackDamage, 20)))
+		return math.max(1, math.floor(self:ReadNumber(self.BasicAttackDamage, 32)))
 	end
 
 	method number GetOutOfBoundsDamage(Entity playerEntity)
-		return math.max(1, math.floor(self:ReadNumber(self.OutOfBoundsDamage, self:GetBasicAttackDamage())))
+		return math.max(1, math.floor(self:ReadNumber(self.OutOfBoundsDamage, 18)))
 	end
 
 	method number GetOutOfBoundsDamageCooldownSeconds()
-		return math.max(0.1, self:ReadNumber(self.OutOfBoundsDamageCooldownSeconds, 1))
+		return math.max(0.1, self:ReadNumber(self.OutOfBoundsDamageCooldownSeconds, 1.25))
 	end
 
 	method number GetRoomBottomOutOfBoundsPadding()
@@ -2684,7 +2698,7 @@ script BRBattleLogic extends Component
 	end
 
 	method number GetHitInvincibleSeconds()
-		return math.max(0, self:ReadNumber(self.HitInvincibleSeconds, 0.25))
+		return math.max(0, self:ReadNumber(self.HitInvincibleSeconds, 0.3))
 	end
 
 	method number GetPortalCombatLockSeconds()
@@ -2726,12 +2740,12 @@ script BRBattleLogic extends Component
 
 	method number GetDefaultLives()
 		-- Returns total lives granted at battle entry.
-		return math.max(1, math.floor(self:ReadNumber(self.DefaultLives, 2)))
+		return math.max(1, math.floor(self:ReadNumber(self.DefaultLives, 3)))
 	end
 
 	method number GetMinimumPlayersForLastManEnd()
 		-- Returns how many participants must have joined before last-man ending is allowed.
-		return math.max(2, math.floor(self:ReadNumber(self.MinimumPlayersForLastManEnd, 2)))
+		return math.max(1, math.floor(self:ReadNumber(self.MinimumPlayersForLastManEnd, 1)))
 	end
 
 	method number GetLifeReviveDelaySeconds()

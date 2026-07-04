@@ -5263,14 +5263,16 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
+              "MaxHp": 180.0,
               "ResetDelaySeconds": 3.0,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 100000.0,
-              "PauseMovementWhenBroken": true
+              "SkillExperienceReward": 100.0,
+              "MesoReward": 4.0,
+              "PauseMovementWhenBroken": true,
+              "CurrentHp": 180.0
             }
           ],
           "@version": 1
@@ -5404,14 +5406,16 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
+              "MaxHp": 180.0,
               "ResetDelaySeconds": 3.0,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 100000.0,
-              "PauseMovementWhenBroken": true
+              "SkillExperienceReward": 100.0,
+              "MesoReward": 4.0,
+              "PauseMovementWhenBroken": true,
+              "CurrentHp": 180.0
             }
           ],
           "@version": 1
@@ -5545,14 +5549,16 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
+              "MaxHp": 180.0,
               "ResetDelaySeconds": 3.0,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 100000.0,
-              "PauseMovementWhenBroken": true
+              "SkillExperienceReward": 100.0,
+              "MesoReward": 4.0,
+              "PauseMovementWhenBroken": true,
+              "CurrentHp": 180.0
             }
           ],
           "@version": 1
@@ -6810,14 +6816,16 @@
               "@type": "script.BRTrainingDummy",
               "Enable": true,
               "EnableTrainingDummy": true,
-              "MaxHp": 500.0,
+              "MaxHp": 180.0,
               "ResetDelaySeconds": 3.0,
               "DamageFlashSeconds": 0.12,
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 100000.0,
-              "PauseMovementWhenBroken": true
+              "SkillExperienceReward": 100.0,
+              "MesoReward": 4.0,
+              "PauseMovementWhenBroken": true,
+              "CurrentHp": 180.0
             }
           ],
           "@version": 1
@@ -7193,7 +7201,7 @@
             },
             {
               "@type": "MOD.Core.NameTagComponent",
-              "Name": "npc-5039",
+              "Name": "클래스 변경",
               "NameTagRUID": {
                 "DataId": "9bf18287398c44699c20fc5123d1a1ae"
               },
@@ -7566,7 +7574,7 @@
             },
             {
               "@type": "MOD.Core.NameTagComponent",
-              "Name": "npc-3012",
+              "Name": "상점",
               "NameTagRUID": {
                 "DataId": "9bf18287398c44699c20fc5123d1a1ae"
               },
@@ -7635,106 +7643,6 @@
         }
       },
       {
-        "id": "a9facb67-b0fd-4f39-9584-81acab782c06",
-        "path": "/maps/StartMap/npc-8640",
-        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent,MOD.Core.RigidbodyComponent,MOD.Core.StateComponent,MOD.Core.ChatBalloonComponent,MOD.Core.StateAnimationComponent,MOD.Core.NameTagComponent",
-        "jsonString": {
-          "name": "npc-8640",
-          "path": "/maps/StartMap/npc-8640",
-          "nameEditable": true,
-          "enable": true,
-          "visible": true,
-          "localize": false,
-          "displayOrder": 64,
-          "pathConstraints": "///",
-          "revision": 1,
-          "origin": {
-            "type": "Model",
-            "entry_id": "StaticNPC",
-            "sub_entity_id": null,
-            "root_entity_id": "a9facb67-b0fd-4f39-9584-81acab782c06",
-            "replaced_model_id": null
-          },
-          "modelId": "staticnpc",
-          "@components": [
-            {
-              "@type": "MOD.Core.TransformComponent",
-              "Position": {
-                "x": -1.6500001,
-                "y": -0.585,
-                "z": -0.001
-              },
-              "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
-              },
-              "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.SpriteRendererComponent",
-              "ActionSheet": {},
-              "EndFrameIndex": 0,
-              "RenderSetting": 1,
-              "SortingLayer": "MapLayer0",
-              "SpriteRUID": "7e41317a1df84d39ad4fe3f6115b087a",
-              "StartFrameIndex": 0,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.RigidbodyComponent",
-              "MoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "RealMoveVelocity": {
-                "x": 0.0,
-                "y": 0.0
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.StateComponent",
-              "IsLegacy": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.ChatBalloonComponent",
-              "ChatBalloonRUID": {
-                "DataId": "7b6bd117bd0446a5bacec8ea6831c997"
-              },
-              "ChatModeEnabled": false,
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.StateAnimationComponent",
-              "ActionSheet": {
-                "move": "9c315f6a8f08431093e0b717b215a15a",
-                "say": "91a8d71840f54d1f86bab1c6fcb4689d",
-                "eye": "8c34c77c48ed41ddaeb7900bebf3a539",
-                "stand": "7e41317a1df84d39ad4fe3f6115b087a"
-              },
-              "Enable": true
-            },
-            {
-              "@type": "MOD.Core.NameTagComponent",
-              "Name": "npc-8640",
-              "NameTagRUID": {
-                "DataId": "9bf18287398c44699c20fc5123d1a1ae"
-              },
-              "Enable": true
-            }
-          ],
-          "@version": 1
-        }
-      },
-      {
         "id": "53b2cfdc-2458-4d70-9cb4-df7ec5e5e494",
         "path": "/maps/StartMap/object-15153",
         "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent",
@@ -7745,7 +7653,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 65,
+          "displayOrder": 64,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7803,7 +7711,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 66,
+          "displayOrder": 65,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7861,7 +7769,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 67,
+          "displayOrder": 66,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7918,7 +7826,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 68,
+          "displayOrder": 67,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -7975,7 +7883,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 69,
+          "displayOrder": 68,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8032,7 +7940,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 70,
+          "displayOrder": 69,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8089,7 +7997,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 71,
+          "displayOrder": 70,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8146,7 +8054,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 72,
+          "displayOrder": 71,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8204,7 +8112,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 73,
+          "displayOrder": 72,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8262,7 +8170,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 74,
+          "displayOrder": 73,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8336,7 +8244,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 75,
+          "displayOrder": 74,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8394,7 +8302,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 76,
+          "displayOrder": 75,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8468,7 +8376,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 77,
+          "displayOrder": 76,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8526,7 +8434,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 78,
+          "displayOrder": 77,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8600,7 +8508,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 79,
+          "displayOrder": 78,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8658,7 +8566,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 80,
+          "displayOrder": 79,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8732,7 +8640,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 81,
+          "displayOrder": 80,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8790,7 +8698,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 82,
+          "displayOrder": 81,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8848,7 +8756,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 83,
+          "displayOrder": 82,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8906,7 +8814,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 84,
+          "displayOrder": 83,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -8980,7 +8888,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 85,
+          "displayOrder": 84,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9038,7 +8946,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 86,
+          "displayOrder": 85,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9096,7 +9004,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 87,
+          "displayOrder": 86,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9170,7 +9078,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 88,
+          "displayOrder": 87,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9228,7 +9136,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 89,
+          "displayOrder": 88,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9281,7 +9189,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 90,
+          "displayOrder": 89,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9339,7 +9247,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 91,
+          "displayOrder": 90,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9398,7 +9306,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 92,
+          "displayOrder": 91,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9456,7 +9364,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 93,
+          "displayOrder": 92,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9509,7 +9417,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 94,
+          "displayOrder": 93,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9562,7 +9470,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 95,
+          "displayOrder": 94,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9621,7 +9529,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 96,
+          "displayOrder": 95,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {
@@ -9849,7 +9757,7 @@
           "enable": true,
           "visible": true,
           "localize": false,
-          "displayOrder": 97,
+          "displayOrder": 96,
           "pathConstraints": "///",
           "revision": 1,
           "origin": {

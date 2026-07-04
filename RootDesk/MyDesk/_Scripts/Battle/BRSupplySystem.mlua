@@ -51,11 +51,17 @@ script BRSupplySystem extends Logic
 
 	property number BossSpawnYOffset = 0
 
-	property number MonsterLevelUpHpMultiplier = 1.5
+	property number MonsterHpRuntimeScale = 0.82
 
-	property number MonsterLevelUpAttackMultiplier = 1.25
+	property number MonsterQuickKillBaseHp = 82
 
-	property number MonsterLevelUpRewardMultiplier = 1.25
+	property number MonsterQuickKillHpPerLevel = 16
+
+	property number MonsterLevelUpHpMultiplier = 1.16
+
+	property number MonsterLevelUpAttackMultiplier = 1.16
+
+	property number MonsterLevelUpRewardMultiplier = 1.12
 
 	property boolean VerboseLog = true
 
@@ -1322,6 +1328,40 @@ script BRSupplySystem extends Logic
 		return self._T.monsterRows[row]
 	end
 
+	method number NormalizeMonsterMaxHp(any rawHp, number rawLevel)
+		-- Converts old CSV HP scale into runtime HP, then applies the quick-kill scale.
+		local originalValue = math.max(1, self:ReadNumber(rawHp, 1))
+		local value = originalValue
+		if originalValue >= 10000 then
+			value = value * 0.01
+		elseif originalValue >= 1000 then
+			value = value * 0.1
+		end
+		value = value * self:GetMonsterHpRuntimeScale()
+		if originalValue < 10000 then
+			value = math.min(value, self:GetMonsterQuickKillHpCap(rawLevel))
+		end
+		return math.max(1, math.floor(value))
+	end
+
+	method number NormalizeMonsterHitDamage(any rawDamage)
+		-- Converts old CSV contact-damage scale into battle HP scale.
+		local value = math.max(0, self:ReadNumber(rawDamage, 0))
+		if value >= 50 then
+			value = value * 0.07
+		end
+		return math.max(0, math.floor(value))
+	end
+
+	method number NormalizeMonsterMesoReward(any rawReward)
+		-- Converts old CSV meso reward scale into compact battle rewards.
+		local value = math.max(0, self:ReadNumber(rawReward, 0))
+		if value >= 100 then
+			value = value * 0.02
+		end
+		return math.max(0, math.floor(value))
+	end
+
 	method void EnsureMonsterData()
 		-- Loads monster.csv through its UserDataSet wrapper once per session.
 		self:EnsureRuntime()
@@ -1336,19 +1376,28 @@ script BRSupplySystem extends Logic
 		end
 		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
 		for row = 1, rowCount do
+			local monsterLevel = self:ReadNumber(self:GetDataCell(data, row, "레벨", "1"), 1)
 			table.insert(self._T.monsterRows, {
 				Name = self:GetDataCell(data, row, "몬스터 이름", ""),
 				ModelId = self:GetDataCell(data, row, "몬스터 preset 이름", ""),
-				Level = self:ReadNumber(self:GetDataCell(data, row, "레벨", "1"), 1),
+				Level = monsterLevel,
 				EvolutionPhase = self:ReadNumber(self:GetDataCell(data, row, "진화 페이즈", "0"), 0),
-				MaxHp = self:ReadNumber(self:GetDataCell(data, row, "체력", "1"), 1),
-				HitDamage = self:ReadNumber(self:GetDataCell(data, row, "피격 데미지", "0"), 0),
-				MesoReward = self:ReadNumber(self:GetDataCell(data, row, "드랍 메소", "0"), 0),
+				MaxHp = self:NormalizeMonsterMaxHp(self:GetDataCell(data, row, "체력", "1"), monsterLevel),
+				HitDamage = self:NormalizeMonsterHitDamage(self:GetDataCell(data, row, "피격 데미지", "0")),
+				MesoReward = self:NormalizeMonsterMesoReward(self:GetDataCell(data, row, "드랍 메소", "0")),
 				ExpReward = self:ReadNumber(self:GetDataCell(data, row, "주는 경험치", "0"), 0),
 				Note = self:GetDataCell(data, row, "비고", "")
 			})
 		end
-		self:Log("monster data loaded rows=" .. tostring(#self._T.monsterRows))
+		local sample = self._T.monsterRows[1]
+		local sampleText = ""
+		if sample ~= nil then
+			sampleText = " sampleHp=" .. tostring(sample.MaxHp)
+				.. " sampleDamage=" .. tostring(sample.HitDamage)
+				.. " sampleMeso=" .. tostring(sample.MesoReward)
+				.. " sampleExp=" .. tostring(sample.ExpReward)
+		end
+		self:Log("monster data loaded rows=" .. tostring(#self._T.monsterRows) .. sampleText)
 	end
 
 	method number GetStartMonsterRowIndex()
@@ -2136,17 +2185,30 @@ script BRSupplySystem extends Logic
 
 	method number GetMonsterLevelUpHpMultiplier()
 		-- Returns phase-6 monster HP multiplier.
-		return math.max(1, self:ReadNumber(self.MonsterLevelUpHpMultiplier, 1.5))
+		return math.max(1, self:ReadNumber(self.MonsterLevelUpHpMultiplier, 1.16))
+	end
+
+	method number GetMonsterHpRuntimeScale()
+		-- Keeps normal battle monsters near a 2-3 hit kill target at level 1.
+		return math.max(0.1, self:ReadNumber(self.MonsterHpRuntimeScale, 0.82))
+	end
+
+	method number GetMonsterQuickKillHpCap(number level)
+		-- Caps normal evolution monsters near the requested 2-3 hit kill tempo.
+		local safeLevel = math.max(1, math.floor(self:ReadNumber(level, 1)))
+		local baseHp = math.max(1, self:ReadNumber(self.MonsterQuickKillBaseHp, 82))
+		local perLevel = math.max(0, self:ReadNumber(self.MonsterQuickKillHpPerLevel, 16))
+		return math.max(1, math.floor(baseHp + math.max(0, safeLevel - 1) * perLevel))
 	end
 
 	method number GetMonsterLevelUpAttackMultiplier()
 		-- Returns phase-6 battle-bot attack multiplier.
-		return math.max(1, self:ReadNumber(self.MonsterLevelUpAttackMultiplier, 1.25))
+		return math.max(1, self:ReadNumber(self.MonsterLevelUpAttackMultiplier, 1.16))
 	end
 
 	method number GetMonsterLevelUpRewardMultiplier()
 		-- Returns phase-6 reward multiplier for training monsters.
-		return math.max(1, self:ReadNumber(self.MonsterLevelUpRewardMultiplier, 1.25))
+		return math.max(1, self:ReadNumber(self.MonsterLevelUpRewardMultiplier, 1.12))
 	end
 
 	method string ResolveMapName(any matchRoom, string mapName)

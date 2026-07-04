@@ -4597,8 +4597,9 @@ script BRSkillSystem extends Logic
 	end
 
 	method void ApplyCasterChainLock(Entity caster, string userId)
-		-- Locks the caster's left/right movement AND jump for the whole chain sequence by disabling the
-		-- PlayerController (blocks all input) and zeroing InputSpeed. Backs up originals for restore.
+		-- Blocks the caster's left/right + jump KEY INPUT for the whole chain by disabling the controller.
+		-- We deliberately do NOT touch InputSpeed / JumpForce / velocity — no speed control at all — so any
+		-- in-flight jump/run momentum is left to physics and keeps coasting; only new input is suppressed.
 		if caster == nil or isvalid(caster) ~= true then
 			return
 		end
@@ -4613,11 +4614,7 @@ script BRSkillSystem extends Logic
 			self:ReapplyCasterChainLock(safeUserId)
 			return
 		end
-		local lock = { Entity = caster, InputSpeed = nil, ControllerEnable = nil }
-		if caster.MovementComponent ~= nil then
-			lock.InputSpeed = caster.MovementComponent.InputSpeed
-			caster.MovementComponent.InputSpeed = 0
-		end
+		local lock = { Entity = caster, ControllerEnable = nil }
 		if caster.PlayerControllerComponent ~= nil then
 			lock.ControllerEnable = caster.PlayerControllerComponent.Enable
 			caster.PlayerControllerComponent.Enable = false
@@ -4637,9 +4634,6 @@ script BRSkillSystem extends Logic
 		local entity = lock.Entity
 		if entity == nil or isvalid(entity) ~= true then
 			return
-		end
-		if entity.MovementComponent ~= nil then
-			entity.MovementComponent.InputSpeed = 0
 		end
 		if entity.PlayerControllerComponent ~= nil then
 			entity.PlayerControllerComponent.Enable = false
@@ -4671,15 +4665,34 @@ script BRSkillSystem extends Logic
 		if entity == nil or isvalid(entity) ~= true then
 			return
 		end
-		if entity.MovementComponent ~= nil and lock.InputSpeed ~= nil then
-			entity.MovementComponent.InputSpeed = lock.InputSpeed
-		end
 		if entity.PlayerControllerComponent ~= nil and lock.ControllerEnable ~= nil then
 			entity.PlayerControllerComponent.Enable = lock.ControllerEnable
 		end
 		if entity.StateComponent ~= nil then
 			entity.StateComponent:ChangeState("IDLE")
 		end
+	end
+
+	method boolean IsLiveCasterContext(any context)
+		-- True when the skill's hit area is anchored to the LIVE caster (melee — Sharp Slash / Brandish),
+		-- so its telegraph should ride along with the player. Fixed-origin / virtual contexts (ranged
+		-- sequence areas that resolve at the target point) return false so their telegraph stays put.
+		if context == nil then
+			return false
+		end
+		if context.IsVirtualCaster == true then
+			return false
+		end
+		if context.FixedOriginX ~= nil then
+			return false
+		end
+		if context.X ~= nil and context.Y ~= nil then
+			return false
+		end
+		if context.CasterEntity == nil or isvalid(context.CasterEntity) ~= true then
+			return false
+		end
+		return true
 	end
 
 	method boolean IsTelegraphEnabledForUser(string userId)
@@ -4773,6 +4786,12 @@ script BRSkillSystem extends Logic
 		end
 		-- Stay solid for the whole wind-up, then vanish exactly when the pre-delay ends (the strike begins).
 		local windUpSeconds = preFrames * self:GetSkillFrameSeconds()
+		-- Melee (live-caster) skills: glue the telegraph to the caster so it follows the player while they
+		-- keep moving during the wind-up. Fixed-target (ranged) skills leave it static at the target.
+		local followEntity = nil
+		if self:IsLiveCasterContext(cast) then
+			followEntity = cast.CasterEntity
+		end
 		local seen = {}
 		for frameKey, eventIds in pairs(eventsByFrame) do
 			for index, eventId in ipairs(eventIds) do
@@ -4787,7 +4806,7 @@ script BRSkillSystem extends Logic
 							if hitbox ~= nil then
 								local rect = self:GetHitboxDebugRect(cast, hitbox)
 								if rect ~= nil then
-									self:SpawnTelegraphBox(mapEntity, rect, windUpSeconds)
+									self:SpawnTelegraphBox(mapEntity, rect, windUpSeconds, followEntity)
 								end
 							end
 						end
@@ -4797,9 +4816,12 @@ script BRSkillSystem extends Logic
 		end
 	end
 
-	method void SpawnTelegraphBox(Entity mapEntity, any rect, number duration)
+	method void SpawnTelegraphBox(Entity mapEntity, any rect, number duration, Entity followEntity)
 		-- Spawns one solid red telegraph box sized to the hit rect; it stays visible for `duration`
 		-- (the pre-delay) and is removed when that time elapses. No fade — solid until the wind-up ends.
+		-- For melee casts, followEntity is the caster: the box is parented to the caster and offset to the
+		-- hit rect so it rides along while the player keeps moving. For fixed-target (ranged) casts
+		-- followEntity is nil and the box stays put at the resolved target position.
 		if mapEntity == nil or isvalid(mapEntity) == false or rect == nil then
 			return
 		end
@@ -4811,10 +4833,21 @@ script BRSkillSystem extends Logic
 		end
 		self._T.telegraphSeq = math.floor(self:ReadNumber(self._T.telegraphSeq, 0)) + 1
 		local name = "SkillTelegraph_" .. tostring(self._T.telegraphSeq)
-		local entity = _SpawnService:SpawnByModelId(modelId, name, Vector3(self:ReadNumber(rect.X, 0), self:ReadNumber(rect.Y, 0), 0), mapEntity)
+		local attachToCaster = followEntity ~= nil and isvalid(followEntity) and followEntity.TransformComponent ~= nil
+		local spawnParent = mapEntity
+		if attachToCaster then
+			spawnParent = followEntity
+		end
+		local entity = _SpawnService:SpawnByModelId(modelId, name, Vector3(self:ReadNumber(rect.X, 0), self:ReadNumber(rect.Y, 0), 0), spawnParent)
 		if entity == nil then
 			self:Log("telegraph spawn failed model=" .. modelId)
 			return
+		end
+		if attachToCaster and entity.TransformComponent ~= nil then
+			-- Convert the world-space hit rect center into a local offset from the caster so the box tracks
+			-- the caster's movement (melee ranges stay glued to the player through the whole wind-up).
+			local base = self:GetEntityPosition2(followEntity)
+			entity.TransformComponent.Position = Vector3(self:ReadNumber(rect.X, 0) - base.x, self:ReadNumber(rect.Y, 0) - base.y, 0)
 		end
 		local r = entity.PolygonRendererComponent
 		if r ~= nil then

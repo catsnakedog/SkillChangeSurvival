@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__msw-maker-mcp__maker_refresh_workspace",
+  "tool_input_preview": "{}",
+  "error": "MCP error -32000: Maker is not running. Please start Maker and try again.",
+  "timestamp": "2026-07-04T12:26:54.213Z",
+  "retry_count": 1
+}

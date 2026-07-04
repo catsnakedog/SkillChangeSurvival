@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1783079262502,
+  "lastScanned": 1783167994980,
   "projectRoot": "C:\\Users\\wjdgj\\Documents\\GitHub\\SkillChangeSurvival",
   "techStack": {
     "languages": [],
@@ -38,7 +38,7 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 3,
-      "lastAccessed": 1783079262448,
+      "lastAccessed": 1783167994730,
       "keyFiles": [
         "BRGridMapSystem_PROMPT.md",
         "BRGridMapSystem_README.md",
@@ -49,7 +49,7 @@
       "path": "Environment",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1783079262448,
+      "lastAccessed": 1783167994731,
       "keyFiles": [
         "config"
       ]
@@ -58,7 +58,7 @@
       "path": "Global",
       "purpose": null,
       "fileCount": 8,
-      "lastAccessed": 1783079262449,
+      "lastAccessed": 1783167994733,
       "keyFiles": [
         "CollisionGroupSet.collisiongroupset",
         "common.gamelogic",
@@ -71,7 +71,7 @@
       "path": "map",
       "purpose": null,
       "fileCount": 7,
-      "lastAccessed": 1783079262449,
+      "lastAccessed": 1783167994734,
       "keyFiles": [
         "BattleMap.map",
         "BotTestMap.map",
@@ -84,7 +84,7 @@
       "path": "RootDesk",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1783079262449,
+      "lastAccessed": 1783167994736,
       "keyFiles": [
         "MyDesk.directory"
       ]
@@ -93,14 +93,14 @@
       "path": "tools",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1783079262450,
+      "lastAccessed": 1783167994738,
       "keyFiles": []
     },
     "ui": {
       "path": "ui",
       "purpose": null,
-      "fileCount": 13,
-      "lastAccessed": 1783079262450,
+      "fileCount": 16,
+      "lastAccessed": 1783167994739,
       "keyFiles": [
         "BossTimerGroup.ui",
         "BRBattleHudGroup.ui",
@@ -113,8 +113,8 @@
   "hotPaths": [
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\Skill\\BRSkillSystem.mlua",
-      "accessCount": 232,
-      "lastAccessed": 1783158125445,
+      "accessCount": 252,
+      "lastAccessed": 1783168209031,
       "type": "file"
     },
     {
@@ -127,6 +127,12 @@
       "path": "RootDesk\\MyDesk\\Data\\skills.csv",
       "accessCount": 24,
       "lastAccessed": 1783158166723,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRRoomMiniMapUI.mlua",
+      "accessCount": 22,
+      "lastAccessed": 1783168673284,
       "type": "file"
     },
     {
@@ -155,8 +161,8 @@
     },
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRMiniMapUI.mlua",
-      "accessCount": 10,
-      "lastAccessed": 1783090520642,
+      "accessCount": 11,
+      "lastAccessed": 1783160320699,
       "type": "file"
     },
     {
@@ -164,6 +170,18 @@
       "accessCount": 9,
       "lastAccessed": 1783132616987,
       "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-scripting\\references\\verify-checklist.md",
+      "accessCount": 9,
+      "lastAccessed": 1783166414330,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk",
+      "accessCount": 9,
+      "lastAccessed": 1783167933739,
+      "type": "directory"
     },
     {
       "path": "RootDesk\\MyDesk\\Data\\events.csv",
@@ -178,39 +196,21 @@
       "type": "file"
     },
     {
-      "path": ".claude\\skills\\msw-scripting\\references\\verify-checklist.md",
-      "accessCount": 8,
-      "lastAccessed": 1783157382161,
-      "type": "file"
-    },
-    {
       "path": "RootDesk\\MyDesk\\_Scripts\\Battle\\BRBattleLogic.mlua",
       "accessCount": 6,
       "lastAccessed": 1783157475908,
       "type": "directory"
     },
     {
-      "path": "RootDesk\\MyDesk",
-      "accessCount": 6,
-      "lastAccessed": 1783158526487,
-      "type": "directory"
-    },
-    {
       "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRGridMapEditorTool.mlua",
-      "accessCount": 5,
-      "lastAccessed": 1783090084019,
+      "accessCount": 6,
+      "lastAccessed": 1783161372031,
       "type": "file"
     },
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRRoomGraphGenerator.mlua",
-      "accessCount": 5,
-      "lastAccessed": 1783090188292,
-      "type": "file"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRRoomMiniMapUI.mlua",
-      "accessCount": 5,
-      "lastAccessed": 1783090769087,
+      "accessCount": 6,
+      "lastAccessed": 1783161460071,
       "type": "file"
     },
     {
@@ -224,6 +224,12 @@
       "accessCount": 4,
       "lastAccessed": 1783157840305,
       "type": "directory"
+    },
+    {
+      "path": ".claude\\skills\\msw-general\\references\\platform.md",
+      "accessCount": 4,
+      "lastAccessed": 1783161336972,
+      "type": "file"
     },
     {
       "path": "map\\RoomTestMap_copy03.map",
@@ -244,12 +250,6 @@
       "type": "directory"
     },
     {
-      "path": ".claude\\skills\\msw-general\\references\\platform.md",
-      "accessCount": 3,
-      "lastAccessed": 1783101707942,
-      "type": "file"
-    },
-    {
       "path": ".claude\\skills\\msw-general\\references\\workspace.md",
       "accessCount": 3,
       "lastAccessed": 1783101709374,
@@ -263,8 +263,8 @@
     },
     {
       "path": ".mcp.json",
-      "accessCount": 2,
-      "lastAccessed": 1783093300539,
+      "accessCount": 3,
+      "lastAccessed": 1783168216796,
       "type": "file"
     },
     {

@@ -18,7 +18,6 @@ ground_area_spawn_actions.csv,장판 데이터,p52,8,3,장판 지속시간과 �
 trigger_actions.csv,트리거 액션,"p53,p58,p59",3,0,트리거 액션 데이터
 dash_actions.csv,대쉬 데이터,p60,4,3,수평과 수직 이동 데이터
 teleport_actions.csv,텔레포트 데이터,p60,2,0,텔레포트 액션 데이터
-skill_chains.csv,스킬 체인,"p4,p17,p53,p54",6,6,직업별 5칸 체인
 character_default_skills.csv,클래스별 기본 스킬,"p20,p29",8,5,캐릭터 클래스별 기본 스킬과 시작 체인
 CharacterStat.csv,캐릭터 스탯,,5,4,캐릭터별 기본 체력/공격력 밸런스
 LevelStat.csv,레벨 스탯,,4,6,레벨별 스탯 성장/필요 경험치/해금 슬롯

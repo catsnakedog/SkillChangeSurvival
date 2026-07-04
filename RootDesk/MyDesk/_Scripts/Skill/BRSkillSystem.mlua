@@ -55,6 +55,11 @@ script BRSkillSystem extends Logic
 
 	property number SkillFrameSeconds = 0.03
 
+	-- Effect-less pre-cast wind-up (선딜) for basic-attack (기본 공격) skills only. Standard area
+	-- skills keep the 0.5s telegraph; melee basic attacks (슬래시 블러스트 / 샤프 슬래시) use this much
+	-- shorter value so light attacks feel responsive. Final value tuned by integrator playtest (BUG-013).
+	property number BasicAttackPreDelaySeconds = 0.12
+
 	property number SkillChainResetSeconds = 2.5
 
 	property number ChainCastCooldownSeconds = 0.18
@@ -4340,6 +4345,13 @@ script BRSkillSystem extends Logic
 			self:Log("throw star damage dummy target=" .. target.Name .. " amount=" .. tostring(dmg))
 			return
 		end
+		---@type any
+		local partBox = self:GetPartBoxComponent(target)
+		if partBox ~= nil and partBox:IsDamageBox() == true then
+			partBox:ApplyPartBoxDamage(attacker, dmg, "throwstar")
+			self:Log("throw star damage partbox target=" .. target.Name .. " amount=" .. tostring(dmg))
+			return
+		end
 		local bot = self:GetBattleBotComponent(target)
 		if bot ~= nil then
 			bot:ApplyBotDamage(attacker, dmg, "throwstar")
@@ -5064,6 +5076,13 @@ script BRSkillSystem extends Logic
 			return 0
 		end
 		if self:SkillHasAreaEvent(skillDef) == true then
+			-- Basic attacks (기본 공격) get a much shorter wind-up so light attacks feel responsive;
+			-- other area skills keep the standard telegraphed 0.5s. Value tuned by integrator playtest (BUG-013).
+			if self:ReadString(skillDef.SkillCategory, "") == "기본 공격" then
+				local basicPre = math.max(0, self:ReadNumber(self.BasicAttackPreDelaySeconds, 0.12))
+				self:Log("basic attack predelay skill=" .. self:ReadString(skillDef.SkillKey, "") .. " seconds=" .. tostring(basicPre))
+				return basicPre
+			end
 			return 0.5
 		end
 		return 0
@@ -5776,6 +5795,10 @@ script BRSkillSystem extends Logic
 			local empty = true
 			for statusId, status in pairs(statusMap) do
 				if status == nil or self:ReadString(status.ApplierUserId, "") == userId or self:IsStatusTargetUser(status, userId) == true then
+					if status ~= nil and self:ReadNumber(status.MoveSpeedRate, 1) < 0.999 then
+						self:RestoreTargetSlow(status.TargetEntity)
+						self:Log("status slow restored on removal entity=" .. tostring(entityId) .. " status=" .. tostring(statusId) .. " user=" .. self:ReadString(userId, ""))
+					end
 					statusMap[statusId] = nil
 				else
 					empty = false

@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd \\\"C:/Users/wjdgj/Documents/GitHub/SkillChangeSurvival/.claude/skills/msw-ui-system\\\" && node \\\"C:/Users/wjdgj/.claude/jobs/69f48154/tmp/build_debug_ui.cjs\\\" 2>&1\",\"description\":\"Build B...",
+  "error": "Exit code 1\n  Added: Controller\n  Added: DebugBtn\n  Patched component MOD.Core.SpriteGUIRendererComponent on DebugBtn\n  Added: TelegraphBtn\n  Patched component MOD.Core.SpriteGUIRendererComponent on TelegraphBtn\n  Added: HitboxBtn\n  Patched component MOD.Core.SpriteGUIRendererComponent on HitboxBtn\nWritten 5 entities to C:/Users/wjdgj/Documents/GitHub/SkillChangeSurvival/ui/BRSkillDebugGroup.ui\nWARN ui_lint: 5 warning(s) (pass lint_verbose=true to see)\n  Bound 3 property/properties in C:/Users/w...",
+  "timestamp": "2026-07-04T09:08:21.683Z",
+  "retry_count": 1
+}

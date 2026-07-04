@@ -41,9 +41,9 @@ script BRLobbyTrainingController extends Component
 
 	property boolean MatchBattleMovementInLobby = true
 
-	property number LobbyWalkSpeed = 1.8
+	property number LobbyWalkSpeed = 1.95
 
-	property number LobbyWalkJump = 1.8
+	property number LobbyWalkJump = 1.95
 
 	property number LobbyGravity = 1.8
 
@@ -461,11 +461,11 @@ script BRLobbyTrainingController extends Component
 	end
 
 	method number GetLobbyWalkSpeed()
-		return math.max(0.1, self:ReadNumber(self.LobbyWalkSpeed, 1.8))
+		return math.max(0.1, self:ReadNumber(self.LobbyWalkSpeed, 1.95))
 	end
 
 	method number GetLobbyWalkJump()
-		return math.max(0.1, self:ReadNumber(self.LobbyWalkJump, 1.8))
+		return math.max(0.1, self:ReadNumber(self.LobbyWalkJump, 1.95))
 	end
 
 	method number GetLobbyGravity()

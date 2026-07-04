@@ -9,6 +9,22 @@ script BRMagneticZoneUI extends Component
 
 	property SpriteGUIRendererComponent secOnes = "e7a33703-cb12-42ac-944b-666f8509d1c5"
 
+	property Entity forbiddenOverlay = "cf69a1bb-214c-4244-adb6-c703e6ddebf3"
+
+	property SpriteGUIRendererComponent forbiddenOverlayImage = "cf69a1bb-214c-4244-adb6-c703e6ddebf3"
+
+	property Entity forbiddenBombRoot = "8141b2df-95d1-488b-9706-3766fd6269b8"
+
+	property SpriteGUIRendererComponent forbiddenBombImage = "8141b2df-95d1-488b-9706-3766fd6269b8"
+
+	property TextComponent forbiddenBombText = "dd8033a5-a97c-4596-aae1-03dab17d5004"
+
+	property string ForbiddenScreenEffectRUID = "a49a9d7f7e7b461db9f0ee38e5f1f5cc"
+
+	property string ForbiddenBombRUID = "fc4584eed6094384a0b3e5580bef7264"
+
+	property number ForbiddenBombWorldOffsetY = 1.45
+
 	property number RefreshSeconds = 0.1
 
 	property boolean VerboseLog = true
@@ -21,15 +37,22 @@ script BRMagneticZoneUI extends Component
 
 	property integer lastSec = -1
 
+	property integer lastForbiddenSec = -1
+
+	property boolean lastForbiddenActive = false
+
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
 		-- Starts the local phase-timer HUD refresh loop.
 		self._T.timeDigits = self:BuildTimeDigitRuidTable()
 		self._T.phaseNumbers = self:BuildPhaseNumberRuidTable()
 		self:SetRootRaycastBlocked(false)
+		self:ApplyForbiddenEffectRUIDs()
 		self:SetPanelActive(false)
+		self:SetForbiddenFeedbackActive(false)
 		self.lastPhase = 0
 		self.lastSec = -1
+		self.lastForbiddenSec = -1
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:Refresh() end, self:GetRefreshSeconds())
 		self:Log("ready")
 	end
@@ -41,6 +64,7 @@ script BRMagneticZoneUI extends Component
 			_TimerService:ClearTimer(self.refreshTimerId)
 		end
 		self.refreshTimerId = 0
+		self:SetForbiddenFeedbackActive(false)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -48,6 +72,7 @@ script BRMagneticZoneUI extends Component
 		-- Updates the phase whole-number and two-digit seconds from synchronized state.
 		local visible = self:ShouldShow()
 		self:SetPanelActive(visible)
+		self:RefreshForbiddenFeedback(visible)
 		if visible ~= true then
 			return
 		end
@@ -131,6 +156,99 @@ script BRMagneticZoneUI extends Component
 		end
 	end
 
+	method void ApplyForbiddenEffectRUIDs()
+		-- Restores the configured forbidden-zone animationclip RUIDs on the UI renderers.
+		if self.forbiddenOverlayImage ~= nil then
+			self.forbiddenOverlayImage.ImageRUID = self:ReadString(self.ForbiddenScreenEffectRUID, "a49a9d7f7e7b461db9f0ee38e5f1f5cc")
+		end
+		if self.forbiddenBombImage ~= nil then
+			self.forbiddenBombImage.ImageRUID = self:ReadString(self.ForbiddenBombRUID, "fc4584eed6094384a0b3e5580bef7264")
+		end
+	end
+
+	method void RefreshForbiddenFeedback(boolean zoneVisible)
+		-- Updates the local forbidden-zone screen effect and overhead countdown.
+		local active = zoneVisible == true and self:IsForbiddenFeedbackActive() == true
+		self:SetForbiddenFeedbackActive(active)
+		if active ~= true then
+			self.lastForbiddenSec = -1
+			return
+		end
+
+		self:ApplyForbiddenSeconds()
+		self:UpdateForbiddenBombPosition()
+	end
+
+	method boolean IsForbiddenFeedbackActive()
+		-- Checks whether the local player is currently spending forbidden-zone time.
+		if _BRMagneticZoneSystem == nil then
+			return false
+		end
+		if _BRMagneticZoneSystem.ZoneRunning ~= true then
+			return false
+		end
+		return _BRMagneticZoneSystem.ClientInsideForbidden == true
+	end
+
+	method void SetForbiddenFeedbackActive(boolean active)
+		-- Toggles the full-screen effect and Lucid-bomb countdown together.
+		if self.forbiddenOverlay ~= nil then
+			self.forbiddenOverlay.Enable = active
+		end
+		if self.forbiddenBombRoot ~= nil then
+			self.forbiddenBombRoot.Enable = active
+		end
+		if active ~= self.lastForbiddenActive then
+			self.lastForbiddenActive = active
+			self:Log("forbiddenFeedback=" .. tostring(active))
+		end
+	end
+
+	method void ApplyForbiddenSeconds()
+		-- Writes the remaining forbidden-zone seconds inside the bomb marker.
+		if self.forbiddenBombText == nil then
+			return
+		end
+		local sec = math.ceil(math.max(0, self:ReadNumber(_BRMagneticZoneSystem.ClientForbiddenRemaining, 0)))
+		if sec > 99 then
+			sec = 99
+		end
+		if sec == self.lastForbiddenSec then
+			return
+		end
+
+		self.lastForbiddenSec = sec
+		self.forbiddenBombText.Text = tostring(sec)
+		if sec <= 5 then
+			self.forbiddenBombText.FontColor = Color(1, 0.25, 0.25, 1)
+		elseif sec <= 10 then
+			self.forbiddenBombText.FontColor = Color(1, 0.88, 0.22, 1)
+		else
+			self.forbiddenBombText.FontColor = Color(1, 1, 1, 1)
+		end
+		self:Log("forbiddenRemaining=" .. tostring(sec))
+	end
+
+	method void UpdateForbiddenBombPosition()
+		-- Places the bomb marker above the local player's head in screen UI space.
+		if self.forbiddenBombRoot == nil or self.forbiddenBombRoot.UITransformComponent == nil then
+			return
+		end
+		if _UILogic == nil then
+			return
+		end
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.TransformComponent == nil then
+			return
+		end
+
+		local worldPosition = localPlayer.TransformComponent.WorldPosition
+		local offsetY = self:GetForbiddenBombWorldOffsetY()
+		local screenPoint = _UILogic:WorldToScreenPosition(Vector2(worldPosition.x, worldPosition.y + offsetY))
+		local uiPosition = _UILogic:ScreenToUIPosition(screenPoint)
+		self.forbiddenBombRoot.UITransformComponent.anchoredPosition = uiPosition
+	end
+
 	method boolean ShouldShow()
 		-- Checks whether the phase-timer HUD should be visible for the local player.
 		if _BRMagneticZoneSystem == nil then
@@ -176,6 +294,11 @@ script BRMagneticZoneUI extends Component
 	method number GetRefreshSeconds()
 		-- Returns the UI refresh interval.
 		return math.max(0.05, self:ReadNumber(self.RefreshSeconds, 0.1))
+	end
+
+	method number GetForbiddenBombWorldOffsetY()
+		-- Returns the world-space vertical offset used for the overhead bomb marker.
+		return math.max(0.5, self:ReadNumber(self.ForbiddenBombWorldOffsetY, 1.45))
 	end
 
 	method string ReadString(any value, string fallback)

@@ -113,20 +113,20 @@
   "hotPaths": [
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\Skill\\BRSkillSystem.mlua",
-      "accessCount": 185,
-      "lastAccessed": 1783152389138,
+      "accessCount": 232,
+      "lastAccessed": 1783158125445,
       "type": "file"
     },
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\Skill\\BRCommonSkillSystem.mlua",
-      "accessCount": 23,
-      "lastAccessed": 1783151687279,
+      "accessCount": 38,
+      "lastAccessed": 1783158455787,
       "type": "file"
     },
     {
       "path": "RootDesk\\MyDesk\\Data\\skills.csv",
-      "accessCount": 23,
-      "lastAccessed": 1783152942799,
+      "accessCount": 24,
+      "lastAccessed": 1783158166723,
       "type": "file"
     },
     {
@@ -142,15 +142,21 @@
       "type": "directory"
     },
     {
-      "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRMiniMapUI.mlua",
-      "accessCount": 10,
-      "lastAccessed": 1783090520642,
+      "path": "RootDesk\\MyDesk\\Data\\actions.csv",
+      "accessCount": 12,
+      "lastAccessed": 1783158500698,
       "type": "file"
     },
     {
-      "path": "RootDesk\\MyDesk\\Data\\actions.csv",
-      "accessCount": 9,
-      "lastAccessed": 1783132585202,
+      "path": "RootDesk\\MyDesk\\_Scripts",
+      "accessCount": 11,
+      "lastAccessed": 1783156319056,
+      "type": "directory"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRMiniMapUI.mlua",
+      "accessCount": 10,
+      "lastAccessed": 1783090520642,
       "type": "file"
     },
     {
@@ -158,12 +164,6 @@
       "accessCount": 9,
       "lastAccessed": 1783132616987,
       "type": "file"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\_Scripts",
-      "accessCount": 9,
-      "lastAccessed": 1783147074497,
-      "type": "directory"
     },
     {
       "path": "RootDesk\\MyDesk\\Data\\events.csv",
@@ -179,9 +179,21 @@
     },
     {
       "path": ".claude\\skills\\msw-scripting\\references\\verify-checklist.md",
-      "accessCount": 7,
-      "lastAccessed": 1783136547870,
+      "accessCount": 8,
+      "lastAccessed": 1783157382161,
       "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts\\Battle\\BRBattleLogic.mlua",
+      "accessCount": 6,
+      "lastAccessed": 1783157475908,
+      "type": "directory"
+    },
+    {
+      "path": "RootDesk\\MyDesk",
+      "accessCount": 6,
+      "lastAccessed": 1783158526487,
+      "type": "directory"
     },
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRGridMapEditorTool.mlua",
@@ -208,9 +220,9 @@
       "type": "file"
     },
     {
-      "path": "RootDesk\\MyDesk",
+      "path": "RootDesk",
       "accessCount": 4,
-      "lastAccessed": 1783111533467,
+      "lastAccessed": 1783157840305,
       "type": "directory"
     },
     {
@@ -250,12 +262,6 @@
       "type": "file"
     },
     {
-      "path": "RootDesk",
-      "accessCount": 3,
-      "lastAccessed": 1783124209900,
-      "type": "directory"
-    },
-    {
       "path": ".mcp.json",
       "accessCount": 2,
       "lastAccessed": 1783093300539,
@@ -289,12 +295,6 @@
       "path": "",
       "accessCount": 2,
       "lastAccessed": 1783111475520,
-      "type": "directory"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\_Scripts\\Battle\\BRBattleLogic.mlua",
-      "accessCount": 2,
-      "lastAccessed": 1783111563267,
       "type": "directory"
     },
     {

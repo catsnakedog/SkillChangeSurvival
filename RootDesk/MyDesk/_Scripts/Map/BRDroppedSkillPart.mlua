@@ -27,9 +27,9 @@ script BRDroppedSkillPart extends Component
 
 	property boolean RequirePickupKey = true
 
-	property boolean FloatEnabled = true
+	property boolean FloatEnabled = false
 
-	property number FloatAmplitude = 0.08
+	property number FloatAmplitude = 0
 
 	property number FloatSpeed = 3.2
 

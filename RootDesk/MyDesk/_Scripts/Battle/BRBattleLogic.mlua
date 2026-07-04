@@ -45,6 +45,8 @@ script BRBattleLogic extends Component
 
 	property boolean LifeReviveRequireSelection = true
 
+	property number LifeReviveSelectionTimeoutSeconds = 10
+
 	property number LifeReviveMinForbiddenSeconds = 10
 
 	property number LifeNativeRespawnBlockSeconds = 9999
@@ -61,9 +63,9 @@ script BRBattleLogic extends Component
 
 	property number BattleGravity = 1.8
 
-	property number BattleWalkSpeed = 1.8
+	property number BattleWalkSpeed = 1.95
 
-	property number BattleWalkJump = 1.8
+	property number BattleWalkJump = 1.95
 
 	property boolean OverridePlayerPhysicsStats = true
 
@@ -147,6 +149,7 @@ script BRBattleLogic extends Component
 		self._T.pendingRevive = {}
 		self._T.deathRoomKey = {}
 		self._T.reviveOptionVersions = {}
+		self._T.reviveAutoSelectToken = {}
 		self._T.lastLifeSummary = ""
 		self._T.preparedPlayers = {}
 		self._T.knownParticipants = {}
@@ -198,6 +201,7 @@ script BRBattleLogic extends Component
 		self._T.pendingRevive = {}
 		self._T.deathRoomKey = {}
 		self._T.reviveOptionVersions = {}
+		self._T.reviveAutoSelectToken = {}
 		self._T.lastLifeSummary = ""
 		self._T.preparedPlayers = {}
 		self._T.knownParticipants = {}
@@ -353,6 +357,9 @@ script BRBattleLogic extends Component
 		end
 		if self._T.reviveOptionVersions ~= nil then
 			self._T.reviveOptionVersions[userId] = nil
+		end
+		if self._T.reviveAutoSelectToken ~= nil then
+			self._T.reviveAutoSelectToken[userId] = self:ReadNumber(self._T.reviveAutoSelectToken[userId], 0) + 1
 		end
 		if self._T.preparedPlayers ~= nil then
 			self._T.preparedPlayers[userId] = nil
@@ -844,6 +851,9 @@ script BRBattleLogic extends Component
 			.. " room=" .. self:ReadString(returnRoomKey, "-")
 			.. " from=(" .. tostring(fromPosition.x) .. "," .. tostring(fromPosition.y) .. ")"
 			.. " to=(" .. tostring(returnPosition.x) .. "," .. tostring(returnPosition.y) .. ")")
+		if damage > 0 and _BRDamageSkinSystem ~= nil then
+			_BRDamageSkinSystem:ShowDamage(playerEntity, damage, false, returnReason)
+		end
 
 		if damage > 0 and playerComponent.Hp <= 0 then
 			self:HandlePlayerFatalDeath(nil, playerEntity, "out-of-bounds")
@@ -1019,6 +1029,9 @@ script BRBattleLogic extends Component
 		targetPlayer.Hp = math.max(0, targetPlayer.Hp - damage)
 		self._T.invincibleUntil[targetPlayer.UserId] = now + self:GetHitInvincibleSeconds()
 		self:LockPortalUse(targetPlayer.UserId, now)
+		if _BRDamageSkinSystem ~= nil then
+			_BRDamageSkinSystem:ShowDamage(targetEntity, damage, false, "battle-basic")
+		end
 		
 		if targetPlayer.Hp <= 0 then
 			self:KillTarget(attackerEntity, targetEntity)
@@ -1055,6 +1068,9 @@ script BRBattleLogic extends Component
 		self._T.invincibleUntil[userId] = now + self:GetHitInvincibleSeconds()
 		self:LockPortalUse(userId, now)
 		self:Log("bot damage target=" .. userId .. " bot=" .. self:GetBotId(botEntity) .. " damage=" .. tostring(damage) .. " hp=" .. tostring(targetPlayer.Hp) .. " source=" .. self:ReadString(source, "bot"))
+		if _BRDamageSkinSystem ~= nil then
+			_BRDamageSkinSystem:ShowDamage(targetEntity, damage, false, self:ReadString(source, "bot"))
+		end
 
 		if targetPlayer.Hp <= 0 then
 			self:HandlePlayerFatalDeath(botEntity, targetEntity, "bot:" .. self:ReadString(source, "attack"))
@@ -1166,7 +1182,8 @@ script BRBattleLogic extends Component
 				.. " reviveDelay=" .. tostring(delay) .. " deathRoom=" .. self:ReadString(deathRoomKey, "-") .. " reason=" .. self:ReadString(reason, "") .. " attacker=" .. attackerId)
 			if self:IsLifeReviveSelectionEnabled() == true then
 				self:PushReviveOptionsToUser(userId, "Waiting for revive selection...")
-				_TimerService:SetTimerOnce(function() self:PushReviveOptionsToUser(userId, "Select a revive point.") end, delay)
+				_TimerService:SetTimerOnce(function() self:PushReviveOptionsToUser(userId, "Select a revive point. Auto revive in " .. tostring(math.ceil(self:GetLifeReviveSelectionTimeoutSeconds())) .. "s.") end, delay)
+				self:ScheduleReviveAutoSelection(userId, delay + self:GetLifeReviveSelectionTimeoutSeconds())
 			else
 				_TimerService:SetTimerOnce(function() self:RevivePlayerByUserId(userId) end, delay)
 			end
@@ -1248,6 +1265,96 @@ script BRBattleLogic extends Component
 	end
 
 	@ExecSpace("ServerOnly")
+	method void ScheduleReviveAutoSelection(string userId, number delaySeconds)
+		-- Schedules a server-owned random revive selection for an unanswered revive UI.
+		self:EnsureServerRuntimeTables()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		local delay = math.max(0, self:ReadNumber(delaySeconds, 0))
+		local token = self:ReadNumber(self._T.reviveAutoSelectToken[safeUserId], 0) + 1
+		self._T.reviveAutoSelectToken[safeUserId] = token
+		_TimerService:SetTimerOnce(function() self:AutoSelectReviveForUser(safeUserId, token) end, delay)
+		log("[BRBattle] revive auto selection scheduled user=" .. safeUserId .. " delay=" .. tostring(delay) .. " token=" .. tostring(token))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void AutoSelectReviveForUser(string userId, number token)
+		-- Revives a still-pending player at a random currently selectable room.
+		self:EnsureServerRuntimeTables()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		local expectedToken = self:ReadNumber(self._T.reviveAutoSelectToken[safeUserId], -1)
+		if expectedToken ~= self:ReadNumber(token, -2) then
+			log("[BRBattle] revive auto selection skipped user=" .. safeUserId .. " reason=stale-token expected=" .. tostring(expectedToken) .. " token=" .. tostring(token))
+			return
+		end
+		if self._T.pendingRevive[safeUserId] ~= true then
+			return
+		end
+		if self:ReadNumber(self._T.lives[safeUserId], 0) <= 0 then
+			self._T.pendingRevive[safeUserId] = nil
+			self._T.lifeState[safeUserId] = "OUT"
+			self:InvalidateReviveAutoSelection(safeUserId)
+			self:UpdateLifeSummary()
+			self:CheckLastManStanding("revive-auto-no-lives")
+			return
+		end
+
+		local now = self:Now()
+		local reviveAt = self:ReadNumber(self._T.reviveUntil[safeUserId], now)
+		if now < reviveAt then
+			local remaining = math.max(0.1, reviveAt - now)
+			_TimerService:SetTimerOnce(function() self:AutoSelectReviveForUser(safeUserId, token) end, remaining)
+			log("[BRBattle] revive auto selection deferred user=" .. safeUserId .. " remaining=" .. tostring(remaining))
+			return
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			self._T.pendingRevive[safeUserId] = nil
+			self._T.lifeState[safeUserId] = "OUT"
+			self:InvalidateReviveAutoSelection(safeUserId)
+			self:UpdateLifeSummary()
+			self:CheckLastManStanding("revive-auto-missing-player")
+			return
+		end
+		if playerEntity.CurrentMapName ~= self:GetBattleMapName() then
+			self._T.pendingRevive[safeUserId] = nil
+			self._T.lifeState[safeUserId] = "OUT"
+			self:InvalidateReviveAutoSelection(safeUserId)
+			self:UpdateLifeSummary()
+			self:CheckLastManStanding("revive-auto-map-left")
+			return
+		end
+
+		local revivePosition = self:PickSelectableRespawnPosition(safeUserId)
+		if revivePosition == nil then
+			self:PushReviveOptionsToUser(safeUserId, "No revive room is available.")
+			_TimerService:SetTimerOnce(function() self:AutoSelectReviveForUser(safeUserId, token) end, 1)
+			log("[BRBattle] revive auto selection waiting user=" .. safeUserId .. " reason=no-selectable-room")
+			return
+		end
+
+		self:RevivePlayerAtPosition(safeUserId, playerEntity, revivePosition, "auto-timeout")
+		self:ReceiveReviveOptions("", "", 0, self:GetNextReviveOptionVersion(safeUserId), safeUserId)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void InvalidateReviveAutoSelection(string userId)
+		-- Invalidates any older auto-select timer already queued for this user.
+		self:EnsureServerRuntimeTables()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		self._T.reviveAutoSelectToken[safeUserId] = self:ReadNumber(self._T.reviveAutoSelectToken[safeUserId], 0) + 1
+	end
+
+	@ExecSpace("ServerOnly")
 	method void RevivePlayerAtPosition(string userId, Entity playerEntity, Vector2 revivePosition, string source)
 		-- Performs the actual custom life revive at the validated position.
 		local safeUserId = self:ReadString(userId, "")
@@ -1279,6 +1386,7 @@ script BRBattleLogic extends Component
 		self._T.reviveUntil[safeUserId] = 0
 		self._T.lifeState[safeUserId] = "ALIVE"
 		self._T.deathRoomKey[safeUserId] = nil
+		self:InvalidateReviveAutoSelection(safeUserId)
 		self:EnsureReviveForbiddenTime(safeUserId)
 		self:UpdateAlivePlayerCount()
 		self:UpdateLifeSummary()
@@ -1924,6 +2032,34 @@ script BRBattleLogic extends Component
 		return self:GetRespawnPositionForLogicalRoom(graph, candidates[selectedIndex])
 	end
 
+	method any PickSelectableRespawnPosition(string excludedUserId)
+		-- Picks a random revive position from rooms the revive UI currently marks selectable.
+		local graph = self:GetLatestRoomGraph()
+		if graph == nil or graph.Rooms == nil then
+			return nil
+		end
+
+		local occupied = self:BuildOccupiedLogicalRoomCounts(graph, excludedUserId)
+		local deathRoomKey = self:ReadString(self._T.deathRoomKey[self:ReadString(excludedUserId, "")], "")
+		local candidates = {}
+		for index, room in ipairs(graph.Rooms) do
+			if room ~= nil and room.Visited == true then
+				local roomKey = self:GetLogicalRoomKey(room)
+				if roomKey ~= "" and roomKey ~= deathRoomKey and self:ReadNumber(occupied[roomKey], 0) <= 0 then
+					local revivePosition = self:GetRespawnPositionForLogicalRoom(graph, room)
+					if revivePosition ~= nil then
+						table.insert(candidates, revivePosition)
+					end
+				end
+			end
+		end
+
+		if #candidates <= 0 then
+			return nil
+		end
+		return candidates[_UtilLogic:RandomIntegerRange(1, #candidates)]
+	end
+
 	method any BuildOccupiedLogicalRoomCounts(any graph, string excludedUserId)
 		-- Counts other players by logical room so revives can prefer empty rooms.
 		local result = {}
@@ -2329,6 +2465,9 @@ script BRBattleLogic extends Component
 		if self._T.reviveOptionVersions == nil then
 			self._T.reviveOptionVersions = {}
 		end
+		if self._T.reviveAutoSelectToken == nil then
+			self._T.reviveAutoSelectToken = {}
+		end
 		if self._T.lastLifeSummary == nil then
 			self._T.lastLifeSummary = ""
 		end
@@ -2594,6 +2733,11 @@ script BRBattleLogic extends Component
 		return self.LifeReviveRequireSelection == true
 	end
 
+	method number GetLifeReviveSelectionTimeoutSeconds()
+		-- Returns how long selection can remain unanswered after revive becomes available.
+		return math.max(0, self:ReadNumber(self.LifeReviveSelectionTimeoutSeconds, 10))
+	end
+
 	method number GetLifeReviveMinForbiddenSeconds()
 		-- Returns the minimum forbidden-zone time restored on revive.
 		return math.max(0, self:ReadNumber(self.LifeReviveMinForbiddenSeconds, 10))
@@ -2631,11 +2775,11 @@ script BRBattleLogic extends Component
 	end
 
 	method number GetBattleWalkSpeed()
-		return math.max(0.1, self:ReadNumber(self.BattleWalkSpeed, 1.8))
+		return math.max(0.1, self:ReadNumber(self.BattleWalkSpeed, 1.95))
 	end
 
 	method number GetBattleWalkJump()
-		return math.max(0.1, self:ReadNumber(self.BattleWalkJump, 1.8))
+		return math.max(0.1, self:ReadNumber(self.BattleWalkJump, 1.95))
 	end
 
 	method string GetUserId(Entity entity)

@@ -21,7 +21,7 @@ script BRSkillSystem extends Logic
 
 	property integer MaxSkillTier = 4
 
-	property number BagSlotCount = 2
+	property number BagSlotCount = 4
 
 	property number SkillFrameSeconds = 0.03
 
@@ -60,6 +60,12 @@ script BRSkillSystem extends Logic
 	property number DroppedPartSpawnYOffset = 0
 
 	property number DroppedPartSpawnXOffset = 0
+
+	property number DroppedPartGroundYOffset = 0.12
+
+	property number DroppedPartGroundSearchUp = 3
+
+	property number DroppedPartGroundSearchDown = 14
 
 	property boolean EnableSkillVisualEffects = true
 
@@ -105,7 +111,9 @@ script BRSkillSystem extends Logic
 
 	property number ProjectileObjectScale = 0.85
 
-	property boolean EnableSkillHitboxDebug = true
+	-- Hitbox debug boxes are hidden by default during skill use; players opt in per-player via the
+	-- battle-HUD debug toggle. Telegraph (EnableSkillVisualEffects) stays visible by default.
+	property boolean EnableSkillHitboxDebug = false
 
 	property string HitboxDebugModelId = "brskillhitboxdebug"
 
@@ -113,7 +121,7 @@ script BRSkillSystem extends Logic
 
 	property number HitboxDebugIntervalSeconds = 0.12
 
-	property number HitboxDebugAlpha = 0.22
+	property number HitboxDebugAlpha = 0.4
 
 	property integer HitboxDebugOrderInLayer = 85
 
@@ -1325,6 +1333,8 @@ script BRSkillSystem extends Logic
 		runtime.NextCastAt = now + maxCooldown
 		runtime.ResetAt = now + self:GetSkillChainResetSeconds()
 
+		-- Lock movement + jump for the entire chain sequence (until every step finishes / is cancelled).
+		self:ApplyCasterChainLock(casterEntity, userId)
 		self:Log("chain sequence start user=" .. userId .. " count=" .. tostring(castCount) .. " skills=" .. skillSummary .. " cooldown=" .. tostring(maxCooldown))
 		return self:StartNextQueuedChainStep(casterEntity, userId, runtime)
 	end
@@ -1851,6 +1861,8 @@ script BRSkillSystem extends Logic
 
 	method void TickActiveCasts(number delta)
 		-- Ticks active casts on skill timeline frames; physical movement is updated separately with delta.
+		-- Re-assert full-chain movement locks first so the lobby controller cannot restore movement mid-chain.
+		self:ReapplyAllChainLocks()
 		for index = #self._T.activeCasts, 1, -1 do
 			local cast = self._T.activeCasts[index]
 			if cast == nil or cast.Cancelled == true then
@@ -1888,19 +1900,21 @@ script BRSkillSystem extends Logic
 		if cast == nil or cast.SkillDef == nil then
 			return
 		end
+		local preFrames = self:PreDelayFramesForSkill(cast.SkillDef)
 		if frame == 0 then
 			self:Log("skill frame0 user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, "") .. " tier=" .. tostring(math.max(1, math.floor(self:ReadNumber(cast.Tier, 1)))) .. " virtual=" .. tostring(cast.IsVirtualCaster == true))
-			if cast.IsVirtualCaster ~= true and cast.MainEffectPlayed ~= true then
-				local mainOrigin = self:GetContextOrigin(cast)
-				self:PlaySkillVisualForEvent(cast, "", mainOrigin.x, mainOrigin.y, false)
-				cast.MainEffectPlayed = true
-			end
 		end
-		local preFrames = self:PreDelayFramesForSkill(cast.SkillDef)
-		-- Telegraph the incoming hit area once at the very start of the wind-up.
+		-- Telegraph the incoming hit area for the whole wind-up (shown at its very start).
 		if preFrames > 0 and frame == 0 and cast.TelegraphShown ~= true then
 			cast.TelegraphShown = true
 			self:ShowSkillTelegraph(cast)
+		end
+		-- Play the skill's main visual effect when the wind-up ENDS (the strike begins), not during the
+		-- pre-delay — otherwise the effect appears before the telegraph resolves (frame 0 = wind-up start).
+		if frame == preFrames and cast.IsVirtualCaster ~= true and cast.MainEffectPlayed ~= true then
+			local mainOrigin = self:GetContextOrigin(cast)
+			self:PlaySkillVisualForEvent(cast, "", mainOrigin.x, mainOrigin.y, false)
+			cast.MainEffectPlayed = true
 		end
 		-- Post-cast recovery (후딜): once every timeline event has fired, freeze the caster in place
 		-- and hold the attack motion until the cast (and this recovery window) ends.
@@ -1957,7 +1971,6 @@ script BRSkillSystem extends Logic
 			self:Log("skill end user=" .. self:ReadString(cast.UserId, "") .. " skill=" .. self:ReadString(cast.SkillKey, ""))
 		end
 		if cast.IsVirtualCaster ~= true then
-			self:RestoreCasterPostDelayFreeze(cast)
 			local userId = self:ReadString(cast.UserId, "")
 			local runtime = self:GetChainRuntime(userId)
 			local activeCount = math.max(0, math.floor(self:ReadNumber(runtime.ActiveCastCount, 0)) - 1)
@@ -1966,13 +1979,18 @@ script BRSkillSystem extends Logic
 				self:RestoreCasterActionLimit(cast)
 				runtime.ActiveUntil = 0
 				if cancelled == true then
+					-- Chain cancelled and no cast left running → release the full-chain movement lock.
+					self:RestoreCasterChainLock(userId)
 					self:ClearQueuedChainRuntime(runtime)
 				elseif self:HasPendingChainSteps(runtime) == true then
+					-- More steps queued → keep the lock and start the next step.
 					self:StartNextQueuedChainStep(cast.CasterEntity, userId, runtime)
 				else
 					if runtime.PendingSteps ~= nil then
 						self:Log("chain sequence end user=" .. userId .. " skills=" .. self:ReadString(runtime.PendingSummary, ""))
 					end
+					-- Whole chain finished → release the full-chain movement lock.
+					self:RestoreCasterChainLock(userId)
 					self:ClearQueuedChainRuntime(runtime)
 				end
 			end
@@ -3176,6 +3194,9 @@ script BRSkillSystem extends Logic
 			local player = targetEntity.PlayerComponent
 			player.Hp = math.max(0, player.Hp - damage)
 			self:Log("damage player user=" .. self:ReadString(context.UserId, "") .. " target=" .. self:ReadString(player.UserId, "") .. " amount=" .. tostring(damage) .. " hp=" .. tostring(player.Hp) .. " critical=" .. tostring(critical))
+			if _BRDamageSkinSystem ~= nil then
+				_BRDamageSkinSystem:ShowDamage(targetEntity, damage, critical == true, self:ReadString(sourceId, "skill"))
+			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attackerEntity, targetEntity, sourceId)
 			end
@@ -3336,6 +3357,9 @@ script BRSkillSystem extends Logic
 			local player = target.PlayerComponent
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("meso coin damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
+			if _BRDamageSkinSystem ~= nil then
+				_BRDamageSkinSystem:ShowDamage(target, dmg, false, "meso")
+			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attacker, target, "meso")
 			end
@@ -3512,7 +3536,7 @@ script BRSkillSystem extends Logic
 		end
 		local nx = dx / length
 		local ny = dy / length
-		local behind = Vector2(enemyPos.x + nx * behindDistance, enemyPos.y + ny * behindDistance)
+		local behind = Vector2(enemyPos.x + (nx >= 0 and behindDistance or -behindDistance), enemyPos.y)
 		behind = self:ClampPositionToMapBounds(caster, behind)
 		self:MoveEntityToWorldPosition(caster, behind)
 		if userId ~= "" then
@@ -3816,6 +3840,9 @@ script BRSkillSystem extends Logic
 			local player = target.PlayerComponent
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("throw star damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
+			if _BRDamageSkinSystem ~= nil then
+				_BRDamageSkinSystem:ShowDamage(target, dmg, false, "throwstar")
+			end
 			if player.Hp <= 0 then
 				self:HandleSkillFatalDamage(attacker, target, "throwstar")
 			end
@@ -3987,7 +4014,10 @@ script BRSkillSystem extends Logic
 	end
 
 	method void CancelTargetChain(Entity targetEntity, string reason)
-		-- Cancels active and queued chain execution for the target player.
+		-- Cancels queued + active chain execution for the target player and releases the movement lock.
+		-- Queued (not-yet-started) steps are dropped; the current cast's timeline stops (motion cancel),
+		-- but already-spawned damage (activeAreas / in-flight projectiles) is NOT touched here, so the
+		-- current skill's damage judgment still completes. The caster returns to idle + free movement.
 		if targetEntity == nil or targetEntity.PlayerComponent == nil then
 			return
 		end
@@ -4003,7 +4033,24 @@ script BRSkillSystem extends Logic
 				cast.Cancelled = true
 			end
 		end
+		-- Release the full-chain movement lock immediately (idle + mobile), without waiting for the
+		-- cancelled cast to be cleaned up next tick.
+		self:RestoreCasterChainLock(userId)
 		self:Log("chain cancelled target=" .. userId .. " reason=" .. self:ReadString(reason, "cc"))
+	end
+
+	@ExecSpace("Server")
+	method void RequestCancelChainByBlink(string requestUserId)
+		-- Client (Burst Step / Blink) asks the server to cancel the local player's active chain.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			return
+		end
+		local playerEntity = self:FindPlayerEntityByUserId(userId)
+		if playerEntity == nil then
+			return
+		end
+		self:CancelTargetChain(playerEntity, "blink")
 	end
 
 	method void PlaySkillVisualForEvent(any context, string eventId, number x, number y, boolean isField)
@@ -4344,10 +4391,11 @@ script BRSkillSystem extends Logic
 
 	method void ShowHitboxesForContext(any context, string sourceId)
 		-- Spawns short-lived translucent polygons so authored skill hitboxes can be checked in play mode.
-		if self.EnableSkillHitboxDebug ~= true then
+		if context == nil or context.HitboxIds == nil then
 			return
 		end
-		if context == nil or context.HitboxIds == nil then
+		-- Hidden by default; only shown for casters who turned hitbox debug on via the HUD toggle.
+		if self:IsHitboxDebugEnabledForUser(self:ReadString(context.UserId, "")) ~= true then
 			return
 		end
 		local now = self:ReadNumber(_UtilLogic.ElapsedSeconds, 0)
@@ -4433,14 +4481,22 @@ script BRSkillSystem extends Logic
 			self:Log("hitbox debug spawn failed model=" .. modelId .. " source=" .. self:ReadString(sourceId, "skill"))
 			return
 		end
-		if entity.TransformComponent ~= nil then
-			entity.TransformComponent.Scale = Vector3(math.max(0.01, self:ReadNumber(width, 0.01)), math.max(0.01, self:ReadNumber(height, 0.01)), 1)
-		end
-		if entity.PolygonRendererComponent ~= nil then
-			entity.PolygonRendererComponent.SortingLayer = "MapLayer0"
-			entity.PolygonRendererComponent.OrderInLayer = math.floor(self:ReadNumber(self.HitboxDebugOrderInLayer, 85))
-			entity.PolygonRendererComponent.IgnoreMapLayerCheck = true
-			entity.PolygonRendererComponent.Color = Color(1, 0.08, 0.02, math.max(0.03, math.min(1, self:ReadNumber(self.HitboxDebugAlpha, 0.22))))
+		local r = entity.PolygonRendererComponent
+		if r ~= nil then
+			-- PolygonRenderer draws from Points, NOT Transform.Scale, and low OrderInLayer is occluded by
+			-- foreground map decorations — the same trap the telegraph hit. Build the rect explicitly and
+			-- render it above foreground art so the hitbox is actually visible when debug is enabled.
+			local hw = math.max(0.01, self:ReadNumber(width, 0.01)) * 0.5
+			local hh = math.max(0.01, self:ReadNumber(height, 0.01)) * 0.5
+			r.Points:Clear()
+			r.Points:Add(Vector2(-hw, -hh))
+			r.Points:Add(Vector2(hw, -hh))
+			r.Points:Add(Vector2(hw, hh))
+			r.Points:Add(Vector2(-hw, hh))
+			r.SortingLayer = "MapLayer0"
+			r.OrderInLayer = math.floor(self:ReadNumber(self.TelegraphOrderInLayer, 500))
+			r.IgnoreMapLayerCheck = true
+			r.Color = Color(1, 0.08, 0.02, math.max(0.15, math.min(1, self:ReadNumber(self.HitboxDebugAlpha, 0.35))))
 		end
 		entity:Destroy(math.max(0.03, self:ReadNumber(self.HitboxDebugDurationSeconds, 0.12)))
 	end
@@ -4455,16 +4511,35 @@ script BRSkillSystem extends Logic
 	end
 
 	method number GetSkillPreDelaySeconds(any skillDef)
-		-- Pre-cast wind-up in seconds. TEMPORARY hardcode for the Brandish family (브랜디쉬/브랜디쉬2~4).
-		-- TODO: move to a skills.csv column and read it off skillDef here.
+		-- Pre-cast wind-up in seconds. Any skill with a fixed cast-time hit area (an "area" event) gets a
+		-- wind-up so its range is telegraphed before the strike — Brandish, Sharp Slash, etc. Projectile /
+		-- summon / charge skills have no fixed cast-time hitbox, so they stay instant (no telegraph).
+		-- TEMPORARY uniform 0.5s; TODO: move to a skills.csv column and read it off skillDef here.
 		if skillDef == nil then
 			return 0
 		end
-		local id = self:ReadString(skillDef.BaseSkillKey, self:ReadString(skillDef.SkillKey, ""))
-		if id ~= "" and string.find(id, "브랜디쉬", 1, true) == 1 then
+		if self:SkillHasAreaEvent(skillDef) == true then
 			return 0.5
 		end
 		return 0
+	end
+
+	method boolean SkillHasAreaEvent(any skillDef)
+		-- True if the skill fires any "area" event — a fixed cast-time hitbox that can be telegraphed.
+		if skillDef == nil or skillDef.EventsByFrame == nil then
+			return false
+		end
+		for frame, eventIds in pairs(skillDef.EventsByFrame) do
+			if eventIds ~= nil then
+				for index, eventId in ipairs(eventIds) do
+					local eventDef = self._T.skillEventCatalog[self:ReadString(eventId, "")]
+					if eventDef ~= nil and self:ReadString(eventDef.Type, "") == "area" then
+						return true
+					end
+				end
+			end
+		end
+		return false
 	end
 
 	method number PostDelayFramesForSkill(any skillDef)
@@ -4493,25 +4568,14 @@ script BRSkillSystem extends Logic
 	end
 
 	method void ApplyCasterPostDelayFreeze(any cast)
-		-- Holds the caster still and playing the attack motion during post-cast recovery.
+		-- Plays the one-shot attack swing once as post-cast recovery begins. Movement + jump are already
+		-- locked for the whole chain by the chain-lock, so no per-cast freeze is applied here.
 		if cast == nil or cast.CasterEntity == nil or isvalid(cast.CasterEntity) ~= true then
 			return
 		end
-		local entity = cast.CasterEntity
-		local firstFreeze = cast.PostFrozen ~= true
-		if entity.MovementComponent ~= nil then
-			-- Remember the original input speed once for restore at cast end.
-			if firstFreeze then
-				cast.FrozenInputSpeed = entity.MovementComponent.InputSpeed
-			end
-			-- Re-apply every recovery frame: the lobby/battle movement controller re-sets speed each tick.
-			entity.MovementComponent.InputSpeed = 0
-		end
-		-- Play the attack swing exactly ONCE as recovery begins. No ATTACK state is used, so the swing
-		-- is a single one-shot clip that plays and stops instead of a held/looping motion.
-		if firstFreeze then
+		if cast.PostFrozen ~= true then
 			cast.PostFrozen = true
-			self:PlayCasterAttackOnceClient(entity)
+			self:PlayCasterAttackOnceClient(cast.CasterEntity)
 		end
 	end
 
@@ -4532,26 +4596,159 @@ script BRSkillSystem extends Logic
 		body:SendEvent(event)
 	end
 
-	method void RestoreCasterPostDelayFreeze(any cast)
-		-- Restores caster movement after the post-cast recovery ends.
-		if cast == nil or cast.FrozenInputSpeed == nil then
+	method void ApplyCasterChainLock(Entity caster, string userId)
+		-- Locks the caster's left/right movement AND jump for the whole chain sequence by disabling the
+		-- PlayerController (blocks all input) and zeroing InputSpeed. Backs up originals for restore.
+		if caster == nil or isvalid(caster) ~= true then
 			return
 		end
-		local entity = cast.CasterEntity
-		if entity ~= nil and isvalid(entity) == true and entity.MovementComponent ~= nil then
-			entity.MovementComponent.InputSpeed = cast.FrozenInputSpeed
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
 		end
-		cast.FrozenInputSpeed = nil
-		cast.PostFrozen = false
+		if self._T.chainLocks == nil then
+			self._T.chainLocks = {}
+		end
+		if self._T.chainLocks[safeUserId] ~= nil then
+			self:ReapplyCasterChainLock(safeUserId)
+			return
+		end
+		local lock = { Entity = caster, InputSpeed = nil, ControllerEnable = nil }
+		if caster.MovementComponent ~= nil then
+			lock.InputSpeed = caster.MovementComponent.InputSpeed
+			caster.MovementComponent.InputSpeed = 0
+		end
+		if caster.PlayerControllerComponent ~= nil then
+			lock.ControllerEnable = caster.PlayerControllerComponent.Enable
+			caster.PlayerControllerComponent.Enable = false
+		end
+		self._T.chainLocks[safeUserId] = lock
+	end
+
+	method void ReapplyCasterChainLock(string userId)
+		-- Re-asserts the lock every server frame: the lobby/battle controller re-sets these each tick.
+		if self._T.chainLocks == nil then
+			return
+		end
+		local lock = self._T.chainLocks[self:ReadString(userId, "")]
+		if lock == nil then
+			return
+		end
+		local entity = lock.Entity
+		if entity == nil or isvalid(entity) ~= true then
+			return
+		end
+		if entity.MovementComponent ~= nil then
+			entity.MovementComponent.InputSpeed = 0
+		end
+		if entity.PlayerControllerComponent ~= nil then
+			entity.PlayerControllerComponent.Enable = false
+		end
+	end
+
+	method void ReapplyAllChainLocks()
+		-- Re-asserts every active chain movement lock once per server frame.
+		if self._T.chainLocks == nil then
+			return
+		end
+		for lockUserId, lock in pairs(self._T.chainLocks) do
+			self:ReapplyCasterChainLock(lockUserId)
+		end
+	end
+
+	method void RestoreCasterChainLock(string userId)
+		-- Releases the full-chain movement lock and returns the caster to idle. Idempotent.
+		if self._T.chainLocks == nil then
+			return
+		end
+		local safeUserId = self:ReadString(userId, "")
+		local lock = self._T.chainLocks[safeUserId]
+		if lock == nil then
+			return
+		end
+		self._T.chainLocks[safeUserId] = nil
+		local entity = lock.Entity
+		if entity == nil or isvalid(entity) ~= true then
+			return
+		end
+		if entity.MovementComponent ~= nil and lock.InputSpeed ~= nil then
+			entity.MovementComponent.InputSpeed = lock.InputSpeed
+		end
+		if entity.PlayerControllerComponent ~= nil and lock.ControllerEnable ~= nil then
+			entity.PlayerControllerComponent.Enable = lock.ControllerEnable
+		end
+		if entity.StateComponent ~= nil then
+			entity.StateComponent:ChangeState("IDLE")
+		end
+	end
+
+	method boolean IsTelegraphEnabledForUser(string userId)
+		-- Telegraph (pre-delay range indicator) shows by default; a player can turn it off for themselves.
+		if self.EnableSkillVisualEffects ~= true then
+			return false
+		end
+		if self._T.telegraphOffByUser == nil then
+			return true
+		end
+		return self._T.telegraphOffByUser[self:ReadString(userId, "")] ~= true
+	end
+
+	method boolean IsHitboxDebugEnabledForUser(string userId)
+		-- Hitbox debug boxes are hidden by default; a player can turn them on for themselves.
+		if self.EnableSkillHitboxDebug == true then
+			return true
+		end
+		if self._T.hitboxDebugOnByUser == nil then
+			return false
+		end
+		return self._T.hitboxDebugOnByUser[self:ReadString(userId, "")] == true
+	end
+
+	@ExecSpace("Server")
+	method void SetTelegraphEnabled(string requestUserId, boolean enabled)
+		-- HUD debug toggle: enable/disable the caster's own telegraph range display.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			return
+		end
+		if self._T.telegraphOffByUser == nil then
+			self._T.telegraphOffByUser = {}
+		end
+		if enabled == true then
+			self._T.telegraphOffByUser[userId] = nil
+		else
+			self._T.telegraphOffByUser[userId] = true
+		end
+		self:Log("telegraph toggle user=" .. userId .. " enabled=" .. tostring(enabled == true))
+	end
+
+	@ExecSpace("Server")
+	method void SetHitboxDebugEnabled(string requestUserId, boolean enabled)
+		-- HUD debug toggle: enable/disable the caster's own skill hitbox debug boxes.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			return
+		end
+		if self._T.hitboxDebugOnByUser == nil then
+			self._T.hitboxDebugOnByUser = {}
+		end
+		if enabled == true then
+			self._T.hitboxDebugOnByUser[userId] = true
+		else
+			self._T.hitboxDebugOnByUser[userId] = nil
+		end
+		self:Log("hitbox debug toggle user=" .. userId .. " enabled=" .. tostring(enabled == true))
 	end
 
 	method void ShowSkillTelegraph(any cast)
-		-- Spawns a red range indicator over the skill's hit area(s), fading alpha 0.7 -> 0 across the
-		-- wind-up so the strike is telegraphed before it lands. Reuses the authored hitbox rects.
-		if self.EnableSkillVisualEffects ~= true then
+		-- Spawns a solid red range indicator over the skill's fixed hit area(s) for the whole pre-cast
+		-- wind-up (선딜레이), then removes it when the wind-up ends. Only "area" events have a fixed
+		-- hitbox at cast time, so projectile / summon skills are excluded (their hitbox travels/spawns).
+		if cast == nil or cast.SkillDef == nil then
 			return
 		end
-		if cast == nil or cast.SkillDef == nil then
+		-- Shown by default; the caster can turn it off for themselves via the HUD toggle.
+		if self:IsTelegraphEnabledForUser(self:ReadString(cast.UserId, "")) ~= true then
 			return
 		end
 		local eventsByFrame = cast.SkillDef.EventsByFrame
@@ -4571,13 +4768,17 @@ script BRSkillSystem extends Logic
 			return
 		end
 		local preFrames = self:PreDelayFramesForSkill(cast.SkillDef)
-		local frameSeconds = self:GetSkillFrameSeconds()
+		if preFrames <= 0 then
+			return
+		end
+		-- Stay solid for the whole wind-up, then vanish exactly when the pre-delay ends (the strike begins).
+		local windUpSeconds = preFrames * self:GetSkillFrameSeconds()
 		local seen = {}
 		for frameKey, eventIds in pairs(eventsByFrame) do
-			local fk = math.floor(self:ReadNumber(frameKey, 0))
 			for index, eventId in ipairs(eventIds) do
 				local eventDef = self._T.skillEventCatalog[self:ReadString(eventId, "")]
-				if eventDef ~= nil and eventDef.HitboxIds ~= nil then
+				-- Only "area" events carry a fixed cast-time hitbox — projectile / summon events do not.
+				if eventDef ~= nil and self:ReadString(eventDef.Type, "") == "area" and eventDef.HitboxIds ~= nil then
 					for hitIndex, hitboxId in ipairs(eventDef.HitboxIds) do
 						local safeId = self:ReadString(hitboxId, "")
 						if safeId ~= "" and seen[safeId] ~= true then
@@ -4586,8 +4787,7 @@ script BRSkillSystem extends Logic
 							if hitbox ~= nil then
 								local rect = self:GetHitboxDebugRect(cast, hitbox)
 								if rect ~= nil then
-									-- Fade lasts until this hitbox's own event lands (wind-up + authored frame).
-									self:SpawnTelegraphBox(mapEntity, rect, (preFrames + fk) * frameSeconds)
+									self:SpawnTelegraphBox(mapEntity, rect, windUpSeconds)
 								end
 							end
 						end
@@ -4598,7 +4798,8 @@ script BRSkillSystem extends Logic
 	end
 
 	method void SpawnTelegraphBox(Entity mapEntity, any rect, number duration)
-		-- Spawns one red telegraph box sized to the hit rect and starts its alpha fade.
+		-- Spawns one solid red telegraph box sized to the hit rect; it stays visible for `duration`
+		-- (the pre-delay) and is removed when that time elapses. No fade — solid until the wind-up ends.
 		if mapEntity == nil or isvalid(mapEntity) == false or rect == nil then
 			return
 		end
@@ -4631,45 +4832,8 @@ script BRSkillSystem extends Logic
 			r.IgnoreMapLayerCheck = true
 			r.Color = Color(1, 0.05, 0.05, 0.7)
 		end
-		local fadeDuration = math.max(0.05, self:ReadNumber(duration, 0.5))
-		-- The scheduled destroy is the single source of removal; the fade timer only animates alpha.
-		entity:Destroy(fadeDuration)
-		self:FadeTelegraph(entity, fadeDuration)
-	end
-
-	method void FadeTelegraph(Entity entity, number duration)
-		-- Lerps the telegraph alpha from 0.7 to 0 over `duration` on a light server timer.
-		if entity == nil or isvalid(entity) == false then
-			return
-		end
-		local totalDuration = math.max(0.05, self:ReadNumber(duration, 0.5))
-		local startTime = self:ReadNumber(_UtilLogic.ElapsedSeconds, 0)
-		local capturedEntity = entity
-		local timerId = nil
-		timerId = _TimerService:SetTimerRepeat(function()
-			if capturedEntity == nil or isvalid(capturedEntity) == false then
-				if timerId ~= nil then
-					_TimerService:ClearTimer(timerId)
-				end
-				return
-			end
-			local frac = (self:ReadNumber(_UtilLogic.ElapsedSeconds, 0) - startTime) / totalDuration
-			if frac < 0 then
-				frac = 0
-			end
-			if frac >= 1 then
-				if timerId ~= nil then
-					_TimerService:ClearTimer(timerId)
-				end
-				if capturedEntity.PolygonRendererComponent ~= nil then
-					capturedEntity.PolygonRendererComponent.Color = Color(1, 0.05, 0.05, 0)
-				end
-				return
-			end
-			if capturedEntity.PolygonRendererComponent ~= nil then
-				capturedEntity.PolygonRendererComponent.Color = Color(1, 0.05, 0.05, 0.7 * (1 - frac))
-			end
-		end, 0.05)
+		-- Solid for the whole wind-up; the scheduled destroy removes it exactly when the pre-delay ends.
+		entity:Destroy(math.max(0.05, self:ReadNumber(duration, 0.5)))
 	end
 
 	method boolean IsTargetInsideHitbox(any context, Entity targetEntity, any hitbox)
@@ -5651,7 +5815,8 @@ script BRSkillSystem extends Logic
 			return nil
 		end
 		local name = "DroppedSkillPart_" .. tostring(math.floor(self:ReadNumber(part.InstanceId, 0))) .. "_" .. tostring(math.floor(_UtilLogic.ElapsedSeconds * 1000))
-		local dropEntity = self:SpawnDroppedPartEntity(name, spawnPosition, mapEntity)
+		local groundPosition = self:ResolveDroppedPartGroundPosition(mapEntity, spawnPosition)
+		local dropEntity = self:SpawnDroppedPartEntity(name, groundPosition, mapEntity)
 		if dropEntity == nil then
 			return nil
 		end
@@ -5676,6 +5841,43 @@ script BRSkillSystem extends Logic
 			)
 		end
 		return dropEntity
+	end
+
+	method Vector3 ResolveDroppedPartGroundPosition(Entity mapEntity, Vector3 spawnPosition)
+		-- Places dropped skill parts on the nearest foothold like Maple item drops.
+		if spawnPosition == nil then
+			return Vector3(0, 0, 0)
+		end
+		local x = self:ReadNumber(spawnPosition.x, 0)
+		local y = self:ReadNumber(spawnPosition.y, 0)
+		local z = self:ReadNumber(spawnPosition.z, 0)
+		if mapEntity == nil or mapEntity.FootholdComponent == nil then
+			return Vector3(x, y, z)
+		end
+
+		local searchUp = self:GetDroppedPartGroundSearchUp()
+		local searchDown = self:GetDroppedPartGroundSearchDown()
+		local rayStart = Vector2(x, y + searchUp)
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchUp + searchDown)
+		if foothold == nil then
+			foothold = mapEntity.FootholdComponent:GetNearestFootholdByPoint(Vector2(x, y), searchUp + searchDown)
+		end
+		if foothold == nil or foothold:IsVertical() == true then
+			return Vector3(x, y, z)
+		end
+
+		local startPoint = foothold.StartPoint
+		local endPoint = foothold.EndPoint
+		if startPoint == nil or endPoint == nil then
+			return Vector3(x, y, z)
+		end
+		local minX = math.min(startPoint.x, endPoint.x) + 0.05
+		local maxX = math.max(startPoint.x, endPoint.x) - 0.05
+		local alignedX = x
+		if maxX >= minX then
+			alignedX = math.max(minX, math.min(maxX, x))
+		end
+		return Vector3(alignedX, foothold:GetYByX(alignedX) + self:GetDroppedPartGroundYOffset(), z)
 	end
 
 	method Entity SpawnDroppedPartEntity(string name, Vector3 spawnPosition, Entity mapEntity)
@@ -6436,7 +6638,7 @@ script BRSkillSystem extends Logic
 
 	method number GetBagSlotCount()
 		-- Returns the number of visible spare inventory slots.
-		return math.max(1, math.floor(self:ReadNumber(self.BagSlotCount, 2)))
+		return math.max(1, math.floor(self:ReadNumber(self.BagSlotCount, 4)))
 	end
 
 	method number GetDroppedPartSpawnYOffset()
@@ -6447,6 +6649,21 @@ script BRSkillSystem extends Logic
 	method number GetDroppedPartSpawnXOffset()
 		-- Returns the horizontal offset used to place dropped parts in front of the player.
 		return math.max(0, self:ReadNumber(self.DroppedPartSpawnXOffset, 0))
+	end
+
+	method number GetDroppedPartGroundYOffset()
+		-- Returns the small vertical lift applied after landing on a foothold.
+		return math.max(0, self:ReadNumber(self.DroppedPartGroundYOffset, 0.12))
+	end
+
+	method number GetDroppedPartGroundSearchUp()
+		-- Returns the upward margin used before raycasting downward for dropped parts.
+		return math.max(0, self:ReadNumber(self.DroppedPartGroundSearchUp, 3))
+	end
+
+	method number GetDroppedPartGroundSearchDown()
+		-- Returns the downward search range used to land dropped parts on footholds.
+		return math.max(0.1, self:ReadNumber(self.DroppedPartGroundSearchDown, 14))
 	end
 
 	method number GetPlayerDropDirection(Entity playerEntity)

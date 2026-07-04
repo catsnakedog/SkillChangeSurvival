@@ -25,6 +25,12 @@ script BRPartBox extends Component
 
 	property number RewardMeso = 0
 
+	property number SkillBoxVisualScale = 2
+
+	property number SupplyBoxVisualScale = 1
+
+	property number KioskVisualScale = 1
+
 	property string StandRUID = "b871399ae18d41c4b76c2ae79feefa7d"
 
 	property string HitRUID = "036fa49e90994b54a1686c1bb93aeafd"
@@ -45,6 +51,14 @@ script BRPartBox extends Component
 
 	property boolean DamageOpensBox = false
 
+	property boolean TreatPlacedEntityAsSpawnMarker = true
+
+	property string SpawnMarkerNameTokens = "SkillPartBox,skillPart,SkillPart,PartBox,SupplyBox,SupplyPoint"
+
+	property string RuntimeBoxNamePrefix = "RuntimeSupplyBox"
+
+	property string DroppedPartNamePrefix = "DroppedSkillPart"
+
 	property boolean VerboseLog = false
 
 	property boolean available = true
@@ -57,6 +71,15 @@ script BRPartBox extends Component
 
 	method void OnBeginPlay()
 		-- Starts the box interaction loop when this box is currently active.
+		if self:IsPlacedSpawnMarker() == true then
+			if self:IsServer() == true then
+				self:ConfigureAsSpawnMarker()
+			else
+				self:HideMarkerVisual()
+			end
+			return
+		end
+
 		if self:IsClient() then
 			self:RefreshKioskTouchHandler()
 			return
@@ -143,6 +166,7 @@ script BRPartBox extends Component
 			self.RespawnSeconds = 0
 		end
 		self.CurrentHp = self:GetMaxHp()
+		self:ApplyVisualScale()
 		self:SetVisualAvailable(self.EnablePartBox == true and self.available == true)
 	end
 
@@ -280,6 +304,9 @@ script BRPartBox extends Component
 			.. " source=" .. self:ReadString(source, "skill")
 			.. " damage=" .. tostring(damage)
 			.. " hp=" .. tostring(self.CurrentHp) .. "/" .. tostring(self:GetMaxHp()))
+		if _BRDamageSkinSystem ~= nil then
+			_BRDamageSkinSystem:ShowDamage(self.Entity, damage, false, self:ReadString(source, "skill"))
+		end
 		if self.CurrentHp <= 0 then
 			self:BreakBox(attackerEntity, source)
 		else
@@ -441,10 +468,10 @@ script BRPartBox extends Component
 			return
 		end
 		self.Entity.Visible = value
-		if self.Entity.PolygonRendererComponent ~= nil then
-			self.Entity.PolygonRendererComponent.Enable = value
-		end
 		if self.Entity.SpriteRendererComponent ~= nil then
+			if self.Entity.PolygonRendererComponent ~= nil then
+				self.Entity.PolygonRendererComponent.Enable = false
+			end
 			self.Entity.SpriteRendererComponent.Enable = value
 			if value == true then
 				self.Entity.SpriteRendererComponent.SpriteRUID = self:GetStandRUID()
@@ -454,7 +481,96 @@ script BRPartBox extends Component
 				self.Entity.SpriteRendererComponent.PlayRate = 1.0
 				self.Entity.SpriteRendererComponent:SetAlpha(1)
 			end
+		elseif self.Entity.PolygonRendererComponent ~= nil then
+			self.Entity.PolygonRendererComponent.Enable = value
 		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ConfigureAsSpawnMarker()
+		-- Converts a map-authored box object into an invisible spawn marker only.
+		self.EnablePartBox = false
+		self.available = false
+		self.DropPartsToWorld = false
+		self.DamageOpensBox = false
+		self.CurrentHp = 0
+		self:ClearPollTimer()
+		self:HideMarkerVisual()
+	end
+
+	method void HideMarkerVisual()
+		-- Hides only renderers so the entity can still provide a stable spawn transform.
+		if self.Entity == nil then
+			return
+		end
+
+		self.Entity.Visible = true
+
+		if self.Entity.SpriteRendererComponent ~= nil then
+			self.Entity.SpriteRendererComponent.Enable = false
+			self.Entity.SpriteRendererComponent:SetAlpha(0)
+		end
+
+		if self.Entity.PolygonRendererComponent ~= nil then
+			self.Entity.PolygonRendererComponent.Enable = false
+		end
+	end
+
+	method boolean IsPlacedSpawnMarker()
+		-- Distinguishes authored spawn markers from real runtime boxes and dropped items.
+		if self.TreatPlacedEntityAsSpawnMarker ~= true then
+			return false
+		end
+		if self.Entity == nil then
+			return false
+		end
+
+		local entityName = string.lower(self:ReadString(self.Entity.Name, ""))
+		if entityName == "" then
+			return false
+		end
+		if self:StartsWith(entityName, string.lower(self:ReadString(self.RuntimeBoxNamePrefix, "RuntimeSupplyBox"))) == true then
+			return false
+		end
+		if self:StartsWith(entityName, string.lower(self:ReadString(self.DroppedPartNamePrefix, "DroppedSkillPart"))) == true then
+			return false
+		end
+
+		return self:NameContainsAnyToken(entityName, self.SpawnMarkerNameTokens)
+	end
+
+	method boolean NameContainsAnyToken(string entityName, string tokens)
+		-- Checks comma-separated name tokens without requiring exact map object casing.
+		local source = string.lower(self:ReadString(entityName, ""))
+		local tokenText = self:ReadString(tokens, "")
+		if source == "" or tokenText == "" then
+			return false
+		end
+
+		for token in string.gmatch(tokenText, "([^,]+)") do
+			local trimmed = string.lower(self:TrimString(token))
+			if trimmed ~= "" and string.find(source, trimmed, 1, true) ~= nil then
+				return true
+			end
+		end
+
+		return false
+	end
+
+	method boolean StartsWith(string value, string prefix)
+		-- Checks a prefix while safely handling empty config values.
+		local safeValue = self:ReadString(value, "")
+		local safePrefix = self:ReadString(prefix, "")
+		if safeValue == "" or safePrefix == "" then
+			return false
+		end
+		return string.sub(safeValue, 1, string.len(safePrefix)) == safePrefix
+	end
+
+	method string TrimString(string value)
+		-- Removes leading and trailing whitespace from a config token.
+		local text = self:ReadString(value, "")
+		return (string.gsub(text, "^%s*(.-)%s*$", "%1"))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -518,12 +634,8 @@ script BRPartBox extends Component
 
 	@ExecSpace("ServerOnly")
 	method void ShowPickupLabel(Entity playerEntity, string message)
-		-- Shows the acquired part summary on the player nametag.
-		if playerEntity == nil or playerEntity.NameTagComponent == nil then
-			return
-		end
-		playerEntity.NameTagComponent.Name = self:ReadString(message, "Skill Part")
-		playerEntity.NameTagComponent.FontColor = Color(0.85, 0.75, 1, 1)
+		-- Do not write item/box feedback into the player name tag.
+		self:Log("label skipped message=" .. self:ReadString(message, "Skill Part"))
 	end
 
 	method string GetMapName()
@@ -560,6 +672,29 @@ script BRPartBox extends Component
 
 	method number GetRewardMeso()
 		return math.max(0, math.floor(self:ReadNumber(self.RewardMeso, 0)))
+	end
+
+	method number GetVisualScale()
+		-- Returns the configured runtime size for the current box kind.
+		local kind = string.lower(self:ReadString(self.BoxKind, "skill"))
+		if kind == "skill" then
+			return math.max(0.1, self:ReadNumber(self.SkillBoxVisualScale, 2))
+		elseif kind == "supply" then
+			return math.max(0.1, self:ReadNumber(self.SupplyBoxVisualScale, 1))
+		elseif kind == "kiosk" then
+			return math.max(0.1, self:ReadNumber(self.KioskVisualScale, 1))
+		end
+		return 1
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyVisualScale()
+		-- Applies per-kind scale to real runtime boxes without moving their anchor point.
+		if self.Entity == nil or self.Entity.TransformComponent == nil then
+			return
+		end
+		local scale = self:GetVisualScale()
+		self.Entity.TransformComponent.Scale = Vector3(scale, scale, 1)
 	end
 
 	method string GetStandRUID()

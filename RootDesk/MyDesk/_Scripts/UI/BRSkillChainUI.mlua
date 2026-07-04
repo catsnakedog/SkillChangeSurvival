@@ -13,7 +13,7 @@ script BRSkillChainUI extends Component
 
 	property number ChainSlotCount = 5
 
-	property number BagSlotCount = 2
+	property number BagSlotCount = 4
 
 	property boolean AttachInventoryPanel = false
 
@@ -174,6 +174,7 @@ script BRSkillChainUI extends Component
 		self._T.chainSlots = self:ParseChainText(_BRSkillSystem:GetLocalChainText())
 		self._T.bagParts = self:ParseBagText(_BRSkillSystem:GetLocalBagText())
 		self:RenderChain()
+		self:RenderBag()
 		self:RefreshCommonSkillSlots()
 	end
 
@@ -1095,23 +1096,45 @@ script BRSkillChainUI extends Component
 	@ExecSpace("ClientOnly")
 	method void RenderBag()
 		-- Renders spare skill parts as icon-only inventory slots.
+		local occupiedCount = 0
 		for index = 1, self:GetBagSlotCount() do
 			local part = self:GetBagPart(index)
+			local occupied = false
+			local skillKey = "Default"
+			local equipped = false
 			if part == nil then
 				self:SetInventoryItemActive(index, true)
 				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Label", "")
 				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Name", "")
 				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "")
-				self:RenderBagSlotVisual(index, nil, false)
 			else
 				self:SetInventoryItemActive(index, true)
 				local equippedSlot = math.floor(self:ReadNumber(part.EquippedSlot, 0))
 				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Label", "")
 				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Name", "")
 				self:SetInventoryTextByPath("Panel/Inventory/Item_" .. tostring(index) .. "/Equipped", "")
-				self:RenderBagSlotVisual(index, part, equippedSlot > 0)
+				occupied = self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0) > 0
+				if occupied == true then
+					skillKey = self:GetRecordSkillKey(part)
+					equipped = equippedSlot > 0
+					occupiedCount = occupiedCount + 1
+				end
 			end
+			self:RenderBagSlotVisualByKey(index, skillKey, occupied, equipped)
 		end
+		self:LogBagRenderSummary(occupiedCount)
+	end
+
+	method void LogBagRenderSummary(number occupiedCount)
+		-- Logs inventory icon refresh evidence only when the visible bag count changes.
+		self:EnsureRuntime()
+		local summary = "occupied=" .. tostring(math.floor(self:ReadNumber(occupiedCount, 0)))
+			.. "/" .. tostring(self:GetBagSlotCount())
+		if self._T.lastBagRenderSummary == summary then
+			return
+		end
+		self._T.lastBagRenderSummary = summary
+		self:Log("bag render " .. summary)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1208,7 +1231,14 @@ script BRSkillChainUI extends Component
 		if occupied == true then
 			skillKey = self:GetRecordSkillKey(part)
 		end
-		self:SetSkillSlotVisual("BAG", "Panel/Inventory/Item_" .. tostring(safeBagIndex), skillKey, 1, occupied, false, equipped == true)
+		self:RenderBagSlotVisualByKey(safeBagIndex, skillKey, occupied, equipped == true)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderBagSlotVisualByKey(number bagIndex, string skillKey, boolean occupied, boolean equipped)
+		-- Renders a spare slot from primitive values so runtime snapshot records are not passed through UI helper calls.
+		local safeBagIndex = math.floor(self:ReadNumber(bagIndex, 0))
+		self:SetSkillSlotVisual("BAG", "Panel/Inventory/Item_" .. tostring(safeBagIndex), skillKey, 1, occupied == true, false, equipped == true)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1240,9 +1270,40 @@ script BRSkillChainUI extends Component
 		else
 			self:SetVisualSpriteColor(safeRootKind, safeBasePath, baseColor)
 		end
-		self:SetVisualSpriteImage(safeRootKind, safeBasePath .. "/Icon", iconRuid)
-		self:SetVisualSpriteColor(safeRootKind, safeBasePath .. "/Icon", iconColor)
+		local iconPath = self:ApplySlotIconVisual(safeRootKind, safeBasePath, iconRuid, iconColor)
+		if iconPath ~= "" then
+			self:SetVisualEntityEnabled(safeRootKind, iconPath, true)
+		else
+			self:SetVisualSpriteImage(safeRootKind, safeBasePath, iconRuid)
+			if occupied == true then
+				self:SetVisualSpriteColor(safeRootKind, safeBasePath, iconColor)
+			else
+				self:SetVisualSpriteColor(safeRootKind, safeBasePath, baseColor)
+			end
+		end
 		self:SetSlotFrameColor(safeRootKind, safeBasePath, borderColor)
+	end
+
+	@ExecSpace("ClientOnly")
+	method string ApplySlotIconVisual(string rootKind, string basePath, string iconRuid, Color iconColor)
+		-- Authored slots do not all use the same child name, so try every known icon surface.
+		local safeBasePath = self:ReadString(basePath, "")
+		local candidates = {
+			safeBasePath .. "/Icon",
+			safeBasePath .. "/SkillIcon",
+			safeBasePath .. "/Image",
+			safeBasePath .. "/IconImage",
+			safeBasePath .. "/ItemIcon",
+			safeBasePath .. "/Skill",
+			safeBasePath
+		}
+		for index, iconPath in ipairs(candidates) do
+			if self:SetVisualSpriteImage(rootKind, iconPath, iconRuid) == true then
+				self:SetVisualSpriteColor(rootKind, iconPath, iconColor)
+				return iconPath
+			end
+		end
+		return ""
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1255,12 +1316,26 @@ script BRSkillChainUI extends Component
 	end
 
 	@ExecSpace("ClientOnly")
-	method void SetVisualSpriteImage(string rootKind, string relativePath, string ruid)
+	method boolean SetVisualSpriteImage(string rootKind, string relativePath, string ruid)
 		-- Assigns a UI sprite RUID through the correct root group.
 		local entity = self:GetVisualEntity(rootKind, relativePath)
 		if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
 			entity.Enable = true
+			entity.SpriteGUIRendererComponent.Enable = true
 			entity.SpriteGUIRendererComponent.ImageRUID = DataRef(self:ReadString(ruid, self:GetFallbackIconRUID()))
+			return true
+		end
+		return false
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetVisualEntityEnabled(string rootKind, string relativePath, boolean enabled)
+		local entity = self:GetVisualEntity(rootKind, relativePath)
+		if entity ~= nil then
+			entity.Enable = enabled == true
+			if entity.SpriteGUIRendererComponent ~= nil then
+				entity.SpriteGUIRendererComponent.Enable = enabled == true
+			end
 		end
 	end
 
@@ -1777,12 +1852,33 @@ script BRSkillChainUI extends Component
 	method void SetInventoryItemActive(number bagIndex, boolean active)
 		local indexText = tostring(math.floor(self:ReadNumber(bagIndex, 0)))
 		local tile = self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText)
+		local icon = self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText .. "/Icon")
+		local skillIcon = self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText .. "/SkillIcon")
+		local image = self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText .. "/Image")
+		local iconImage = self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText .. "/IconImage")
+		local itemIcon = self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText .. "/ItemIcon")
+		local skill = self:GetInventoryEntity("Panel/Inventory/Item_" .. indexText .. "/Skill")
 		local touch = self:GetBagTouchEntity(bagIndex)
-		if tile ~= nil then
-			tile.Enable = active == true
-		end
+		self:SetEntityAndSpriteEnabled(tile, active == true)
+		self:SetEntityAndSpriteEnabled(icon, active == true)
+		self:SetEntityAndSpriteEnabled(skillIcon, active == true)
+		self:SetEntityAndSpriteEnabled(image, active == true)
+		self:SetEntityAndSpriteEnabled(iconImage, active == true)
+		self:SetEntityAndSpriteEnabled(itemIcon, active == true)
+		self:SetEntityAndSpriteEnabled(skill, active == true)
 		if touch ~= nil then
 			touch.Enable = active == true
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetEntityAndSpriteEnabled(Entity entity, boolean enabled)
+		if entity == nil then
+			return
+		end
+		entity.Enable = enabled == true
+		if entity.SpriteGUIRendererComponent ~= nil then
+			entity.SpriteGUIRendererComponent.Enable = enabled == true
 		end
 	end
 
@@ -2535,6 +2631,7 @@ script BRSkillChainUI extends Component
 	@ExecSpace("ClientOnly")
 	method void SetSpriteColor(Entity entity, Color color)
 		if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
+			entity.SpriteGUIRendererComponent.Enable = true
 			entity.SpriteGUIRendererComponent.Color = color
 		end
 	end
@@ -3000,7 +3097,7 @@ script BRSkillChainUI extends Component
 	end
 
 	method number GetBagSlotCount()
-		local count = math.floor(self:ReadNumber(self.BagSlotCount, 2))
+		local count = math.floor(self:ReadNumber(self.BagSlotCount, 4))
 		if _BRSkillSystem ~= nil then
 			count = math.floor(self:ReadNumber(_BRSkillSystem:GetBagSlotCount(), count))
 		end

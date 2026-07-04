@@ -5067,6 +5067,18 @@ script BRSkillSystem extends Logic
 		return math.max(0, math.floor(seconds / self:GetSkillFrameSeconds() + 0.5))
 	end
 
+	method string GetSharpSlashBaseSkillKey()
+		-- Base skill key of the sharp-slash chain part; tier variants are 샤프 슬래시2/3/4.
+		return "샤프 슬래시"
+	end
+
+	method boolean IsSharpSlashSkillKey(string skillKey)
+		-- True when a skill key belongs to the sharp-slash part family (base or tier variant).
+		local baseKey = self:GetSharpSlashBaseSkillKey()
+		local safeKey = self:ReadString(skillKey, "")
+		return safeKey == baseKey or string.sub(safeKey, 1, #baseKey) == baseKey
+	end
+
 	method number GetSkillPreDelaySeconds(any skillDef)
 		-- Pre-cast wind-up in seconds. Any skill with a fixed cast-time hit area (an "area" event) gets a
 		-- wind-up so its range is telegraphed before the strike — Brandish, Sharp Slash, etc. Projectile /
@@ -5076,6 +5088,12 @@ script BRSkillSystem extends Logic
 			return 0
 		end
 		if self:SkillHasAreaEvent(skillDef) == true then
+			-- Sharp Slash chain parts (샤프 슬래시/2/3/4) skip the wind-up entirely — requested no-선딜레이
+			-- tuning for this family only, so the chain stays snappy. Removes the telegraph for them too.
+			if self:IsSharpSlashSkillKey(self:ReadString(skillDef.BaseSkillKey, self:ReadString(skillDef.SkillKey, ""))) == true then
+				self:Log("sharp slash predelay skip skill=" .. self:ReadString(skillDef.SkillKey, ""))
+				return 0
+			end
 			-- Basic attacks (기본 공격) get a much shorter wind-up so light attacks feel responsive;
 			-- other area skills keep the standard telegraphed 0.5s. Value tuned by integrator playtest (BUG-013).
 			if self:ReadString(skillDef.SkillCategory, "") == "기본 공격" then

@@ -59,7 +59,9 @@ script BRCommonSkillSystem extends Logic
 
 	property string NimbusSkillKey = "Nimbus"
 
-	property boolean BlockNimbusInBattleMap = true
+	property boolean BlockNimbusInBattleMap = false
+
+	property boolean KeyboardOnlyMovement = true
 
 	property boolean NimbusUseFlyAnimation = true
 
@@ -279,6 +281,7 @@ script BRCommonSkillSystem extends Logic
 		self.inputKeyUpHandler = _InputService:ConnectEvent(KeyUpEvent, self.OnCommonSkillKeyUp)
 		self:EnsureBasicAttackKeyDiscovered()
 		self:RemoveBlinkKeyDefaultAction(true)
+		self:EnforceKeyboardOnlyMovement(true)
 		log("[BRCommonSkill] client input ready unique=" .. self:GetKeyDisplayName(self:GetUniqueKeyCode()) .. " blink=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " nimbus=" .. self:GetKeyDisplayName(self:GetNimbusKeyCode()) .. " consumable=" .. self:GetActionKeyName("consumable") .. " chain=" .. self:GetActionKeyName("attack") .. " basicAttack=" .. self:GetKeyDisplayName(self.BasicAttackKeyCode))
 	end
 
@@ -354,6 +357,7 @@ script BRCommonSkillSystem extends Logic
 		self._T.nextInputOverrideCheckAt = now + 0.5
 		self:EnsureBasicAttackKeyDiscovered()
 		self:RemoveBlinkKeyDefaultAction(false)
+		self:EnforceKeyboardOnlyMovement(false)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -374,6 +378,94 @@ script BRCommonSkillSystem extends Logic
 		if self.VerboseLog == true and (previousAction ~= "" or logEvenWhenEmpty == true) then
 			log("[BRCommonSkill] blink key override key=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " removedAction=" .. previousAction)
 		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void EnforceKeyboardOnlyMovement(boolean logEvenWhenEmpty)
+		-- Removes non-keyboard movement sources while preserving mouse buttons used for attacks or UI.
+		if self.KeyboardOnlyMovement ~= true then
+			return
+		end
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer ~= nil and localPlayer.PlayerControllerComponent ~= nil then
+			local controller = localPlayer.PlayerControllerComponent
+			self:RemoveNonKeyboardMovementAction(controller, KeyboardKey.Mouse0, "Mouse0", logEvenWhenEmpty)
+			self:RemoveNonKeyboardMovementAction(controller, KeyboardKey.Mouse1, "Mouse1", logEvenWhenEmpty)
+			self:RemoveNonKeyboardMovementAction(controller, KeyboardKey.Mouse2, "Mouse2", logEvenWhenEmpty)
+		end
+		self:DisableRuntimeJoystickComponents(logEvenWhenEmpty)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RemoveNonKeyboardMovementAction(any controller, KeyboardKey key, string keyName, boolean logEvenWhenEmpty)
+		-- Clears a mouse-bound action only when it is clearly a movement action.
+		if controller == nil then
+			return
+		end
+		local actionName = self:ReadString(controller:GetActionName(key), "")
+		if self:IsMovementActionName(actionName) ~= true then
+			if logEvenWhenEmpty == true and actionName ~= "" and self.VerboseLog == true then
+				log("[BRCommonSkill] keyboard-only keep key=" .. self:ReadString(keyName, "") .. " action=" .. actionName)
+			end
+			return
+		end
+		controller:RemoveActionKey(key)
+		if self.VerboseLog == true then
+			log("[BRCommonSkill] keyboard-only removed key=" .. self:ReadString(keyName, "") .. " action=" .. actionName)
+		end
+	end
+
+	method boolean IsMovementActionName(string actionName)
+		-- Identifies native movement bindings without matching attack or interaction actions.
+		local name = string.lower(self:ReadString(actionName, ""))
+		if name == "" then
+			return false
+		end
+		if string.find(name, "attack") ~= nil or string.find(name, "jump") ~= nil or string.find(name, "portal") ~= nil or string.find(name, "interact") ~= nil or string.find(name, "crouch") ~= nil or string.find(name, "sit") ~= nil then
+			return false
+		end
+		return string.find(name, "move") ~= nil or string.find(name, "walk") ~= nil or string.find(name, "run") ~= nil or string.find(name, "joystick") ~= nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisableRuntimeJoystickComponents(boolean logEvenWhenEmpty)
+		-- Disables mobile joystick emitters so only physical keyboard arrow keys drive movement.
+		local disabled = self:DisableJoystickComponentsAtPath("/ui")
+		if disabled <= 0 then
+			local roots = {"DefaultGroup", "BRBattleHudGroup", "BRSkillChainGroup", "LobbyGroup", "SettingsGroup"}
+			for index, rootName in ipairs(roots) do
+				disabled = disabled + self:DisableJoystickComponentsAtPath("/ui/" .. self:ReadString(rootName, ""))
+			end
+		end
+		if disabled <= 0 and logEvenWhenEmpty == true and self.VerboseLog == true then
+			log("[BRCommonSkill] keyboard-only movement ready joystick=none")
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method number DisableJoystickComponentsAtPath(string path)
+		-- Disables JoystickComponent instances below one UI path and returns the count touched.
+		local root = _EntityService:GetEntityByPath(self:ReadString(path, ""))
+		if root == nil then
+			return 0
+		end
+		local components = root:GetChildComponentsByTypeName("JoystickComponent", true)
+		if components == nil or #components <= 0 then
+			components = root:GetChildComponentsByTypeName("MOD.Core.JoystickComponent", true)
+		end
+		local disabled = 0
+		if components ~= nil then
+			for index, component in ipairs(components) do
+				if component ~= nil and component.Enable == true then
+					component.Enable = false
+					disabled = disabled + 1
+				end
+			end
+		end
+		if disabled > 0 and self.VerboseLog == true then
+			log("[BRCommonSkill] keyboard-only joystick disabled path=" .. self:ReadString(path, "") .. " count=" .. tostring(disabled))
+		end
+		return disabled
 	end
 
 	@ExecSpace("ClientOnly")

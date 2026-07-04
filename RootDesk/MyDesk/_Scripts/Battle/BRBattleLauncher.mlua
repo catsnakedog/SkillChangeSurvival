@@ -899,7 +899,67 @@ script BRBattleLauncher extends Logic
 		}
 		self._T.activeMatchesByMap[safeMapName] = entry
 		self._T.activeMatchesById[matchId] = entry
+		self:EnsureMatchResultStats(matchRoom)
 		log("[BRBattleLauncher] active match registered id=" .. matchId .. " map=" .. safeMapName .. " loading=" .. tostring(entry["LoadingSeconds"]))
+	end
+
+	method void EnsureMatchResultStats(any matchRoom)
+		-- Initializes mutable settlement counters on every human participant record.
+		if matchRoom == nil or matchRoom.Players == nil then
+			return
+		end
+		for index, player in ipairs(matchRoom.Players) do
+			if player ~= nil then
+				player.KillCount = math.max(0, math.floor(self:ReadNumber(player.KillCount, 0)))
+				player.DeathCount = math.max(0, math.floor(self:ReadNumber(player.DeathCount, 0)))
+				player.CharacterKey = self:ResolveBattleCharacterKey(self:ReadString(player.UserId, ""), self:ReadString(player.CharacterKey, ""))
+			end
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RecordBattleDeath(string targetMapName, string victimUserId, string attackerUserId, string reason)
+		-- Records one battle death and, when applicable, the player kill that caused it.
+		self:EnsureRuntimeTables()
+		local safeMapName = self:ReadString(targetMapName, "")
+		local safeVictimId = self:ReadString(victimUserId, "")
+		if safeMapName == "" or safeVictimId == "" then
+			return
+		end
+
+		local entry = self._T.activeMatchesByMap[safeMapName]
+		if entry == nil or entry["MatchRoom"] == nil then
+			log("[BRBattleLauncher] result stat skipped map=" .. safeMapName .. " victim=" .. safeVictimId .. " reason=noMatch")
+			return
+		end
+
+		local matchRoom = entry["MatchRoom"]
+		self:EnsureMatchResultStats(matchRoom)
+		local victimRecord = self:FindMatchPlayerRecord(matchRoom, safeVictimId)
+		if victimRecord ~= nil then
+			victimRecord.DeathCount = math.max(0, math.floor(self:ReadNumber(victimRecord.DeathCount, 0))) + 1
+		end
+
+		local safeAttackerId = self:ReadString(attackerUserId, "")
+		local killRecorded = false
+		if safeAttackerId ~= "" and safeAttackerId ~= safeVictimId and self:IsAiUserId(safeAttackerId) ~= true then
+			local attackerRecord = self:FindMatchPlayerRecord(matchRoom, safeAttackerId)
+			if attackerRecord ~= nil then
+				attackerRecord.KillCount = math.max(0, math.floor(self:ReadNumber(attackerRecord.KillCount, 0))) + 1
+				killRecorded = true
+			end
+		end
+
+		local deathCount = 0
+		if victimRecord ~= nil then
+			deathCount = math.max(0, math.floor(self:ReadNumber(victimRecord.DeathCount, 0)))
+		end
+		log("[BRBattleLauncher] result stat death map=" .. safeMapName
+			.. " victim=" .. safeVictimId
+			.. " attacker=" .. safeAttackerId
+			.. " deaths=" .. tostring(deathCount)
+			.. " killRecorded=" .. tostring(killRecorded)
+			.. " reason=" .. self:ReadString(reason, ""))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -2076,6 +2136,11 @@ script BRBattleLauncher extends Logic
 
 	method string BuildResultBody(any matchRoom, string viewerUserId, string winnerUserId, string reason, number elapsedSeconds)
 		-- Builds the compact battle result text shown after returning to lobby.
+		self:EnsureMatchResultStats(matchRoom)
+		local viewerName = self:GetPlayerDisplayName(viewerUserId)
+		local characterKey = self:GetResultCharacterKey(matchRoom, viewerUserId)
+		local killCount = self:GetResultKillCount(matchRoom, viewerUserId)
+		local deathCount = self:GetResultDeathCount(matchRoom, viewerUserId)
 		local winnerName = self:GetPlayerDisplayName(winnerUserId)
 		local rankText = "#2"
 		if self:ReadString(winnerUserId, "") == "" then
@@ -2086,6 +2151,10 @@ script BRBattleLauncher extends Logic
 		end
 
 		return "RANK " .. rankText
+			.. "\nNAME " .. viewerName
+			.. "\nCHARACTER " .. characterKey
+			.. "\nKILL " .. tostring(killCount)
+			.. "\nDEATH " .. tostring(deathCount)
 			.. "\nWINNER " .. winnerName
 			.. "\nMATCH " .. self:GetShortMatchId(matchRoom)
 			.. "\nTIME " .. self:FormatSeconds(elapsedSeconds)
@@ -2094,11 +2163,50 @@ script BRBattleLauncher extends Logic
 
 	method string BuildEliminatedResultBody(any matchRoom, string viewerUserId, string reason, number elapsedSeconds)
 		-- Builds the result text shown immediately when a player runs out of lives.
+		self:EnsureMatchResultStats(matchRoom)
+		local viewerName = self:GetPlayerDisplayName(viewerUserId)
+		local characterKey = self:GetResultCharacterKey(matchRoom, viewerUserId)
+		local killCount = self:GetResultKillCount(matchRoom, viewerUserId)
+		local deathCount = self:GetResultDeathCount(matchRoom, viewerUserId)
 		return "RANK OUT"
+			.. "\nNAME " .. viewerName
+			.. "\nCHARACTER " .. characterKey
+			.. "\nKILL " .. tostring(killCount)
+			.. "\nDEATH " .. tostring(deathCount)
 			.. "\nWINNER PENDING"
 			.. "\nMATCH " .. self:GetShortMatchId(matchRoom)
 			.. "\nTIME " .. self:FormatSeconds(elapsedSeconds)
 			.. "\nREASON " .. self:ReadString(reason, "life-out")
+	end
+
+	method string GetResultCharacterKey(any matchRoom, string userId)
+		-- Resolves the class key used to select the authored result background.
+		local record = self:FindMatchPlayerRecord(matchRoom, userId)
+		if record ~= nil then
+			local key = self:ReadString(record.CharacterKey, "")
+			if key ~= "" then
+				return self:ResolveBattleCharacterKey(userId, key)
+			end
+		end
+		return self:ResolveBattleCharacterKey(userId, "")
+	end
+
+	method number GetResultKillCount(any matchRoom, string userId)
+		-- Reads the player kill counter stored on the match participant record.
+		local record = self:FindMatchPlayerRecord(matchRoom, userId)
+		if record == nil then
+			return 0
+		end
+		return math.max(0, math.floor(self:ReadNumber(record.KillCount, 0)))
+	end
+
+	method number GetResultDeathCount(any matchRoom, string userId)
+		-- Reads the death counter stored on the match participant record.
+		local record = self:FindMatchPlayerRecord(matchRoom, userId)
+		if record == nil then
+			return 0
+		end
+		return math.max(0, math.floor(self:ReadNumber(record.DeathCount, 0)))
 	end
 
 	method string GetPlayerDisplayName(string userId)

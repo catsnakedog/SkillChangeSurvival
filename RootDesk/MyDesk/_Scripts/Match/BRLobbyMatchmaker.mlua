@@ -3,7 +3,7 @@ script BRLobbyMatchmaker extends Component
 
 	property boolean EnableLobbyMatchmaker = true
 
-	property number TargetPlayerCount = 3
+	property number TargetPlayerCount = 4
 
 	property number QueuePollSeconds = 1
 

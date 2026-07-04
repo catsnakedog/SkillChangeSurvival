@@ -1529,15 +1529,18 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void SetSkillSlotVisualWithIcon(string rootKind, string basePath, string skillKey, number tier, boolean occupied, boolean isLeadSlot, boolean equipped, string iconRuidOverride)
-		-- Updates one slot, preferring a snapshot icon when it is available.
+		-- Updates one slot, preferring snapshot icons except when a folded chain lead needs its tier icon.
 		local safeRootKind = self:ReadString(rootKind, "CHAIN")
 		local safeBasePath = self:ReadString(basePath, "")
 		local safeTier = math.max(1, math.floor(self:ReadNumber(tier, 1)))
 		local useSolidIcon = false
 		local iconRuid = self:GetSlotIconRUID(skillKey, safeTier, isLeadSlot == true, useSolidIcon)
 		local overrideRuid = self:ReadString(iconRuidOverride, "")
-		if occupied == true and overrideRuid ~= "" then
+		local preferTierIcon = self:ShouldPreferTierIconForChainLead(safeRootKind, safeTier, isLeadSlot == true)
+		if occupied == true and overrideRuid ~= "" and preferTierIcon ~= true then
 			iconRuid = overrideRuid
+		elseif occupied == true and overrideRuid ~= "" and preferTierIcon == true then
+			self:LogTierIconOverrideSkipped(safeBasePath, skillKey, safeTier, overrideRuid, iconRuid)
 		end
 		local baseColor = self:GetSlotBaseColor(occupied == true, safeTier, equipped == true)
 		local borderColor = self:GetSlotBorderColor(safeTier, occupied == true, isLeadSlot == true)
@@ -1568,6 +1571,39 @@ script BRSkillChainUI extends Component
 			self:LogBattleHudIconAssignment(safeRootKind, safeBasePath, safeBasePath, skillKey, safeTier, occupied == true, iconRuid)
 		end
 		self:SetSlotFrameColor(safeRootKind, safeBasePath, borderColor)
+	end
+
+	method boolean ShouldPreferTierIconForChainLead(string rootKind, number tier, boolean isLeadSlot)
+		-- Keeps the left-most slot of a connected same-skill chain on its visible order icon.
+		if self:ReadString(rootKind, "CHAIN") ~= "CHAIN" then
+			return false
+		end
+		if isLeadSlot ~= true then
+			return false
+		end
+		return math.floor(self:ReadNumber(tier, 1)) > 1
+	end
+
+	method void LogTierIconOverrideSkipped(string basePath, string skillKey, number tier, string snapshotRuid, string tierRuid)
+		-- Logs when a chain lead intentionally ignores the base part icon for a tier icon.
+		self:EnsureRuntime()
+		if self._T.lastTierIconOverrideSkipped == nil then
+			self._T.lastTierIconOverrideSkipped = {}
+		end
+		local safeBasePath = self:ReadString(basePath, "")
+		local summary = self:ReadString(skillKey, "Default")
+			.. ":" .. tostring(math.floor(self:ReadNumber(tier, 1)))
+			.. ":" .. self:ReadString(snapshotRuid, "")
+			.. ":" .. self:ReadString(tierRuid, "")
+		if self._T.lastTierIconOverrideSkipped[safeBasePath] == summary then
+			return
+		end
+		self._T.lastTierIconOverrideSkipped[safeBasePath] = summary
+		self:Log("chain lead tier icon path=" .. safeBasePath
+			.. " skill=" .. self:ReadString(skillKey, "Default")
+			.. " tier=" .. tostring(math.floor(self:ReadNumber(tier, 1)))
+			.. " snapshot=" .. self:ReadString(snapshotRuid, "")
+			.. " tierRuid=" .. self:ReadString(tierRuid, ""))
 	end
 
 	method void LogBattleHudIconAssignment(string rootKind, string basePath, string iconPath, string skillKey, number tier, boolean occupied, string iconRuid)

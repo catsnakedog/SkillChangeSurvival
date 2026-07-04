@@ -5,10 +5,6 @@ script BRMiniMapUI extends Component
 
 	property Entity gridRoot = "7e483d17-ee55-4872-9717-8b8cadceec8a"
 
-	property TextComponent titleText = "69531320-12bd-4954-a40a-71ab6326b302"
-
-	property TextComponent summaryText = "ca197f9a-0be0-4b8b-892f-88b3016e2181"
-
 	property number MaxRows = 5
 
 	property number MaxColumns = 5
@@ -21,11 +17,11 @@ script BRMiniMapUI extends Component
 
 	property number myColumn = 0
 
-	property boolean ShowPlayerCounts = true
+	property boolean ShowPlayerCounts = false
 
 	property boolean HideZeroPlayerCounts = true
 
-	property boolean AutoCreatePlayerCountLabels = true
+	property boolean AutoCreatePlayerCountLabels = false
 
 	property boolean VerboseLog = true
 
@@ -368,26 +364,8 @@ script BRMiniMapUI extends Component
 	end
 
 	method void EnsurePlayerCountLabels()
-		-- Creates lightweight UI text labels over minimap cells when static labels are absent.
-		if self.ShowPlayerCounts ~= true or self.AutoCreatePlayerCountLabels ~= true then
-			return
-		end
-		if self.gridRoot == nil or self.summaryText == nil or self.summaryText.Entity == nil then
-			return
-		end
-
-		for row = 1, self:GetMaxRows() do
-			for column = 1, self:GetMaxColumns() do
-				local label = self:GetPlayerCountLabelEntity(row, column)
-				if label == nil then
-					label = self.summaryText.Entity:Clone(self:GetCountLabelName(row, column))
-					if label ~= nil then
-						label:AttachTo(self.gridRoot)
-					end
-				end
-				self:ApplyPlayerCountLabel(row, column, label)
-			end
-		end
+		-- Keeps the minimap as a grid-only HUD with no explanatory text labels.
+		return
 	end
 
 	method void ApplyPlayerCountLabel(number row, number column, Entity label)
@@ -838,13 +816,8 @@ script BRMiniMapUI extends Component
 	end
 
 	method void UpdateLabels(number rows, number columns, number linkCount, number playerCount)
-		-- Updates static minimap title and compact graph summary text.
-		if self.titleText ~= nil then
-			self.titleText.Text = "MINI MAP"
-		end
-		if self.summaryText ~= nil then
-			self.summaryText.Text = tostring(columns) .. "x" .. tostring(rows) .. " / P " .. tostring(math.floor(self:ReadNumber(playerCount, 0))) .. " / " .. tostring(linkCount) .. " LINKS / " .. self:GetZoneSummaryText()
-		end
+		-- Keeps the minimap as a grid-only HUD with no title or summary text.
+		return
 	end
 
 	method void SetPanelActive(boolean visible)

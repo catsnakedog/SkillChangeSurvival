@@ -19,6 +19,8 @@ script BRReviveSelectUI extends Component
 
 	property string lastRenderKey = ""
 
+	property string lastInfoText = ""
+
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
 		self:EnsureRuntime()
@@ -44,6 +46,7 @@ script BRReviveSelectUI extends Component
 		if battleLogic == nil or self:IsLocalPlayerReviving(battleLogic) ~= true then
 			self:SetPanelActive(false)
 			self.lastRenderKey = ""
+			self.lastInfoText = ""
 			return
 		end
 
@@ -122,18 +125,18 @@ script BRReviveSelectUI extends Component
 		local remaining = battleLogic:GetLocalReviveRemainingSeconds()
 		if remaining > 0 then
 			self:Log("select waiting key=" .. key .. " remaining=" .. tostring(remaining))
-			self:SetTextByPath("Panel/Message", "Revive preparing... " .. tostring(math.ceil(remaining)) .. "s")
+			self:SetInfoText(tostring(math.ceil(remaining)) .. "초 뒤에 부활 가능합니다")
 			return
 		end
 		if self:ReadNumber(candidate.State, 0) ~= 1 then
 			self:Log("select blocked key=" .. key .. " state=" .. tostring(self:ReadNumber(candidate.State, 0)))
-			self:SetTextByPath("Panel/Message", self:GetCandidateReason(candidate))
+			self:SetInfoText(self:GetCandidateReason(candidate))
 			return
 		end
 
 		self:Log("request revive key=" .. key)
 		battleLogic:RequestReviveAtForUser(row, column, self:GetLocalUserId())
-		self:SetTextByPath("Panel/Message", "Reviving...")
+		self:SetInfoText("부활 중입니다.")
 	end
 
 	method void Render(any battleLogic)
@@ -177,7 +180,7 @@ script BRReviveSelectUI extends Component
 			cell.ButtonComponent.Enable = state == 1 and remaining <= 0
 		end
 		self:SetCellColor(cell, state, remaining)
-		self:SetTextByPath("Panel/Grid/" .. self:GetCellName(row, column) .. "/Label", self:GetCellLabel(candidate, remaining))
+		self:SetTextByPath("Panel/Grid/" .. self:GetCellName(row, column) .. "/Label", self:GetCellLabel(candidate))
 		self:SetTextByPath("Panel/Grid/" .. self:GetCellName(row, column) .. "/Count", self:GetCountLabel(count))
 	end
 
@@ -198,22 +201,11 @@ script BRReviveSelectUI extends Component
 	end
 
 	method void UpdateHeader(any battleLogic)
-		local remaining = 0
 		local message = ""
 		if battleLogic ~= nil then
-			remaining = battleLogic:GetLocalReviveRemainingSeconds()
 			message = battleLogic:GetLocalReviveMessage()
 		end
-		if remaining > 0 then
-			self:SetTextByPath("Panel/Title", "SELECT REVIVE POINT")
-			self:SetTextByPath("Panel/Message", "Revive available in " .. tostring(math.ceil(remaining)) .. "s")
-		else
-			self:SetTextByPath("Panel/Title", "SELECT REVIVE POINT")
-			if message == "" then
-				message = "Choose an empty room. Death room and occupied rooms are locked."
-			end
-			self:SetTextByPath("Panel/Message", message)
-		end
+		self:SetInfoText(self:GetInfoText(battleLogic, message))
 	end
 
 	method boolean IsLocalPlayerReviving(any battleLogic)
@@ -385,29 +377,26 @@ script BRReviveSelectUI extends Component
 		return tostring(math.floor(row)) .. ":" .. tostring(math.floor(column))
 	end
 
-	method string GetCellLabel(any candidate, number remaining)
-		if remaining > 0 then
-			return "WAIT"
-		end
+	method string GetCellLabel(any candidate)
 		local state = math.floor(self:ReadNumber(candidate.State, 0))
 		if state == 1 then
-			return "OK"
+			return "O"
 		elseif state == 2 then
 			return "DEAD"
 		elseif state == 3 then
-			return "BUSY"
+			return "X"
 		end
-		return "-"
+		return "X"
 	end
 
 	method string GetCandidateReason(any candidate)
 		local state = math.floor(self:ReadNumber(candidate.State, 0))
 		if state == 2 then
-			return "Cannot revive where you died."
+			return "죽은 곳에서는 부활할 수 없습니다."
 		elseif state == 3 then
-			return "Cannot revive on another player."
+			return "다른 플레이어가 있는 곳은 부활할 수 없습니다."
 		end
-		return "That room is not available."
+		return "부활할 수 없는 위치입니다."
 	end
 
 	method string GetCountLabel(number count)
@@ -508,7 +497,40 @@ script BRReviveSelectUI extends Component
 		local entity = self:GetEntity(relativePath)
 		if entity ~= nil and entity.TextComponent ~= nil then
 			entity.TextComponent.Text = self:ReadString(text, "")
+		elseif entity ~= nil and entity.TextGUIRendererComponent ~= nil then
+			entity.TextGUIRendererComponent.Text = self:ReadString(text, "")
 		end
+	end
+
+	method void SetInfoText(string text)
+		-- Updates the revive-window Info text and logs visible text changes once.
+		local safeText = self:ReadString(text, "")
+		self:SetTextByPath("Panel/Info", safeText)
+		if safeText ~= self.lastInfoText then
+			self.lastInfoText = safeText
+			self:Log("info=" .. safeText)
+		end
+	end
+
+	method string GetInfoText(any battleLogic, string message)
+		-- Builds the two-stage revive countdown shown in the Info object.
+		local reviveRemaining = 0
+		local autoRemaining = 0
+		if battleLogic ~= nil then
+			reviveRemaining = battleLogic:GetLocalReviveRemainingSeconds()
+			autoRemaining = battleLogic:GetLocalReviveAutoRemainingSeconds()
+		end
+		if reviveRemaining > 0 then
+			return tostring(math.ceil(reviveRemaining)) .. "초 뒤에 부활 가능합니다"
+		end
+		if autoRemaining > 0 then
+			return tostring(math.ceil(autoRemaining)) .. "초 뒤에 강제로 부활합니다"
+		end
+		local safeMessage = self:ReadString(message, "")
+		if safeMessage ~= "" then
+			return safeMessage
+		end
+		return "부활 위치를 선택하세요."
 	end
 
 	method void SetPanelActive(boolean active)
@@ -562,7 +584,7 @@ script BRReviveSelectUI extends Component
 	end
 
 	method number GetGridSpacing()
-		return 112
+		return 148
 	end
 
 	method string ReadString(any value, string fallback)

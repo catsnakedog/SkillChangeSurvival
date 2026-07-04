@@ -182,6 +182,10 @@ script BRMatchFlowUI extends Component
 		local matchId = self:ExtractResultValue(safeBody, "MATCH ", "-")
 		local timeText = self:ExtractResultValue(safeBody, "TIME ", "00:00")
 		local reason = self:ExtractResultValue(safeBody, "REASON ", "-")
+		local playerName = self:ExtractResultValue(safeBody, "NAME ", self:GetLocalPlayerDisplayName())
+		local characterKey = self:ExtractResultValue(safeBody, "CHARACTER ", "")
+		local killText = self:ExtractResultValue(safeBody, "KILL ", "0")
+		local deathText = self:ExtractResultValue(safeBody, "DEATH ", "0")
 		local headline = "MATCH COMPLETE"
 		if safeTitle == "VICTORY" then
 			headline = "WINNER WINNER"
@@ -195,6 +199,78 @@ script BRMatchFlowUI extends Component
 		self:SetTextByPath("Result/MatchValue", matchId)
 		self:SetTextByPath("Result/TimeValue", timeText)
 		self:SetTextByPath("Result/ReasonValue", reason)
+		self:ApplyResultCharacterPanel(characterKey, playerName, deathText, killText)
+	end
+
+	method void ApplyResultCharacterPanel(string characterKey, string playerName, string deathText, string killText)
+		-- Enables the authored result background for the player's class and fills its settlement texts.
+		local key = self:NormalizeResultCharacterKey(characterKey)
+		local bgKeys = {"Knight", "Mage", "Rogue", "Archer", "Pirate"}
+		for index, bgKey in ipairs(bgKeys) do
+			self:SetEntityActive("Result/BG_" .. bgKey, false)
+		end
+
+		local bgPath = "Result/BG_" .. key
+		local bgEntity = self:GetEntity(bgPath)
+		if bgEntity == nil then
+			key = "Knight"
+			bgPath = "Result/BG_Knight"
+			bgEntity = self:GetEntity(bgPath)
+		end
+		if bgEntity == nil then
+			log("[BRMatchFlowUI] result stats skipped reason=noBg character=" .. self:ReadString(characterKey, ""))
+			return
+		end
+
+		bgEntity.Enable = true
+		local safeName = self:ReadString(playerName, self:GetLocalPlayerDisplayName())
+		local safeDeath = tostring(math.max(0, math.floor(self:ReadNumber(deathText, 0))))
+		local safeKill = tostring(math.max(0, math.floor(self:ReadNumber(killText, 0))))
+		self:SetTextByPath(bgPath .. "/NameText", safeName)
+		self:SetTextByPath(bgPath .. "/Name", safeName)
+		self:SetTextByPath(bgPath .. "/DeathText", safeDeath)
+		self:SetTextByPath(bgPath .. "/Death", safeDeath)
+		self:SetTextByPath(bgPath .. "/KillText", safeKill)
+		self:SetTextByPath(bgPath .. "/Kill", safeKill)
+		log("[BRMatchFlowUI] result stats character=" .. key .. " name=" .. safeName .. " kill=" .. safeKill .. " death=" .. safeDeath)
+	end
+
+	method string NormalizeResultCharacterKey(string characterKey)
+		-- Converts result-body class labels to the authored BG_* suffixes.
+		local key = self:ReadString(characterKey, "")
+		if string.sub(key, 1, 3) == "BG_" then
+			key = string.sub(key, 4)
+		end
+		if _BRCharacterSystem ~= nil then
+			key = _BRCharacterSystem:NormalizeCharacterKey(key)
+		end
+		local lower = string.lower(self:ReadString(key, ""))
+		if lower == "mage" or lower == "magician" or lower == "wizard" then
+			return "Mage"
+		elseif lower == "rogue" or lower == "thief" or lower == "assassin" then
+			return "Rogue"
+		elseif lower == "archer" or lower == "bowman" or lower == "hunter" then
+			return "Archer"
+		elseif lower == "pirate" then
+			return "Pirate"
+		end
+		return "Knight"
+	end
+
+	method string GetLocalPlayerDisplayName()
+		-- Returns the local player's visible name for backward-compatible result bodies.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer ~= nil and localPlayer.PlayerComponent ~= nil then
+			local nickname = self:ReadString(localPlayer.PlayerComponent.Nickname, "")
+			if nickname ~= "" then
+				return nickname
+			end
+			local userId = self:ReadString(localPlayer.PlayerComponent.UserId, "")
+			if userId ~= "" then
+				return userId
+			end
+		end
+		return "PLAYER"
 	end
 
 	method string ExtractResultValue(string body, string key, string fallback)
@@ -362,6 +438,8 @@ script BRMatchFlowUI extends Component
 		local entity = self:GetEntity(relativePath)
 		if entity ~= nil and entity.TextComponent ~= nil then
 			entity.TextComponent.Text = self:ReadString(text, "")
+		elseif entity ~= nil and entity.TextGUIRendererComponent ~= nil then
+			entity.TextGUIRendererComponent.Text = self:ReadString(text, "")
 		end
 	end
 

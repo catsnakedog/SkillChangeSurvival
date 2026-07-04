@@ -209,7 +209,7 @@
           "name": "Panel",
           "path": "/ui/BRRoomMiniMapGroup/Panel",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": true,
           "displayOrder": 1,
@@ -238,20 +238,20 @@
               },
               "MobileOnly": false,
               "OffsetMax": {
-                "x": 520.0,
-                "y": -20.0
+                "x": 389.613525,
+                "y": -21.6112671
               },
               "OffsetMin": {
-                "x": 280.0,
-                "y": -280.0
+                "x": 28.6135254,
+                "y": -270.611267
               },
               "Pivot": {
                 "x": 0.0,
                 "y": 1.0
               },
               "RectSize": {
-                "x": 240.0,
-                "y": 260.0
+                "x": 361.0,
+                "y": 249.0
               },
               "UIMode": 1,
               "UIScale": {
@@ -261,12 +261,12 @@
               },
               "UIVersion": 2,
               "anchoredPosition": {
-                "x": 280.0,
-                "y": -20.0
+                "x": 28.6135254,
+                "y": -21.6112671
               },
               "Position": {
-                "x": -680.0,
-                "y": 520.0,
+                "x": -931.3865,
+                "y": 518.388733,
                 "z": 0.0
               },
               "QuaternionRotation": {
@@ -312,31 +312,31 @@
             {
               "@type": "MOD.Core.UITransformComponent",
               "ActivePlatform": 255,
-              "AlignmentOption": 15,
+              "AlignmentOption": 0,
               "AnchorsMax": {
-                "x": 1.0,
-                "y": 1.0
+                "x": 0.5,
+                "y": 0.5
               },
               "AnchorsMin": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 0.5,
+                "y": 0.5
               },
               "MobileOnly": false,
               "OffsetMax": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 180.5,
+                "y": 124.5
               },
               "OffsetMin": {
-                "x": 0.0,
-                "y": 0.0
+                "x": -180.5,
+                "y": -124.5
               },
               "Pivot": {
                 "x": 0.5,
                 "y": 0.5
               },
               "RectSize": {
-                "x": 240.0,
-                "y": 260.0
+                "x": 361.0,
+                "y": 249.0
               },
               "UIMode": 1,
               "UIScale": {
@@ -350,8 +350,8 @@
                 "y": 0.0
               },
               "Position": {
-                "x": 120.0,
-                "y": -130.0,
+                "x": 180.5,
+                "y": -124.5,
                 "z": 0.0
               },
               "QuaternionRotation": {
@@ -373,7 +373,7 @@
               "EndFrameIndex": 2147483647,
               "IgnoreMapLayerCheck": false,
               "ImageRUID": {
-                "DataId": "4fea64a3307cda641809ad8be0d4890b"
+                "DataId": "6514c0a5f5e345358042c71497c0cea2"
               },
               "LocalPosition": {
                 "x": 0.0,
@@ -391,9 +391,9 @@
               "SortingLayer": "UI",
               "StartFrameIndex": 0,
               "Color": {
-                "r": 0.0,
-                "g": 0.0,
-                "b": 0.0,
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
                 "a": 0.65
               },
               "DropShadow": false,
@@ -495,7 +495,7 @@
                 "y": -8.0
               },
               "Position": {
-                "x": 120.0,
+                "x": 180.5,
                 "y": -8.0,
                 "z": 0.0
               },
@@ -697,8 +697,8 @@
                 "y": -14.0
               },
               "Position": {
-                "x": 120.0,
-                "y": -144.0,
+                "x": 180.5,
+                "y": -138.5,
                 "z": 0.0
               },
               "QuaternionRotation": {

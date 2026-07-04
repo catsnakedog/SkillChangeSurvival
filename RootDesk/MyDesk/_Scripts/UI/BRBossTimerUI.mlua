@@ -168,12 +168,7 @@ script BRBossTimerUI extends Component
 	end
 
 	method void SetRootRaycastBlocked(boolean blocked)
-		-- Keeps this display-only HUD from swallowing skill-chain input.
-		local root = _EntityService:GetEntityByPath("/ui/BossTimerGroup")
-		if root ~= nil and root.CanvasGroupComponent ~= nil then
-			root.CanvasGroupComponent.BlocksRaycasts = blocked == true
-			root.CanvasGroupComponent.Interactable = blocked == true
-		end
+		-- The old timer UI group was removed, so there is no root raycast target to update.
 	end
 
 	method number GetRefreshSeconds()

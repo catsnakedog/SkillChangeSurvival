@@ -212,6 +212,7 @@ script BRCharacterSystem extends Logic
 		self:RequestSetCharacter(safeKey, reason)
 		self:RefreshClassSelectionByKey(safeKey)
 		self:Log("classSelect confirmed key=" .. safeKey)
+		self:CloseClassSelect()
 	end
 
 	@ExecSpace("ClientOnly")

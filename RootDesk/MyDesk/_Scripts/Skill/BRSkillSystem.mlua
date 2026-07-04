@@ -5986,6 +5986,39 @@ script BRSkillSystem extends Logic
 		return leveled
 	end
 
+	@ExecSpace("ServerOnly")
+	method boolean EnsureUserMinimumLevel(string userId, number minimumLevel, string sourceId)
+		-- Raises a user's skill-chain level to a minimum without lowering higher progress.
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return false
+		end
+
+		local state = self:GetUserState(safeUserId)
+		if state == nil then
+			return false
+		end
+
+		self:NormalizeUserLevelState(state)
+		local oldLevel = self:GetUserLevel(state)
+		local targetLevel = math.max(self:GetStartingSkillLevel(), math.floor(self:ReadNumber(minimumLevel, self:GetStartingSkillLevel())))
+		targetLevel = math.min(self:GetMaxSkillLevel(), targetLevel)
+		if oldLevel >= targetLevel then
+			return false
+		end
+
+		state.Level = targetLevel
+		state.Experience = 0
+		self:NormalizeUserState(state)
+		self:ApplyCharacterStatsToUser(safeUserId, self:ReadString(sourceId, "minimum-level"))
+		self:NotifyUserChanged(safeUserId)
+		self:Log("minimum level user=" .. safeUserId
+			.. " level=" .. tostring(oldLevel) .. "->" .. tostring(self:GetUserLevel(state))
+			.. " source=" .. self:ReadString(sourceId, "minimum-level"))
+		return true
+	end
+
 	method any CreateUserState()
 		-- Creates a fresh user state with a horizontal skill chain.
 		return {

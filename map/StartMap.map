@@ -2795,7 +2795,7 @@
             {
               "@type": "script.BRLobbyMatchmaker",
               "Enable": true,
-              "TargetPlayerCount": 2.0,
+              "TargetPlayerCount": 4,
               "LobbyMapName": "StartMap",
               "GatherMapName": "RoomTestMap",
               "RoomGraphColumns": 5.0,

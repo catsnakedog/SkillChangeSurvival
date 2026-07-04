@@ -3,9 +3,9 @@ script BRLifeUI extends Logic
 
 	property string HudParentPath = "/ui/DefaultGroup"
 
-	property string TemplateTextPath = "/ui/BossTimerGroup/TimerPanel/LabelText"
+	property string TemplateTextPath = "/ui/PopupGroup/PopupBack/PopupPanel/PopupMessage"
 
-	property string FallbackTemplateTextPath = "/ui/BRMiniMapGroup/Panel/Summary"
+	property string FallbackTemplateTextPath = "/ui/ToastGroup/Toast_message"
 
 	property string LifeTextName = "BRLifeHudText"
 

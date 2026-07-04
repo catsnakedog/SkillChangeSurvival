@@ -33,6 +33,8 @@ script BRLobbyTrainingController extends Component
 
 	property boolean ResetSkillOnEnter = false
 
+	property number LobbyStartingSkillLevel = 6
+
 	property number StarterPartCount = 7
 
 	property boolean AutoEquipStarterParts = true
@@ -77,6 +79,7 @@ script BRLobbyTrainingController extends Component
 		self._T.skillReset = {}
 		self._T.starterGranted = {}
 		self._T.lobbyMovementLogValues = {}
+		self._T.lobbyLevelLogValues = {}
 		self.scanTimerId = _TimerService:SetTimerRepeat(function() self:RefreshLobbyPlayers() end, self:GetPlayerScanSeconds(), 0)
 		self:RefreshLobbyPlayers()
 		self.LobbyTrainingStatus = "Ready"
@@ -102,6 +105,7 @@ script BRLobbyTrainingController extends Component
 		self._T.skillReset = {}
 		self._T.starterGranted = {}
 		self._T.lobbyMovementLogValues = {}
+		self._T.lobbyLevelLogValues = {}
 		self.LobbyTrainingStatus = "Stopped"
 	end
 
@@ -187,6 +191,7 @@ script BRLobbyTrainingController extends Component
 		playerEntity.PlayerComponent.PVPMode = false
 		self:ApplyBattleMovementInLobby(playerEntity)
 		self:GrantStarterPartsIfNeeded(playerEntity)
+		self:EnsureLobbyStartingLevel(playerEntity)
 		self:ApplyLobbySkillStats(playerEntity)
 
 		if playerEntity.PlayerComponent.Hp <= 0 then
@@ -236,6 +241,38 @@ script BRLobbyTrainingController extends Component
 		_BRSkillSystem:NotifyUserChanged(userId)
 		self._T.starterGranted[userId] = true
 		self:Log("starter parts user=" .. userId .. " owned=" .. tostring(ownedCount) .. " target=" .. tostring(targetCount))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void EnsureLobbyStartingLevel(Entity playerEntity)
+		-- Ensures lobby players begin at the configured minimum skill level.
+		if _BRSkillSystem == nil or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+
+		self:EnsureRuntimeTables()
+		local userId = self:GetUserId(playerEntity)
+		if userId == "" then
+			return
+		end
+
+		local targetLevel = self:GetLobbyStartingSkillLevel()
+		local raised = _BRSkillSystem:EnsureUserMinimumLevel(userId, targetLevel, "lobby-start")
+		local state = _BRSkillSystem:GetUserState(userId)
+		local actualLevel = targetLevel
+		if state ~= nil then
+			actualLevel = _BRSkillSystem:GetUserLevel(state)
+		end
+
+		local signature = tostring(actualLevel) .. ":" .. tostring(targetLevel) .. ":" .. tostring(raised)
+		if self._T.lobbyLevelLogValues[userId] == signature then
+			return
+		end
+		self._T.lobbyLevelLogValues[userId] = signature
+		self:Log("starting level user=" .. userId
+			.. " level=" .. tostring(actualLevel)
+			.. " target=" .. tostring(targetLevel)
+			.. " raised=" .. tostring(raised))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -472,6 +509,11 @@ script BRLobbyTrainingController extends Component
 		return math.max(0.1, self:ReadNumber(self.LobbyGravity, 1.8))
 	end
 
+	method number GetLobbyStartingSkillLevel()
+		-- Returns the minimum skill level applied when a player enters the lobby.
+		return math.max(1, math.floor(self:ReadNumber(self.LobbyStartingSkillLevel, 6)))
+	end
+
 	method number GetStarterPartCount()
 		local configuredCount = math.max(0, math.floor(self:ReadNumber(self.StarterPartCount, 7)))
 		local minimumCount = 7
@@ -549,6 +591,9 @@ script BRLobbyTrainingController extends Component
 		end
 		if self._T.lobbyMovementLogValues == nil then
 			self._T.lobbyMovementLogValues = {}
+		end
+		if self._T.lobbyLevelLogValues == nil then
+			self._T.lobbyLevelLogValues = {}
 		end
 	end
 

@@ -24,7 +24,7 @@
           "enable": true,
           "visible": true,
           "localize": true,
-          "displayOrder": 15,
+          "displayOrder": 14,
           "pathConstraints": "//",
           "revision": 0,
           "origin": {
@@ -97,7 +97,7 @@
             {
               "@type": "MOD.Core.UIGroupComponent",
               "DefaultShow": true,
-              "GroupOrder": 15,
+              "GroupOrder": 14,
               "GroupType": 1,
               "Enable": true
             },
@@ -1128,7 +1128,7 @@
                 "b": 0.0,
                 "a": 1.0
               },
-              "FontSize": 26,
+              "FontSize": 16,
               "IgnoreMapLayerCheck": false,
               "IsLocalizationKey": false,
               "IsRichText": true,
@@ -2464,7 +2464,7 @@
                 "b": 0.0,
                 "a": 1.0
               },
-              "FontSize": 26,
+              "FontSize": 16,
               "IgnoreMapLayerCheck": false,
               "IsLocalizationKey": false,
               "IsRichText": true,
@@ -3801,7 +3801,7 @@
                 "b": 0.0,
                 "a": 1.0
               },
-              "FontSize": 26,
+              "FontSize": 16,
               "IgnoreMapLayerCheck": false,
               "IsLocalizationKey": false,
               "IsRichText": true,
@@ -5138,7 +5138,7 @@
                 "b": 0.0,
                 "a": 1.0
               },
-              "FontSize": 26,
+              "FontSize": 16,
               "IgnoreMapLayerCheck": false,
               "IsLocalizationKey": false,
               "IsRichText": true,
@@ -6475,7 +6475,7 @@
                 "b": 0.0,
                 "a": 1.0
               },
-              "FontSize": 26,
+              "FontSize": 16,
               "IgnoreMapLayerCheck": false,
               "IsLocalizationKey": false,
               "IsRichText": true,
@@ -7812,7 +7812,7 @@
                 "b": 0.0,
                 "a": 1.0
               },
-              "FontSize": 26,
+              "FontSize": 16,
               "IgnoreMapLayerCheck": false,
               "IsLocalizationKey": false,
               "IsRichText": true,
@@ -9149,7 +9149,7 @@
                 "b": 0.0,
                 "a": 1.0
               },
-              "FontSize": 26,
+              "FontSize": 16,
               "IgnoreMapLayerCheck": false,
               "IsLocalizationKey": false,
               "IsRichText": true,
@@ -10486,7 +10486,7 @@
                 "b": 0.0,
                 "a": 1.0
               },
-              "FontSize": 26,
+              "FontSize": 16,
               "IgnoreMapLayerCheck": false,
               "IsLocalizationKey": false,
               "IsRichText": true,
@@ -11823,7 +11823,7 @@
                 "b": 0.0,
                 "a": 1.0
               },
-              "FontSize": 26,
+              "FontSize": 16,
               "IgnoreMapLayerCheck": false,
               "IsLocalizationKey": false,
               "IsRichText": true,

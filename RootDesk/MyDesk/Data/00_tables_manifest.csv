@@ -1,4 +1,4 @@
-file_name,table_title,source_pages,column_count,sample_row_count,notes
+﻿file_name,table_title,source_pages,column_count,sample_row_count,notes
 summon_actions.csv,소환수 액션 데이터,p60,18,4,스킬 체인용 논리 소환수 지속/공격/이펙트 데이터
 jobs.csv,직업/계열,p2,2,11,현재 기획 직업군 기준
 characters.csv,캐릭터,p20,6,1,기본 캐릭터 스탯

@@ -46,3 +46,12 @@
 - 임팩트 프레임은 애니메이션클립의 프레임별 width 급증 지점으로 산정(msw-search `get`). 예) 디바인 스윙 1차=f4, 2·3차=f3, 4차=f3.
 - 적용 예: `디바인스윙4` → `frame_event_ids = 3:디바인스윙4/타격;5:디바인스윙4/버프` (이펙트 frame0~, 타격 f3, 자버프 f5), `total_length_frames`=클립 길이(13).
 - ⚠️ **전 스킬 공통 적용**: 모든 area 스킬이 이제 이펙트를 frame0에 재생합니다(브랜디쉬 계열 등 포함). virtual(트리거 후속) 캐스트는 제외.
+
+### 6. 피어싱 계열 하드코딩 (end스킬 증폭 · 소멸 폭발 · 둔화)
+피어싱(`피어싱`/`피어싱2`/`피어싱3`/`피어싱4`)은 관통 투사체(관통 1=2명 적중) + 소멸 시 트리거로 **다음 체인 파츠(end스킬)를 가상 시전자로 폭발 지점에서 시전**합니다. 아래 3개는 **컬럼 없이 코드 하드코딩**(사용자 요청)입니다. `BRSkillSystem.mlua` 참조.
+- **end스킬 피해 +N% (`GetPiercingEndSkillDamageRate`)**: 피어싱 트리거로 시전되는 end스킬의 데미지 배율. 피어싱2=×1.3, 3=×1.5, 4=×1.7 (1차=×1.0). 값은 `context.SkillKey`가 피어싱 계열일 때만 적용(다른 트리거 스킬 PirateProjectileTrigger 등엔 영향 없음).
+  - **전파 경로(신설 `DamageRate` 필드)**: `StartVirtualEndSkill`(rate 계산) → 가상 cast → `StartAreaCapture`/`StartProjectile`/`StartField` 컨텍스트가 `DamageRate` 복사 → `ApplySkillDamage`가 `math.floor(공격력 × 계수 × 버프 × DamageRate)`로 곱산. 일반(비-피어싱) cast는 `DamageRate=1`.
+- **소멸 시 폭발 (3·4차)**: `projectile_spawn_actions.csv`의 `expire_event_ids`에 area 이벤트(`피어싱N/폭발`)를 추가 → `피어싱N/폭발범위`(area_target_captures, hitbox `피어싱_폭발`) → `피어싱N/폭발피해`(100%). 중앙 폭발 이펙트 `b73f45d4…`(인핸스 피어싱 ll)는 `TryPlayPiercingExplosionBurst`로 **피어싱 tier≥3 투사체 소멸 시 하드코딩 재생**. `StartAreaCapture`는 투사체 컨텍스트(`context.X/Y` 존재)에서 FixedOrigin을 소멸 지점에 고정 + 스킬 메인이펙트 중복재생 억제.
+- **둔화 (4차, `피어싱4/둔화` debuff → status_id `둔화`)**: `GetHardcodedStatusMoveSpeedRate("둔화")=0.7`(이동속도 -30%). `ApplyTargetSlow`/`RestoreTargetSlow`가 대상 `MovementComponent.InputSpeed`를 원본 캡처 후 감속, 상태 만료(`TickStatuses`) 시 복원. `self._T.slowLocks[엔티티키]`에 원본 보관.
+  - ⚠️ 기존 `status_id = slow`(페이지 오더/기간틱 백스텝 등 팀원 스킬)에는 **이동감속 코드가 없어 현재 무효**입니다. 피어싱은 충돌을 피해 별도 `둔화`를 씁니다. `slow`도 실제 감속시키려면 `GetHardcodedStatusMoveSpeedRate`에 `slow` 케이스를 추가하세요(팀원 스킬 밸런스 변경 주의).
+- **에셋 매핑(추후 교체 가능)**: 2차 투사체=`인핸스 피어싱` shootobj(`33dd90ed…`)+effect(`5fa8fcd8…`), 3차는 투사체·이펙트를 2차 재사용(ll 팩엔 폭발 이펙트만 존재), 4차=`피어싱 VI` ball(`25ba6eb3…`)+effect(`782b4be2…`). 폭발 hit=`ce45778d…` 공통.

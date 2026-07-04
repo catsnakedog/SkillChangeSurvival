@@ -1028,7 +1028,11 @@ script BRBattleLogic extends Component
 		if _BRSkillSystem ~= nil then
 			rate = math.max(0, self:ReadNumber(_BRSkillSystem:GetDamageTakenRate(targetEntity), 1))
 		end
-		return math.max(minDamage, math.floor(baseDamage * rate))
+		local reducedDamage = math.max(minDamage, math.floor(baseDamage * rate))
+		if _BRSkillSystem ~= nil then
+			reducedDamage = _BRSkillSystem:ApplyConsumableShieldToDamage(targetEntity, reducedDamage, "battle")
+		end
+		return reducedDamage
 	end
 
 	@ExecSpace("ServerOnly")
@@ -1228,7 +1232,7 @@ script BRBattleLogic extends Component
 		if _BRBattleLauncher ~= nil then
 			returned = _BRBattleLauncher:ReturnEliminatedPlayerToLobby(self:GetBattleMapName(), safeUserId, self:ReadString(reason, "life-out"))
 		end
-		log("[BRBattle] eliminated user=" .. safeUserId .. " lobbyReturn=" .. tostring(returned) .. " reason=" .. self:ReadString(reason, ""))
+		log("[BRBattle] eliminated user=" .. safeUserId .. " resultShown=" .. tostring(returned) .. " reason=" .. self:ReadString(reason, ""))
 	end
 
 	@ExecSpace("ServerOnly")

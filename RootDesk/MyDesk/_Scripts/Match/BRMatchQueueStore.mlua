@@ -31,13 +31,14 @@ script BRMatchQueueStore extends Logic
 		local code, encodedQueue = storage:GetAndWait(key)
 		local missingQueue = false
 		if self:IsDataStorageSuccess(code) == false then
-			if self:IsDataStorageBadRequest(code) == false then
+			if self:IsDataStorageNotFound(code) == false then
 				owner.LastError = "Global queue read failed: " .. tostring(code)
 				log("[BRMatchQueueStore] global queue read failed: key=" .. key .. " result=" .. tostring(code))
 				return nil
 			end
 			missingQueue = true
 			encodedQueue = ""
+			log("[BRMatchQueueStore] global queue key missing. using empty queue snapshot: key=" .. key .. " result=" .. tostring(code))
 		end
 		
 		local queue = _BRMatchQueue:DecodeQueue(encodedQueue, owner:Now(), owner:GetTicketTtlSeconds())
@@ -98,19 +99,47 @@ script BRMatchQueueStore extends Logic
 		
 		local code = 0
 		local updatedValue = ""
+		local createdMissingKey = false
 		if snapshot.Missing == true then
 			code = storage:SetAndWait(key, newValue)
+			createdMissingKey = true
 		else
 			code, updatedValue = storage:UpdateAndWait(key, expectedValue, newValue)
+			if self:IsDataStorageNotFound(code) == true then
+				log("[BRMatchQueueStore] global queue missing during update. creating key=" .. key .. " result=" .. tostring(code))
+				code = storage:SetAndWait(key, newValue)
+				createdMissingKey = true
+			end
 		end
 		
 		if self:IsDataStorageSuccess(code) == true then
+			if createdMissingKey == true then
+				log("[BRMatchQueueStore] global queue key initialized: key=" .. key)
+			end
 			return true
 		end
 		
 		owner.LastError = "Global queue write failed: " .. tostring(code)
 		log("[BRMatchQueueStore] global queue write failed: key=" .. key .. " result=" .. tostring(code))
 		return false
+	end
+
+	method boolean EnsureGlobalQueueInitialized(any owner)
+		-- Creates the global queue key once when published DataStorage starts empty.
+		if self:ShouldUseGlobalQueue(owner, false) == false then
+			return false
+		end
+
+		local snapshot = self:ReadGlobalQueueSnapshot(owner)
+		if snapshot == nil then
+			return false
+		end
+		if snapshot.Missing ~= true then
+			return true
+		end
+
+		log("[BRMatchQueueStore] initializing missing global queue key: key=" .. self:ReadString(snapshot.Key, self:GetGlobalQueueKey(owner)))
+		return self:CommitGlobalQueueSnapshot(owner, snapshot)
 	end
 
 	method boolean ResetGlobalQueue(any owner)
@@ -194,17 +223,28 @@ script BRMatchQueueStore extends Logic
 		end
 		
 		local codeText = tostring(code)
-		return codeText == "Success" or codeText == "WriteResultCode.Success"
+		return codeText == "Success" or codeText == "OK" or codeText == "WriteResultCode.Success" or codeText == "SharedMemoryResultCode.OK"
+	end
+
+	method boolean IsDataStorageNotFound(any code)
+		-- Returns true for published DataStorage missing-key responses.
+		local codeNumber = tonumber(code)
+		if codeNumber ~= nil then
+			return codeNumber == 1000002
+		end
+
+		local codeText = tostring(code)
+		return codeText == "NotFound" or codeText == "SharedMemoryResultCode.NotFound"
 	end
 
 	method boolean IsDataStorageBadRequest(any code)
 		local codeNumber = tonumber(code)
 		if codeNumber ~= nil then
-			return codeNumber == 2
+			return codeNumber == 2 or codeNumber == 1000003
 		end
 		
 		local codeText = tostring(code)
-		return codeText == "BadRequest" or codeText == "WriteResultCode.BadRequest"
+		return codeText == "BadRequest" or codeText == "WriteResultCode.BadRequest" or codeText == "SharedMemoryResultCode.BadRequest"
 	end
 
 	method string ReadString(any value, string fallback)

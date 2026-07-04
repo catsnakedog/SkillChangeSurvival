@@ -19,7 +19,8 @@
       "Id": "shadowdash",
       "Components": [
         "MOD.Core.TransformComponent",
-        "MOD.Core.SpriteRendererComponent"
+        "MOD.Core.SpriteRendererComponent",
+        "script.ShadowDashProjectile"
       ],
       "Properties": [],
       "Values": [

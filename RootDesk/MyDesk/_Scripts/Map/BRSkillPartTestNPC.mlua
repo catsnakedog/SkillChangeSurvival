@@ -5,11 +5,26 @@ script BRSkillPartTestNPC extends Component
 
 	property number InteractionRange = 1.8
 
+	property number LobbyKioskPrice = 0
+
+	property string CandyMachineStandRUID = "fe310ca2f8e74eb18858ff45273f61e4"
+
+	property string CandyMachineActionRUID = "ea9a08bfa95c4217b1796262feaa737b"
+
+	property string CandyMachineEyeRUID = "31053e533872440598525ce6a660dff2"
+
+	property string CandyMachineNeonRUID = "86ea9c13eb114bea9503ae4db05ecc6e"
+
+	property number CandyMachineOrderInLayer = 35
+
+	property number CandyMachineActionPreviewSeconds = 0.6
+
 	property boolean VerboseLog = true
 
 	property any inputKeyDownHandler = nil
 
 	method void OnBeginPlay()
+		self:ApplyCandyMachineVisual()
 		self.inputKeyDownHandler = nil
 		if self:IsClient() then
 			self:StartInput()
@@ -52,8 +67,90 @@ script BRSkillPartTestNPC extends Component
 			self:Log("open skipped reason=noSkillPartTestUI")
 			return
 		end
-		_BRSkillPartTestUI:Open()
-		self:Log("open requested npc=" .. self:GetNpcName())
+		local userId = self:GetLocalUserId()
+		if userId == "" then
+			self:Log("open skipped reason=noLocalUser npc=" .. self:GetNpcName())
+			return
+		end
+		local position = self:GetWorldPosition()
+		local mapName = self:GetMapName()
+		local price = math.max(0, math.floor(self:ReadNumber(self.LobbyKioskPrice, 0)))
+		self:PlayKioskActionLocal()
+		_BRSkillPartTestUI:OpenKiosk(userId, mapName, position.x, position.y, price)
+		self:Log("kiosk open requested npc=" .. self:GetNpcName() .. " map=" .. mapName .. " price=" .. tostring(price))
+	end
+
+	method void ApplyCandyMachineVisual()
+		-- Applies the candy-machine idle animation clips to the NPC and its overlay children.
+		self:ApplyRootStandVisual()
+		self:ApplyOverlayVisual("Eye", self:ReadString(self.CandyMachineEyeRUID, ""), self:GetCandyMachineOrderInLayer() + 1)
+		self:ApplyOverlayVisual("Neon", self:ReadString(self.CandyMachineNeonRUID, ""), self:GetCandyMachineOrderInLayer() + 2)
+		self:Log("candy visual ready stand=" .. self:ReadString(self.CandyMachineStandRUID, ""))
+	end
+
+	method void ApplyRootStandVisual()
+		-- Restores the main vending-machine body to its idle stand clip.
+		self:ApplySpriteVisual(self.Entity, self:ReadString(self.CandyMachineStandRUID, ""), self:GetCandyMachineOrderInLayer())
+	end
+
+	method void ApplyOverlayVisual(string childName, string ruid, number order)
+		-- Applies a same-origin overlay clip when the authored child exists.
+		if self.Entity == nil then
+			return
+		end
+		local child = self.Entity:GetChildByName(self:ReadString(childName, ""), false)
+		if child == nil then
+			return
+		end
+		self:ApplySpriteVisual(child, ruid, order)
+	end
+
+	method void ApplySpriteVisual(Entity entity, string ruid, number order)
+		-- Writes a SpriteRenderer animationclip RUID without relying on the old Lucid asset.
+		if entity == nil or self:ReadString(ruid, "") == "" then
+			return
+		end
+		local renderer = entity.SpriteRendererComponent
+		if renderer == nil then
+			renderer = entity:AddComponent("SpriteRendererComponent")
+		end
+		if renderer == nil then
+			return
+		end
+		renderer.Enable = true
+		renderer.SpriteRUID = self:ReadString(ruid, "")
+		renderer.OrderInLayer = math.floor(self:ReadNumber(order, self:GetCandyMachineOrderInLayer()))
+		renderer.PlayRate = 1
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PlayKioskActionLocal()
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil and self:ReadString(self.CandyMachineActionRUID, "") ~= "" then
+			self.Entity.SpriteRendererComponent.SpriteRUID = self:ReadString(self.CandyMachineActionRUID, "")
+			_TimerService:SetTimerOnce(function() self:RestoreCandyMachineStandLocal() end, self:GetActionPreviewSeconds())
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PlayKioskActionForSeconds(number seconds)
+		-- Keeps the candy-machine action clip visible during delayed purchase delivery.
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil and self:ReadString(self.CandyMachineActionRUID, "") ~= "" then
+			local duration = math.max(0.1, self:ReadNumber(seconds, 15))
+			self.Entity.SpriteRendererComponent.SpriteRUID = self:ReadString(self.CandyMachineActionRUID, "")
+			_TimerService:SetTimerOnce(function() self:RestoreCandyMachineStand() end, duration)
+			self:Log("kiosk action hold seconds=" .. tostring(duration))
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RestoreCandyMachineStandLocal()
+		self:ApplyRootStandVisual()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RestoreCandyMachineStand()
+		-- Restores the idle body clip after a server-driven action animation.
+		self:ApplyRootStandVisual()
 	end
 
 	method boolean IsInteractionKey(KeyDownEvent event)
@@ -102,8 +199,45 @@ script BRSkillPartTestNPC extends Component
 		return self:ReadString(self.Entity.Name, "SkillPartTestNPC")
 	end
 
+	@ExecSpace("ClientOnly")
+	method string GetLocalUserId()
+		if _UserService == nil or _UserService.LocalPlayer == nil or _UserService.LocalPlayer.PlayerComponent == nil then
+			return ""
+		end
+		return self:ReadString(_UserService.LocalPlayer.PlayerComponent.UserId, "")
+	end
+
+	method string GetMapName()
+		if self.Entity == nil then
+			return ""
+		end
+		local currentMapName = self:ReadString(self.Entity.CurrentMapName, "")
+		if currentMapName ~= "" then
+			return currentMapName
+		end
+		if self.Entity.CurrentMap ~= nil then
+			return self:ReadString(self.Entity.CurrentMap.Name, "")
+		end
+		return ""
+	end
+
+	method Vector3 GetWorldPosition()
+		if self.Entity ~= nil and self.Entity.TransformComponent ~= nil then
+			return self.Entity.TransformComponent.WorldPosition
+		end
+		return Vector3(0, 0, 0)
+	end
+
 	method number GetInteractionRange()
 		return math.max(0.2, self:ReadNumber(self.InteractionRange, 1.8))
+	end
+
+	method number GetCandyMachineOrderInLayer()
+		return math.floor(self:ReadNumber(self.CandyMachineOrderInLayer, 35))
+	end
+
+	method number GetActionPreviewSeconds()
+		return math.max(0.1, self:ReadNumber(self.CandyMachineActionPreviewSeconds, 0.6))
 	end
 
 	method string GetInteractionKeyName()

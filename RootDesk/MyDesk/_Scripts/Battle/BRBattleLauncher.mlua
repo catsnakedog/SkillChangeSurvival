@@ -79,11 +79,21 @@ script BRBattleLauncher extends Logic
 
 	property number InstanceRoomCreateMaxAttempts = 0
 
+	property any roomStartEventHandler = nil
+
+	property any roomStateEventHandler = nil
+
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
 		-- Initializes server-side match flow runtime tables.
 		self:ResetRuntime()
+		self:ConnectBattleRoomStartEvent()
 		log("[BRBattleLauncher] ready loading=" .. tostring(self:GetMatchLoadingSeconds(nil)))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnEndPlay()
+		self:DisconnectBattleRoomStartEvent()
 	end
 
 	method void ResetRuntime()
@@ -103,6 +113,439 @@ script BRBattleLauncher extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
+	method void ConnectBattleRoomStartEvent()
+		if _RoomService == nil then
+			log("[BRBattleLauncher] room start event skipped: RoomService missing")
+			return
+		end
+		if self.roomStartEventHandler ~= nil and self.roomStateEventHandler ~= nil then
+			return
+		end
+
+		if self.roomStartEventHandler == nil then
+			self.roomStartEventHandler = _RoomService:ConnectEvent(BRBattleRoomStartEvent, self.OnBattleRoomStartEvent)
+		end
+		if self.roomStateEventHandler == nil then
+			self.roomStateEventHandler = _RoomService:ConnectEvent(BRBattleRoomStateEvent, self.OnBattleRoomStateEvent)
+		end
+		log("[BRBattleLauncher] room events connected")
+	end
+
+	@ExecSpace("ServerOnly")
+	method void DisconnectBattleRoomStartEvent()
+		if _RoomService == nil then
+			self.roomStartEventHandler = nil
+			self.roomStateEventHandler = nil
+			return
+		end
+
+		if self.roomStartEventHandler ~= nil then
+			_RoomService:DisconnectEvent(BRBattleRoomStartEvent, self.roomStartEventHandler)
+		end
+		if self.roomStateEventHandler ~= nil then
+			_RoomService:DisconnectEvent(BRBattleRoomStateEvent, self.roomStateEventHandler)
+		end
+		self.roomStartEventHandler = nil
+		self.roomStateEventHandler = nil
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnBattleRoomStartEvent(BRBattleRoomStartEvent event)
+		if event == nil then
+			return
+		end
+
+		local payload = self:DecodeBattleRoomStartPayload(self:ReadString(event.Payload, ""))
+		if payload == nil then
+			log("[BRBattleLauncher] room start event ignored: invalid payload")
+			return
+		end
+
+		local targetRoomKey = self:ReadString(payload.RoomKey, self:ReadString(payload.InstanceRoomKey, ""))
+		local currentRoomKey = ""
+		if _RoomService ~= nil then
+			currentRoomKey = self:ReadString(_RoomService.RoomKey, "")
+		end
+		if targetRoomKey ~= "" and currentRoomKey ~= "" and targetRoomKey ~= currentRoomKey then
+			return
+		end
+
+		local matchRoom = self:BuildMatchRoomFromBattleStartPayload(payload)
+		local ownerConfig = payload.Config
+		local targetMapName = self:ReadString(payload.TargetMapName, self:ReadString(matchRoom.TargetMapName, "RoomTestMap"))
+		local loadingSeconds = self:ReadNumber(payload.LoadingSeconds, self:GetMatchLoadingSeconds(ownerConfig))
+		self:StartInstanceRoomBattle(matchRoom, ownerConfig, targetMapName, loadingSeconds)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnBattleRoomStateEvent(BRBattleRoomStateEvent event)
+		if event == nil then
+			return
+		end
+
+		local payload = self:DecodeBattleRoomStartPayload(self:ReadString(event.Payload, ""))
+		if payload == nil then
+			log("[BRBattleLauncher] room state event ignored: invalid payload")
+			return
+		end
+
+		local targetRoomKey = self:ReadString(payload.TargetRoomKey, self:ReadString(payload.SourceRoomKey, ""))
+		local currentRoomKey = ""
+		if _RoomService ~= nil then
+			currentRoomKey = self:ReadString(_RoomService.RoomKey, "")
+		end
+		if targetRoomKey ~= "" and currentRoomKey ~= "" and targetRoomKey ~= currentRoomKey then
+			return
+		end
+		if _BRLobbyMatchmaker == nil then
+			log("[BRBattleLauncher] room state event skipped: matchmaker missing state=" .. self:ReadString(payload.State, ""))
+			return
+		end
+
+		local state = self:ReadString(payload.State, "")
+		local matchRoom = self:BuildMatchRoomFromBattleStartPayload(payload)
+		if state == "Playing" then
+			_BRLobbyMatchmaker:MarkMatchPlaying(matchRoom)
+		elseif state == "Complete" then
+			_BRLobbyMatchmaker:CompleteMatch(matchRoom, self:ReadString(payload.WinnerUserId, ""), self:ReadString(payload.Reason, ""))
+		end
+		log("[BRBattleLauncher] room state event applied state=" .. state .. " match=" .. self:ReadString(matchRoom.MatchId, ""))
+	end
+
+	method any DecodeBattleRoomStartPayload(string payloadText)
+		local safePayload = self:ReadString(payloadText, "")
+		if safePayload == "" or _HttpService == nil then
+			return nil
+		end
+		return _HttpService:JSONDecode(safePayload)
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean DispatchMatchStartToInstanceRoom(any matchRoom, any owner, string targetMapName, number loadingSeconds)
+		if matchRoom == nil then
+			return false
+		end
+		if _RoomService == nil then
+			log("[BRBattleLauncher] instance start dispatch failed: RoomService missing")
+			return false
+		end
+		if _HttpService == nil then
+			log("[BRBattleLauncher] instance start dispatch failed: HttpService missing")
+			return false
+		end
+
+		local roomKey = self:ReadString(matchRoom.RoomKey, self:ReadString(matchRoom.InstanceRoomKey, ""))
+		if roomKey == "" then
+			log("[BRBattleLauncher] instance start dispatch failed: empty room key")
+			return false
+		end
+
+		local event = BRBattleRoomStartEvent()
+		event.Payload = _HttpService:JSONEncode(self:BuildBattleRoomStartPayload(matchRoom, owner, targetMapName, loadingSeconds))
+		local result = _RoomService:RequestSendEventToRoomAndWait(event, roomKey)
+		local success = self:IsSendEventSuccess(result)
+		log("[BRBattleLauncher] instance start dispatch result=" .. tostring(result) .. " success=" .. tostring(success) .. " roomKey=" .. roomKey .. " match=" .. self:ReadString(matchRoom.MatchId, ""))
+		return success
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ScheduleInstanceStartDispatchRetries(any matchRoom, any owner, string targetMapName, number loadingSeconds)
+		if _TimerService == nil then
+			return
+		end
+		_TimerService:SetTimerOnce(function()
+			self:DispatchMatchStartToInstanceRoom(matchRoom, owner, targetMapName, loadingSeconds)
+		end, 0.6)
+		_TimerService:SetTimerOnce(function()
+			self:DispatchMatchStartToInstanceRoom(matchRoom, owner, targetMapName, loadingSeconds)
+		end, 1.5)
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean DispatchMatchStateToSourceRoom(any matchRoom, string state, string winnerUserId, string reason)
+		if matchRoom == nil then
+			return false
+		end
+		if _RoomService == nil or _HttpService == nil then
+			return false
+		end
+
+		local sourceRoomKey = self:ReadString(matchRoom.SourceRoomKey, "")
+		if sourceRoomKey == "" then
+			return false
+		end
+
+		local payload = self:BuildBattleRoomStatePayload(matchRoom, state, winnerUserId, reason)
+		local event = BRBattleRoomStateEvent()
+		event.Payload = _HttpService:JSONEncode(payload)
+		local result = _RoomService:RequestSendEventToRoomAndWait(event, sourceRoomKey)
+		local success = self:IsSendEventSuccess(result)
+		log("[BRBattleLauncher] room state dispatch state=" .. self:ReadString(state, "") .. " match=" .. self:ReadString(matchRoom.MatchId, "") .. " sourceRoom=" .. sourceRoomKey .. " result=" .. tostring(result) .. " success=" .. tostring(success))
+		return success
+	end
+
+	method boolean IsSendEventSuccess(any result)
+		if result == nil then
+			return false
+		end
+		if result == 0 then
+			return true
+		end
+		if SendEventRequestResultCode ~= nil and result == SendEventRequestResultCode.OK then
+			return true
+		end
+		return false
+	end
+
+	method any BuildBattleRoomStartPayload(any matchRoom, any owner, string targetMapName, number loadingSeconds)
+		local players = {}
+		if matchRoom ~= nil and matchRoom.Players ~= nil then
+			for _, player in ipairs(matchRoom.Players) do
+				table.insert(players, self:BuildBattleRoomStartPlayerPayload(player))
+			end
+		end
+
+		return {
+			MatchId = self:ReadString(matchRoom.MatchId, ""),
+			Mode = self:ReadString(matchRoom.Mode, ""),
+			RoomKey = self:ReadString(matchRoom.RoomKey, ""),
+			InstanceRoomKey = self:ReadString(matchRoom.InstanceRoomKey, self:ReadString(matchRoom.RoomKey, "")),
+			SourceMapName = self:ReadString(matchRoom.SourceMapName, ""),
+			TargetMapName = self:ReadString(targetMapName, self:ReadString(matchRoom.TargetMapName, "RoomTestMap")),
+			SourceRoomKey = self:ReadString(matchRoom.SourceRoomKey, ""),
+			TargetRoomKey = self:ReadString(matchRoom.SourceRoomKey, ""),
+			TargetPlayerCount = self:GetTargetPlayerCountForBots(matchRoom, owner),
+			CreatedAt = self:ReadNumber(matchRoom.CreatedAt, _UtilLogic.ServerElapsedSeconds),
+			ExpiresAt = self:ReadNumber(matchRoom.ExpiresAt, 0),
+			LoadingSeconds = self:ReadNumber(loadingSeconds, self:GetMatchLoadingSeconds(owner)),
+			Players = players,
+			Config = self:BuildInstanceRoomOwnerConfig(owner, matchRoom)
+		}
+	end
+
+	method any BuildBattleRoomStatePayload(any matchRoom, string state, string winnerUserId, string reason)
+		local payload = self:BuildBattleRoomStartPayload(matchRoom, nil, self:ReadString(matchRoom.TargetMapName, "RoomTestMap"), 0)
+		payload.State = self:ReadString(state, "")
+		payload.WinnerUserId = self:ReadString(winnerUserId, "")
+		payload.Reason = self:ReadString(reason, "")
+		payload.TargetRoomKey = self:ReadString(matchRoom.SourceRoomKey, "")
+		return payload
+	end
+
+	method any BuildBattleRoomStartPlayerPayload(any player)
+		if player == nil then
+			return {}
+		end
+		return {
+			UserId = self:ReadString(player.UserId, ""),
+			TicketId = self:ReadString(player.TicketId, ""),
+			ProfileCode = self:ReadString(player.ProfileCode, ""),
+			WorldInstanceId = self:ReadString(player.WorldInstanceId, ""),
+			SpawnIndex = math.floor(self:ReadNumber(player.SpawnIndex, 0)),
+			SpawnCornerName = self:ReadString(player.SpawnCornerName, ""),
+			SpawnPositionX = self:ReadNumber(player.SpawnPositionX, 0),
+			SpawnPositionY = self:ReadNumber(player.SpawnPositionY, 0),
+			State = self:ReadString(player.State, "")
+		}
+	end
+
+	method any BuildInstanceRoomOwnerConfig(any owner, any matchRoom)
+		local config = {
+			LobbyMapName = self:ReadString(self:ReadOwnerValue(owner, "LobbyMapName", ""), "StartMap"),
+			GatherMapName = self:ReadString(self:ReadOwnerValue(owner, "GatherMapName", ""), "RoomTestMap"),
+			GatherCenterX = self:ReadNumber(self:ReadOwnerValue(owner, "GatherCenterX", 0), 0),
+			GatherCenterY = self:ReadNumber(self:ReadOwnerValue(owner, "GatherCenterY", 3), 3),
+			TargetPlayerCount = self:GetTargetPlayerCountForBots(matchRoom, owner),
+			UseInstanceBattleRooms = true,
+			EnableMagneticZone = self:IsMagneticZoneEnabled(owner),
+			BattleTimerSeconds = self:GetBattleTimerSeconds(owner),
+			BattleTimerLabel = self:GetBattleTimerLabel(owner),
+			MatchLoadingSeconds = self:GetMatchLoadingSeconds(owner),
+			PostLoadingCurtainSeconds = self:GetPostLoadingCurtainSeconds(owner),
+			PreCountdownDelaySeconds = self:GetPreCountdownDelaySeconds(owner),
+			BattleStartCountdownSeconds = self:GetBattleStartCountdownSeconds(owner),
+			BattleStartEffectSeconds = self:GetBattleStartEffectSeconds(owner),
+			BattleStartCountdownEffectRUID = self:GetBattleStartCountdownEffectRUID(owner),
+			BattleStartEffectRUID = self:GetBattleStartEffectRUID(owner),
+			BattleStartEffectScale = self:GetBattleStartEffectScale(owner),
+			BattleBotModelId = self:GetBattleBotModelId(owner),
+			BattleBotMaxHp = self:GetBattleBotMaxHp(owner),
+			BattleBotLives = self:GetBattleBotLives(owner),
+			BattleBotMaxFillCount = self:GetBattleBotMaxFillCount(owner),
+			RoomGraphColumns = self:GetOwnerNumber(owner, "RoomGraphColumns", 5),
+			RoomGraphRows = self:GetOwnerNumber(owner, "RoomGraphRows", 5),
+			RoomGraphMapPartCount = self:GetOwnerNumber(owner, "RoomGraphMapPartCount", 40),
+			RoomGraphExtraConnectionChancePercent = self:GetOwnerNumber(owner, "RoomGraphExtraConnectionChancePercent", 0),
+			MagneticZoneShrinkIntervalSeconds = self:GetMagneticZoneShrinkIntervalSeconds(owner),
+			MagneticZoneWarningSeconds = self:GetMagneticZoneWarningSeconds(owner),
+			MagneticZoneForbiddenSeconds = self:GetMagneticZoneForbiddenSeconds(owner),
+			MagneticZoneShrinkAmount = self:GetMagneticZoneShrinkAmount(owner)
+		}
+		return config
+	end
+
+	method any ReadOwnerValue(any owner, string key, any fallback)
+		if owner == nil or key == "" then
+			return fallback
+		end
+		if key == "LobbyMapName" and owner.LobbyMapName ~= nil then
+			return owner.LobbyMapName
+		elseif key == "GatherMapName" and owner.GatherMapName ~= nil then
+			return owner.GatherMapName
+		elseif key == "GatherCenterX" and owner.GatherCenterX ~= nil then
+			return owner.GatherCenterX
+		elseif key == "GatherCenterY" and owner.GatherCenterY ~= nil then
+			return owner.GatherCenterY
+		elseif key == "RoomGraphColumns" and owner.RoomGraphColumns ~= nil then
+			return owner.RoomGraphColumns
+		elseif key == "RoomGraphRows" and owner.RoomGraphRows ~= nil then
+			return owner.RoomGraphRows
+		elseif key == "RoomGraphMapPartCount" and owner.RoomGraphMapPartCount ~= nil then
+			return owner.RoomGraphMapPartCount
+		elseif key == "RoomGraphExtraConnectionChancePercent" and owner.RoomGraphExtraConnectionChancePercent ~= nil then
+			return owner.RoomGraphExtraConnectionChancePercent
+		end
+		return fallback
+	end
+
+	method number GetOwnerNumber(any owner, string key, number fallback)
+		return self:ReadNumber(self:ReadOwnerValue(owner, key, fallback), fallback)
+	end
+
+	method any BuildMatchRoomFromBattleStartPayload(any payload)
+		local players = {}
+		if payload ~= nil and payload.Players ~= nil then
+			for _, player in ipairs(payload.Players) do
+				table.insert(players, self:BuildMatchRoomPlayerFromPayload(player))
+			end
+		end
+
+		local matchRoom = {
+			MatchId = self:ReadString(payload.MatchId, ""),
+			Mode = self:ReadString(payload.Mode, "SoloBattleRoyale"),
+			RoomKey = self:ReadString(payload.RoomKey, self:ReadString(payload.InstanceRoomKey, "")),
+			InstanceRoomKey = self:ReadString(payload.InstanceRoomKey, self:ReadString(payload.RoomKey, "")),
+			SourceRoomKey = self:ReadString(payload.SourceRoomKey, ""),
+			SourceMapName = self:ReadString(payload.SourceMapName, ""),
+			TargetMapName = self:ReadString(payload.TargetMapName, "RoomTestMap"),
+			TargetPlayerCount = math.max(1, math.floor(self:ReadNumber(payload.TargetPlayerCount, #players))),
+			CreatedAt = self:ReadNumber(payload.CreatedAt, _UtilLogic.ServerElapsedSeconds),
+			ExpiresAt = self:ReadNumber(payload.ExpiresAt, 0),
+			Players = players
+		}
+		return matchRoom
+	end
+
+	method any BuildMatchRoomPlayerFromPayload(any player)
+		if player == nil then
+			return {}
+		end
+		return {
+			UserId = self:ReadString(player.UserId, ""),
+			TicketId = self:ReadString(player.TicketId, ""),
+			ProfileCode = self:ReadString(player.ProfileCode, ""),
+			WorldInstanceId = self:ReadString(player.WorldInstanceId, ""),
+			SpawnIndex = math.floor(self:ReadNumber(player.SpawnIndex, 0)),
+			SpawnCornerName = self:ReadString(player.SpawnCornerName, ""),
+			SpawnPositionX = self:ReadNumber(player.SpawnPositionX, 0),
+			SpawnPositionY = self:ReadNumber(player.SpawnPositionY, 0),
+			State = self:ReadString(player.State, "Arrived")
+		}
+	end
+
+	@ExecSpace("ServerOnly")
+	method void StartInstanceRoomBattle(any matchRoom, any owner, string targetMapName, number loadingSeconds)
+		if matchRoom == nil then
+			log("[BRBattleLauncher] instance battle skipped: matchRoom nil")
+			return
+		end
+
+		local safeMapName = self:ReadString(targetMapName, self:ReadString(matchRoom.TargetMapName, "RoomTestMap"))
+		if safeMapName == "" then
+			log("[BRBattleLauncher] instance battle skipped: empty map")
+			return
+		end
+
+		self:EnsureRuntimeTables()
+		local matchId = self:ReadString(matchRoom.MatchId, "")
+		local existing = self._T.activeMatchesById[matchId]
+		if existing ~= nil and existing["Finished"] ~= true then
+			log("[BRBattleLauncher] instance battle duplicate ignored id=" .. matchId)
+			return
+		end
+
+		self:NotifyMatchLoading(matchRoom, owner, loadingSeconds)
+		self:EnsurePhysicalGrid(safeMapName)
+		self:RegisterActiveMatch(matchRoom, owner, safeMapName, loadingSeconds)
+		self:ApplyInstanceRoomStartPositions(matchRoom, owner, safeMapName)
+		if _TimerService ~= nil then
+			_TimerService:SetTimerOnce(function() self:ApplyInstanceRoomStartPositions(matchRoom, owner, safeMapName) end, 0.35)
+			_TimerService:SetTimerOnce(function() self:ApplyInstanceRoomStartPositions(matchRoom, owner, safeMapName) end, 1.2)
+		end
+		local humanCount = 0
+		if matchRoom.Players ~= nil then
+			humanCount = #matchRoom.Players
+		end
+		local botCount = self:SpawnBattleBotsForMatchRoom(matchRoom, owner, humanCount, safeMapName)
+		log("[BRBattleLauncher] instance battle actors ready match=" .. matchId .. " humans=" .. tostring(humanCount) .. " bots=" .. tostring(botCount) .. " map=" .. safeMapName)
+
+		local roomGraph = self:GenerateRoomGraph(matchRoom, owner)
+		if roomGraph == nil then
+			log("[BRBattleLauncher] instance battle failed: room graph generation failed match=" .. matchId)
+			self:ReturnPlayersToLobby(matchRoom, owner)
+			self:UnregisterActiveMatch(matchId, safeMapName)
+			return
+		end
+
+		self:SchedulePrepareSupplies(matchRoom, roomGraph, safeMapName)
+		self:ScheduleBattleSystems(matchId, loadingSeconds)
+		log("[BRBattleLauncher] instance battle scheduled match=" .. matchId .. " loading=" .. tostring(loadingSeconds) .. " map=" .. safeMapName)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ApplyInstanceRoomStartPositions(any matchRoom, any owner, string targetMapName)
+		if matchRoom == nil or matchRoom.Players == nil then
+			return
+		end
+
+		local safeMapName = self:ReadString(targetMapName, self:ResolveTargetMapForRoom(matchRoom, owner))
+		local total = #matchRoom.Players
+		for index, player in ipairs(matchRoom.Players) do
+			local userId = self:ReadString(player.UserId, "")
+			if userId ~= "" then
+				local spawnIndex = math.floor(self:ReadNumber(player.SpawnIndex, index))
+				if spawnIndex <= 0 then
+					spawnIndex = index
+				end
+				local spawnPosition = self:GetSpawnPosition(matchRoom, spawnIndex, total, owner)
+				player.SpawnPositionX = spawnPosition.x
+				player.SpawnPositionY = spawnPosition.y
+				player.SpawnCornerName = self:GetStartCornerRoomName(spawnIndex)
+
+				local playerEntity = _UserService:GetUserEntityByUserId(userId)
+				if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
+					playerEntity.PlayerComponent.RespawnPosition = Vector3(spawnPosition.x, spawnPosition.y, 0)
+					self:ApplyPlayerWorldPosition(playerEntity, spawnPosition, "instance-room-start")
+					self:ApplyLocalPlayerWorldPosition(spawnPosition, "instance-room-start", userId)
+					self:SetGatherName(userId, spawnIndex, total)
+					log("[BRBattleLauncher] instance start position applied user=" .. userId .. " slot=" .. tostring(spawnIndex) .. " map=" .. safeMapName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
+				else
+					log("[BRBattleLauncher] instance start position skipped user=" .. userId .. " map=" .. safeMapName .. " reason=entity nil")
+				end
+			end
+		end
+	end
+
+	method number GetEstimatedBattleBotCount(any matchRoom, any owner, number movedPlayerCount)
+		if self.EnableBattleBots ~= true then
+			return 0
+		end
+		local targetCount = self:GetTargetPlayerCountForBots(matchRoom, owner)
+		local humanCount = math.max(0, math.floor(self:ReadNumber(movedPlayerCount, 0)))
+		return math.min(self:GetBattleBotMaxFillCount(owner), math.max(0, targetCount - humanCount))
+	end
+
+	@ExecSpace("ServerOnly")
 	method any StartMatchRoom(any matchRoom, any owner)
 		-- Starts a match after ensuring the per-match battle room exists.
 		if matchRoom == nil then
@@ -115,6 +558,9 @@ script BRBattleLauncher extends Logic
 		end
 		
 		matchRoom.TargetMapName = targetMapName
+		if _RoomService ~= nil then
+			matchRoom.SourceRoomKey = self:ReadString(_RoomService.RoomKey, "")
+		end
 		local startedAt = _UtilLogic.ServerElapsedSeconds
 		log("[BRBattleLauncher] launch begin match=" .. self:ReadString(matchRoom.MatchId, "") .. " map=" .. targetMapName)
 		local roomCreateResult = self:EnsureBattleInstanceRoom(matchRoom, owner, targetMapName)
@@ -138,23 +584,39 @@ script BRBattleLauncher extends Logic
 		self:EnsurePhysicalGrid(targetMapName)
 
 		local loadingSeconds = self:GetMatchLoadingSeconds(owner)
-		self:NotifyMatchLoading(matchRoom, owner, loadingSeconds)
+		local useInstanceBattleRooms = self:ShouldUseInstanceBattleRooms(owner)
+		if useInstanceBattleRooms == true then
+			self:NotifyMatchLoading(matchRoom, owner, loadingSeconds)
+			log("[BRBattleLauncher] loading opened before instance room move match=" .. self:ReadString(matchRoom.MatchId, "") .. " seconds=" .. tostring(loadingSeconds))
+		else
+			self:NotifyMatchLoading(matchRoom, owner, loadingSeconds)
+		end
 
 		local movedCount = self:MovePlayersToMatchRoom(matchRoom, owner)
 		local botCount = 0
 		local roomGraph = nil
 		if movedCount > 0 then
-			self:RegisterActiveMatch(matchRoom, owner, targetMapName, loadingSeconds)
-			botCount = self:SpawnBattleBotsForMatchRoom(matchRoom, owner, movedCount, targetMapName)
-			log("[BRBattleLauncher] launch actors ready match=" .. self:ReadString(matchRoom.MatchId, "") .. " moved=" .. tostring(movedCount) .. " bots=" .. tostring(botCount) .. " elapsed=" .. tostring(math.floor((_UtilLogic.ServerElapsedSeconds - startedAt) * 100) * 0.01))
-			roomGraph = self:GenerateRoomGraph(matchRoom, owner)
-			if roomGraph == nil then
-				self:ReturnPlayersToLobby(matchRoom, owner)
-				return self:CreateResult(false, targetMapName, movedCount, "Room graph generation failed")
+			if useInstanceBattleRooms == true then
+				botCount = self:GetEstimatedBattleBotCount(matchRoom, owner, movedCount)
+				if self:DispatchMatchStartToInstanceRoom(matchRoom, owner, targetMapName, loadingSeconds) ~= true then
+					self:ReturnPlayersToLobby(matchRoom, owner)
+					return self:CreateResult(false, targetMapName, movedCount, "Instance room start dispatch failed")
+				end
+				self:ScheduleInstanceStartDispatchRetries(matchRoom, owner, targetMapName, loadingSeconds)
+				log("[BRBattleLauncher] launch dispatched to instance match=" .. self:ReadString(matchRoom.MatchId, "") .. " moved=" .. tostring(movedCount) .. " estimatedBots=" .. tostring(botCount) .. " elapsed=" .. tostring(math.floor((_UtilLogic.ServerElapsedSeconds - startedAt) * 100) * 0.01))
+			else
+				self:RegisterActiveMatch(matchRoom, owner, targetMapName, loadingSeconds)
+				botCount = self:SpawnBattleBotsForMatchRoom(matchRoom, owner, movedCount, targetMapName)
+				log("[BRBattleLauncher] launch actors ready match=" .. self:ReadString(matchRoom.MatchId, "") .. " moved=" .. tostring(movedCount) .. " bots=" .. tostring(botCount) .. " elapsed=" .. tostring(math.floor((_UtilLogic.ServerElapsedSeconds - startedAt) * 100) * 0.01))
+				roomGraph = self:GenerateRoomGraph(matchRoom, owner)
+				if roomGraph == nil then
+					self:ReturnPlayersToLobby(matchRoom, owner)
+					return self:CreateResult(false, targetMapName, movedCount, "Room graph generation failed")
+				end
+				log("[BRBattleLauncher] launch graph ready match=" .. self:ReadString(matchRoom.MatchId, "") .. " elapsed=" .. tostring(math.floor((_UtilLogic.ServerElapsedSeconds - startedAt) * 100) * 0.01))
+				self:SchedulePrepareSupplies(matchRoom, roomGraph, targetMapName)
+				self:ScheduleBattleSystems(matchRoom.MatchId, loadingSeconds)
 			end
-			log("[BRBattleLauncher] launch graph ready match=" .. self:ReadString(matchRoom.MatchId, "") .. " elapsed=" .. tostring(math.floor((_UtilLogic.ServerElapsedSeconds - startedAt) * 100) * 0.01))
-			self:SchedulePrepareSupplies(matchRoom, roomGraph, targetMapName)
-			self:ScheduleBattleSystems(matchRoom.MatchId, loadingSeconds)
 		else
 			self:NotifyMatchLoadingClosed(matchRoom)
 		end
@@ -539,6 +1001,10 @@ script BRBattleLauncher extends Logic
 		if entry["StartSequenceStarted"] == true then
 			return
 		end
+		if self:IsCurrentRoomForMatch(entry["MatchRoom"]) ~= true then
+			log("[BRBattleLauncher] countdown skipped outside match room id=" .. safeMatchId .. " currentRoom=" .. self:GetCurrentRoomKey())
+			return
+		end
 
 		entry["LoadingTimerId"] = 0
 		entry["StartSequenceStarted"] = true
@@ -565,6 +1031,10 @@ script BRBattleLauncher extends Logic
 			return
 		end
 		if entry["Started"] == true then
+			return
+		end
+		if self:IsCurrentRoomForMatch(entry["MatchRoom"]) ~= true then
+			log("[BRBattleLauncher] start effect skipped outside match room id=" .. safeMatchId .. " currentRoom=" .. self:GetCurrentRoomKey())
 			return
 		end
 
@@ -594,6 +1064,10 @@ script BRBattleLauncher extends Logic
 		if entry["Started"] == true then
 			return
 		end
+		if self:IsCurrentRoomForMatch(entry["MatchRoom"]) ~= true then
+			log("[BRBattleLauncher] gameplay open skipped outside match room id=" .. safeMatchId .. " currentRoom=" .. self:GetCurrentRoomKey())
+			return
+		end
 
 		entry["LoadingTimerId"] = 0
 		entry["Started"] = true
@@ -608,6 +1082,11 @@ script BRBattleLauncher extends Logic
 	method void MarkMatchPlaying(any matchRoom, any owner)
 		-- Marks the lobby room state as Playing once the loading gate opens.
 		if matchRoom == nil or owner == nil then
+			return
+		end
+		if owner.MarkMatchPlaying == nil then
+			log("[BRBattleLauncher] match playing callback skipped: owner has no MarkMatchPlaying match=" .. self:ReadString(matchRoom.MatchId, ""))
+			self:DispatchMatchStateToSourceRoom(matchRoom, "Playing", "", "")
 			return
 		end
 		owner:MarkMatchPlaying(matchRoom)
@@ -655,16 +1134,20 @@ script BRBattleLauncher extends Logic
 				local spawnPosition = self:GetSpawnPosition(matchRoom, spawnIndex, total, owner)
 				local spawnCornerName = self:GetStartCornerRoomName(spawnIndex)
 				self:ResetPlayerSkillStateForBattle(playerEntity, self:ReadString(matchRoom.MatchId, ""))
-				self:MovePlayerToBattleStart(playerEntity, targetMapName, spawnPosition, spawnIndex)
-				self:SetGatherName(player.UserId, spawnIndex, total)
-				player.SpawnIndex = spawnIndex
-				player.SpawnCornerName = spawnCornerName
-				player.SpawnPositionX = spawnPosition.x
-				player.SpawnPositionY = spawnPosition.y
-				player.State = "Arrived"
-				player.ArrivedAt = _UtilLogic.ServerElapsedSeconds
-				movedCount = movedCount + 1
-				log("[BRBattleLauncher] start assigned user=" .. tostring(player.UserId) .. " requestedSlot=" .. tostring(requestedSpawnIndex) .. " slot=" .. tostring(spawnIndex) .. " corner=" .. spawnCornerName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
+				if self:MovePlayerToBattleStart(playerEntity, matchRoom, targetMapName, spawnPosition, spawnIndex) == true then
+					self:SetGatherName(player.UserId, spawnIndex, total)
+					player.SpawnIndex = spawnIndex
+					player.SpawnCornerName = spawnCornerName
+					player.SpawnPositionX = spawnPosition.x
+					player.SpawnPositionY = spawnPosition.y
+					player.State = "Arrived"
+					player.ArrivedAt = _UtilLogic.ServerElapsedSeconds
+					movedCount = movedCount + 1
+					log("[BRBattleLauncher] start assigned user=" .. tostring(player.UserId) .. " requestedSlot=" .. tostring(requestedSpawnIndex) .. " slot=" .. tostring(spawnIndex) .. " corner=" .. spawnCornerName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
+				else
+					player.State = "MoveFailed"
+					log("[BRBattleLauncher] start assign failed user=" .. tostring(player.UserId) .. " requestedSlot=" .. tostring(requestedSpawnIndex) .. " slot=" .. tostring(spawnIndex) .. " map=" .. targetMapName)
+				end
 			end
 		end
 		log("[BRBattleLauncher] moved players to fixed map: map=" .. targetMapName .. " count=" .. tostring(movedCount) .. "/" .. tostring(total))
@@ -773,35 +1256,37 @@ script BRBattleLauncher extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
-	method void MovePlayerToBattleStart(Entity playerEntity, string targetMapName, Vector2 spawnPosition, number spawnIndex)
-		-- Uses TeleportService first because release authority checks can block direct PlayerComponent map travel.
+	method boolean MovePlayerToBattleStart(Entity playerEntity, any matchRoom, string targetMapName, Vector2 spawnPosition, number spawnIndex)
+		-- Moves a player into the per-match instance room through RoomService.
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
-			return
+			return false
 		end
 
 		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
 		local safeMapName = self:ReadString(targetMapName, "")
 		local slotIndex = self:GetStartCornerSlotIndex(spawnIndex)
-		if safeMapName == "" then
-			return
+		if userId == "" or safeMapName == "" then
+			return false
 		end
+		local fromMapName = self:ReadString(playerEntity.CurrentMapName, "")
 
 		playerEntity.PlayerComponent.RespawnPosition = Vector3(spawnPosition.x, spawnPosition.y, 0)
-		self:TeleportPlayerToMapPosition(playerEntity, safeMapName, spawnPosition, "battle-start")
-		log("[BRBattleLauncher] start map teleport requested user=" .. userId .. " slot=" .. tostring(slotIndex) .. " from=" .. self:ReadString(playerEntity.CurrentMapName, "") .. " map=" .. safeMapName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
-		if userId ~= "" then
-			_TimerService:SetTimerOnce(function()
-				self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, 1)
-			end, 0.35)
-			_TimerService:SetTimerOnce(function()
-				self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, 2)
-			end, 1.2)
+		if self:RequestMoveUserToInstanceBattleRoom(matchRoom, userId, safeMapName, "battle-start") == false then
+			return false
 		end
+		log("[BRBattleLauncher] start room move requested user=" .. userId .. " slot=" .. tostring(slotIndex) .. " from=" .. fromMapName .. " map=" .. safeMapName .. " pos=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")")
+		_TimerService:SetTimerOnce(function()
+			self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, 1)
+		end, 0.35)
+		_TimerService:SetTimerOnce(function()
+			self:ConfirmBattleStartArrival(userId, safeMapName, spawnPosition, slotIndex, 2)
+		end, 1.2)
+		return true
 	end
 
 	@ExecSpace("ServerOnly")
 	method void ConfirmBattleStartArrival(string userId, string targetMapName, Vector2 spawnPosition, number spawnIndex, number attempt)
-		-- Confirms release map travel and applies the final body-position correction after the map switch lands.
+		-- Confirms RoomService instance-room travel and applies the final body-position correction after the map switch lands.
 		local safeUserId = self:ReadString(userId, "")
 		local safeMapName = self:ReadString(targetMapName, "")
 		if safeUserId == "" or safeMapName == "" then
@@ -809,7 +1294,7 @@ script BRBattleLauncher extends Logic
 		end
 		self:EnsureRuntimeTables()
 		local activeEntry = self._T.activeMatchesByMap[safeMapName]
-		if activeEntry == nil or activeEntry["Finished"] == true then
+		if activeEntry ~= nil and activeEntry["Finished"] == true then
 			log("[BRBattleLauncher] battle start arrival skipped user=" .. safeUserId .. " map=" .. safeMapName .. " attempt=" .. tostring(attempt) .. " reason=inactive match")
 			return
 		end
@@ -824,7 +1309,9 @@ script BRBattleLauncher extends Logic
 		if currentMapName ~= safeMapName then
 			if self:ReadNumber(attempt, 1) <= 1 then
 				log("[BRBattleLauncher] battle start arrival retry user=" .. safeUserId .. " attempt=" .. tostring(attempt) .. " current=" .. currentMapName .. " target=" .. safeMapName)
-				self:TeleportPlayerToMapPosition(playerEntity, safeMapName, spawnPosition, "battle-start-retry")
+				if activeEntry ~= nil then
+					self:RequestMoveUserToInstanceBattleRoom(activeEntry["MatchRoom"], safeUserId, safeMapName, "battle-start-retry")
+				end
 			else
 				log("[BRBattleLauncher] battle start arrival failed user=" .. safeUserId .. " attempt=" .. tostring(attempt) .. " current=" .. currentMapName .. " target=" .. safeMapName)
 			end
@@ -838,25 +1325,109 @@ script BRBattleLauncher extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
-	method void TeleportPlayerToMapPosition(Entity playerEntity, string targetMapName, Vector2 targetPosition, string reason)
-		-- TeleportService moves the entity itself to the target map/position; PlayerComponent travel is kept as fallback.
-		if playerEntity == nil or playerEntity.PlayerComponent == nil then
-			return
-		end
-
+	method boolean RequestMoveUserToInstanceBattleRoom(any matchRoom, string userId, string targetMapName, string reason)
+		-- Requests a RoomService move into the match's instance room.
+		local safeUserId = self:ReadString(userId, "")
 		local safeMapName = self:ReadString(targetMapName, "")
-		if safeMapName == "" then
+		if safeUserId == "" or safeMapName == "" then
+			return false
+		end
+		if _RoomService == nil then
+			log("[BRBattleLauncher] room service instance move failed reason=" .. self:ReadString(reason, "") .. " user=" .. safeUserId .. " map=" .. safeMapName .. " error=RoomService missing")
+			return false
+		end
+
+		local roomKey = ""
+		if matchRoom ~= nil then
+			roomKey = self:ReadString(matchRoom.InstanceRoomKey, "")
+			if roomKey == "" then
+				roomKey = self:ReadString(matchRoom.RoomKey, "")
+			end
+		end
+		if roomKey == "" then
+			log("[BRBattleLauncher] room service instance move failed reason=" .. self:ReadString(reason, "") .. " user=" .. safeUserId .. " map=" .. safeMapName .. " error=room key empty")
+			return false
+		end
+
+		local moved = _RoomService:MoveUserToInstanceRoom(roomKey, safeUserId, safeMapName)
+		log("[BRBattleLauncher] room service instance move reason=" .. self:ReadString(reason, "") .. " user=" .. safeUserId .. " roomKey=" .. roomKey .. " map=" .. safeMapName .. " result=" .. tostring(moved))
+		return moved == true
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean MovePlayerToStaticRoom(Entity playerEntity, string targetMapName, Vector2 targetPosition, string reason)
+		-- Moves a player back to the static room through RoomService, then schedules position correction.
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return false
+		end
+
+		local safeUserId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeUserId == "" or safeMapName == "" then
+			return false
+		end
+
+		playerEntity.PlayerComponent.RespawnPosition = Vector3(targetPosition.x, targetPosition.y, 0)
+		if self:RequestMoveUserToStaticRoom(safeUserId, safeMapName, reason) == false then
+			return false
+		end
+		_TimerService:SetTimerOnce(function()
+			self:ConfirmStaticRoomArrival(safeUserId, safeMapName, targetPosition, self:ReadString(reason, "static-room"), 1)
+		end, 0.35)
+		_TimerService:SetTimerOnce(function()
+			self:ConfirmStaticRoomArrival(safeUserId, safeMapName, targetPosition, self:ReadString(reason, "static-room"), 2)
+		end, 1.2)
+		return true
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean RequestMoveUserToStaticRoom(string userId, string targetMapName, string reason)
+		-- Requests a RoomService move into the static room.
+		local safeUserId = self:ReadString(userId, "")
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeUserId == "" or safeMapName == "" then
+			return false
+		end
+		if _RoomService == nil then
+			log("[BRBattleLauncher] room service static move failed reason=" .. self:ReadString(reason, "") .. " user=" .. safeUserId .. " map=" .. safeMapName .. " error=RoomService missing")
+			return false
+		end
+
+		local moved = _RoomService:MoveUserToStaticRoom(safeUserId, safeMapName)
+		log("[BRBattleLauncher] room service static move reason=" .. self:ReadString(reason, "") .. " user=" .. safeUserId .. " map=" .. safeMapName .. " result=" .. tostring(moved))
+		return moved == true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ConfirmStaticRoomArrival(string userId, string targetMapName, Vector2 targetPosition, string reason, number attempt)
+		-- Confirms static-room travel and applies the requested return position after the map switch lands.
+		local safeUserId = self:ReadString(userId, "")
+		local safeMapName = self:ReadString(targetMapName, "")
+		if safeUserId == "" or safeMapName == "" then
 			return
 		end
 
-		if _TeleportService ~= nil then
-			_TeleportService:TeleportToMapPosition(playerEntity, Vector3(targetPosition.x, targetPosition.y, 0), safeMapName)
-			log("[BRBattleLauncher] teleport service reason=" .. self:ReadString(reason, "") .. " user=" .. self:ReadString(playerEntity.PlayerComponent.UserId, "") .. " map=" .. safeMapName .. " pos=(" .. tostring(targetPosition.x) .. "," .. tostring(targetPosition.y) .. ")")
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			log("[BRBattleLauncher] static room arrival skipped user=" .. safeUserId .. " attempt=" .. tostring(attempt) .. " reason=entity nil")
 			return
 		end
 
-		playerEntity.PlayerComponent:MoveToMapPosition(safeMapName, targetPosition)
-		log("[BRBattleLauncher] player move fallback reason=" .. self:ReadString(reason, "") .. " user=" .. self:ReadString(playerEntity.PlayerComponent.UserId, "") .. " map=" .. safeMapName .. " pos=(" .. tostring(targetPosition.x) .. "," .. tostring(targetPosition.y) .. ")")
+		local currentMapName = self:ReadString(playerEntity.CurrentMapName, "")
+		if currentMapName ~= safeMapName then
+			if self:ReadNumber(attempt, 1) <= 1 then
+				log("[BRBattleLauncher] static room arrival retry user=" .. safeUserId .. " attempt=" .. tostring(attempt) .. " current=" .. currentMapName .. " target=" .. safeMapName)
+				self:RequestMoveUserToStaticRoom(safeUserId, safeMapName, self:ReadString(reason, "") .. "-retry")
+			else
+				log("[BRBattleLauncher] static room arrival failed user=" .. safeUserId .. " attempt=" .. tostring(attempt) .. " current=" .. currentMapName .. " target=" .. safeMapName)
+			end
+			return
+		end
+
+		playerEntity.PlayerComponent.RespawnPosition = Vector3(targetPosition.x, targetPosition.y, 0)
+		self:ApplyPlayerWorldPosition(playerEntity, targetPosition, self:ReadString(reason, "static-room") .. "-confirm")
+		self:ApplyLocalPlayerWorldPosition(targetPosition, self:ReadString(reason, "static-room") .. "-confirm", safeUserId)
+		log("[BRBattleLauncher] static room arrived user=" .. safeUserId .. " map=" .. safeMapName .. " pos=(" .. tostring(targetPosition.x) .. "," .. tostring(targetPosition.y) .. ") attempt=" .. tostring(attempt) .. " reason=" .. self:ReadString(reason, ""))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -986,9 +1557,13 @@ script BRBattleLauncher extends Logic
 			local playerEntity = _UserService:GetUserEntityByUserId(player.UserId)
 			if playerEntity ~= nil and playerEntity.PlayerComponent ~= nil then
 				self:PreparePlayerForLobbyReturn(playerEntity, Vector2(centerX, centerY), "return-lobby")
-				self:TeleportPlayerToMapPosition(playerEntity, lobbyMapName, Vector2(centerX, centerY), "return-lobby")
-				player.State = "Returned"
-				movedCount = movedCount + 1
+				if self:MovePlayerToStaticRoom(playerEntity, lobbyMapName, Vector2(centerX, centerY), "return-lobby") == true then
+					player.State = "Returned"
+					movedCount = movedCount + 1
+				else
+					player.State = "ReturnFailed"
+					log("[BRBattleLauncher] return lobby move failed user=" .. tostring(player.UserId) .. " lobby=" .. lobbyMapName)
+				end
 			end
 		end
 		if movedCount > 0 then
@@ -1005,7 +1580,7 @@ script BRBattleLauncher extends Logic
 
 	@ExecSpace("ServerOnly")
 	method boolean ReturnEliminatedPlayerToLobby(string targetMapName, string userId, string reason)
-		-- Returns one eliminated match participant to lobby without ending the whole match.
+		-- Shows one eliminated participant's settlement screen before lobby return.
 		self:EnsureRuntimeTables()
 		local safeMapName = self:ReadString(targetMapName, "")
 		local safeUserId = self:ReadString(userId, "")
@@ -1025,28 +1600,83 @@ script BRBattleLauncher extends Logic
 			return false
 		end
 
-		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
-		if playerEntity == nil or playerEntity.PlayerComponent == nil then
-			log("[BRBattleLauncher] eliminate return skipped: player entity missing user=" .. safeUserId)
-			return false
-		end
-
-		local lobbyMapName = self:GetLobbyMapName(entry["Owner"])
-		local lobbyPosition = self:GetLobbyReturnPosition(entry["Owner"])
 		local elapsedSeconds = math.max(0, math.floor(_UtilLogic.ServerElapsedSeconds - self:ReadNumber(entry["RegisteredAt"], _UtilLogic.ServerElapsedSeconds)))
 		local title = self:ReadString(self.MatchResultDefeatTitle, "DEFEAT")
 		local body = self:BuildEliminatedResultBody(entry["MatchRoom"], safeUserId, self:ReadString(reason, "life-out"), elapsedSeconds)
 
-		playerRecord.State = "EliminatedReturned"
+		playerRecord.State = "EliminatedResult"
 		playerRecord.ResultShown = true
 		playerRecord.EliminatedAt = _UtilLogic.ServerElapsedSeconds
 		playerRecord.EliminatedReason = self:ReadString(reason, "life-out")
 
 		self:HideMatchLoading("", safeUserId)
-		self:PreparePlayerForLobbyReturn(playerEntity, lobbyPosition, "eliminated")
-		self:TeleportPlayerToMapPosition(playerEntity, lobbyMapName, lobbyPosition, "eliminated")
-		_TimerService:SetTimerOnce(function() self:ShowMatchResult(title, body, safeUserId) end, self:GetResultPopupDelaySeconds())
-		log("[BRBattleLauncher] eliminated player returned user=" .. safeUserId .. " map=" .. safeMapName .. " lobby=" .. lobbyMapName .. " reason=" .. self:ReadString(reason, ""))
+		_TimerService:SetTimerOnce(function()
+			if self:CanSendClientRpcToUser(safeUserId) == true then
+				self:ShowMatchResult(title, body, safeUserId)
+			end
+		end, self:GetResultPopupDelaySeconds())
+		log("[BRBattleLauncher] eliminated result pending user=" .. safeUserId .. " map=" .. safeMapName .. " reason=" .. self:ReadString(reason, ""))
+		return true
+	end
+
+	@ExecSpace("Server")
+	method void RequestReturnToLobbyFromResult()
+		-- Handles the result-screen return button from the requesting client.
+		local requesterUserId = self:ReadString(senderUserId, "")
+		if requesterUserId == "" then
+			log("[BRBattleLauncher] result return skipped: sender missing")
+			return
+		end
+
+		local returned = self:ReturnResultPlayerToLobby(requesterUserId)
+		log("[BRBattleLauncher] result return requested user=" .. requesterUserId .. " returned=" .. tostring(returned))
+	end
+
+	@ExecSpace("ServerOnly")
+	method boolean ReturnResultPlayerToLobby(string userId)
+		-- Moves one player from a visible result screen back to the configured start/lobby map.
+		self:EnsureRuntimeTables()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return false
+		end
+
+		local entry = self:FindResultMatchEntryForUser(safeUserId)
+		if entry == nil then
+			log("[BRBattleLauncher] result return skipped: match missing user=" .. safeUserId)
+			return false
+		end
+
+		local playerRecord = self:FindMatchPlayerRecord(entry["MatchRoom"], safeUserId)
+		if playerRecord == nil then
+			log("[BRBattleLauncher] result return skipped: record missing user=" .. safeUserId)
+			return false
+		end
+		if self:IsPlayerRecordReturned(playerRecord) == true then
+			return true
+		end
+
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			log("[BRBattleLauncher] result return skipped: player entity missing user=" .. safeUserId)
+			return false
+		end
+
+		local lobbyMapName = self:GetLobbyMapName(entry["Owner"])
+		local lobbyPosition = self:GetLobbyReturnPosition(entry["Owner"])
+		self:PreparePlayerForLobbyReturn(playerEntity, lobbyPosition, "result-return")
+		if self:MovePlayerToStaticRoom(playerEntity, lobbyMapName, lobbyPosition, "result-return") == false then
+			log("[BRBattleLauncher] result return move failed user=" .. safeUserId .. " lobby=" .. lobbyMapName)
+			return false
+		end
+
+		playerRecord.State = "ResultReturned"
+		playerRecord.ResultReturned = true
+		playerRecord.ReturnedAt = _UtilLogic.ServerElapsedSeconds
+		if entry["Finished"] == true then
+			self:TryUnregisterFinishedMatch(entry)
+		end
+		log("[BRBattleLauncher] result player returned user=" .. safeUserId .. " lobby=" .. lobbyMapName)
 		return true
 	end
 
@@ -1062,6 +1692,74 @@ script BRBattleLauncher extends Logic
 			end
 		end
 		return nil
+	end
+
+	method any FindResultMatchEntryForUser(string userId)
+		-- Finds the active or finished match whose result screen belongs to a user.
+		self:EnsureRuntimeTables()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return nil
+		end
+
+		for matchId, entry in pairs(self._T.activeMatchesById) do
+			if entry ~= nil then
+				local playerRecord = self:FindMatchPlayerRecord(entry["MatchRoom"], safeUserId)
+				if playerRecord ~= nil then
+					if entry["Finished"] == true or playerRecord.ResultShown == true or playerRecord.State == "EliminatedResult" then
+						return entry
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	method void TryUnregisterFinishedMatch(any entry)
+		-- Clears finished match registries after every human has left the result screen.
+		if entry == nil or entry["Finished"] ~= true then
+			return
+		end
+		if self:AreAllHumanParticipantsReturned(entry["MatchRoom"]) ~= true then
+			return
+		end
+
+		local matchId = self:ReadString(entry["MatchId"], "")
+		local targetMapName = self:ReadString(entry["TargetMapName"], "")
+		self:UnregisterActiveMatch(matchId, targetMapName)
+		log("[BRBattleLauncher] finished match unregistered after result returns id=" .. matchId .. " map=" .. targetMapName)
+	end
+
+	method boolean AreAllHumanParticipantsReturned(any matchRoom)
+		-- Returns true when no real player is still parked on a result screen.
+		if matchRoom == nil or matchRoom.Players == nil then
+			return true
+		end
+		for index, player in ipairs(matchRoom.Players) do
+			local userId = self:ReadString(player.UserId, "")
+			if userId ~= "" and self:IsAiUserId(userId) ~= true and self:IsPlayerRecordReturned(player) ~= true then
+				return false
+			end
+		end
+		return true
+	end
+
+	method boolean IsPlayerRecordReturned(any playerRecord)
+		-- Returns whether a participant already left through the result flow.
+		if playerRecord == nil then
+			return false
+		end
+		if playerRecord.ResultReturned == true then
+			return true
+		end
+		local state = self:ReadString(playerRecord.State, "")
+		return state == "Returned" or state == "ResultReturned" or state == "EliminatedReturned"
+	end
+
+	method boolean IsAiUserId(string userId)
+		-- Detects synthetic bot participant ids stored in match records.
+		local safeUserId = self:ReadString(userId, "")
+		return string.sub(safeUserId, 1, 3) == "AI_"
 	end
 
 	method string GetLobbyMapName(any owner)
@@ -1117,7 +1815,7 @@ script BRBattleLauncher extends Logic
 
 	@ExecSpace("ServerOnly")
 	method void FinishMatchByMap(string targetMapName, string winnerUserId, string reason)
-		-- Ends the active match for a map, returns players, and schedules result popups.
+		-- Ends the active match for a map and keeps players on the battle result screen.
 		self:EnsureRuntimeTables()
 		local safeMapName = self:ReadString(targetMapName, "")
 		if safeMapName == "" then
@@ -1141,17 +1839,26 @@ script BRBattleLauncher extends Logic
 
 		local elapsedSeconds = math.max(0, math.floor(_UtilLogic.ServerElapsedSeconds - self:ReadNumber(entry["RegisteredAt"], _UtilLogic.ServerElapsedSeconds)))
 		self:NotifyMatchResults(entry["MatchRoom"], self:ReadString(winnerUserId, ""), self:ReadString(reason, "last-man"), elapsedSeconds)
+		self:StopBattleTimer()
+		self:StopMagneticZone()
+		self:ClearPortalConnections(entry["MatchRoom"])
+		self:ClearSupplies(entry["MatchRoom"], self:GetLobbyMapName(entry["Owner"]))
 		self:ClearBattleBots(safeMapName)
-		local returnedCount = self:ReturnPlayersToLobby(entry["MatchRoom"], entry["Owner"])
 		self:CompleteMatchRoom(entry["MatchRoom"], entry["Owner"], self:ReadString(winnerUserId, ""), self:ReadString(reason, "last-man"))
-		self:UnregisterActiveMatch(self:ReadString(entry["MatchId"], ""), safeMapName)
-		log("[BRBattleLauncher] match finished id=" .. self:ReadString(entry["MatchId"], "") .. " map=" .. safeMapName .. " winner=" .. self:ReadString(winnerUserId, "") .. " returned=" .. tostring(returnedCount) .. " reason=" .. self:ReadString(reason, ""))
+		self:NotifyMatchLoadingClosed(entry["MatchRoom"])
+		self:TryUnregisterFinishedMatch(entry)
+		log("[BRBattleLauncher] match finished id=" .. self:ReadString(entry["MatchId"], "") .. " map=" .. safeMapName .. " winner=" .. self:ReadString(winnerUserId, "") .. " resultPending=true reason=" .. self:ReadString(reason, ""))
 	end
 
 	@ExecSpace("ServerOnly")
 	method void CompleteMatchRoom(any matchRoom, any owner, string winnerUserId, string reason)
 		-- Notifies the lobby matchmaker that this match has ended.
 		if owner == nil or matchRoom == nil then
+			return
+		end
+		if owner.CompleteMatch == nil then
+			log("[BRBattleLauncher] match complete callback skipped: owner has no CompleteMatch match=" .. self:ReadString(matchRoom.MatchId, ""))
+			self:DispatchMatchStateToSourceRoom(matchRoom, "Complete", self:ReadString(winnerUserId, ""), self:ReadString(reason, ""))
 			return
 		end
 		owner:CompleteMatch(matchRoom, self:ReadString(winnerUserId, ""), self:ReadString(reason, ""))
@@ -1172,7 +1879,7 @@ script BRBattleLauncher extends Logic
 		local curtainSeconds = self:GetPostLoadingCurtainSeconds(owner)
 		for index, player in ipairs(matchRoom.Players) do
 			local userId = self:ReadString(player.UserId, "")
-			if userId ~= "" then
+			if self:CanSendClientRpcToUser(userId) == true then
 				self:ShowMatchLoading(message, seconds, curtainSeconds, userId)
 			end
 		end
@@ -1185,16 +1892,15 @@ script BRBattleLauncher extends Logic
 		if matchRoom == nil or matchRoom.Players == nil then
 			return
 		end
+		if self:IsCurrentRoomForMatch(matchRoom) ~= true then
+			log("[BRBattleLauncher] start effect notify skipped outside match room match=" .. self:ReadString(matchRoom.MatchId, "") .. " currentRoom=" .. self:GetCurrentRoomKey())
+			return
+		end
 
 		local message = self:ReadString(self.MatchStartMessage, "START!")
 		local startEffectRuid = self:GetBattleStartEffectRUID(nil)
 		local startScale = self:GetBattleStartEffectScale(nil)
-		for index, player in ipairs(matchRoom.Players) do
-			local userId = self:ReadString(player.UserId, "")
-			if userId ~= "" then
-				self:ShowBattleStartEffect(startEffectRuid, startScale, message, userId)
-			end
-		end
+		self:ShowBattleStartEffect(startEffectRuid, startScale, message)
 		log("[BRBattleLauncher] start effect notified match=" .. self:ReadString(matchRoom.MatchId, "") .. " ruid=" .. startEffectRuid)
 	end
 
@@ -1204,13 +1910,12 @@ script BRBattleLauncher extends Logic
 		if matchRoom == nil or matchRoom.Players == nil then
 			return
 		end
-
-		for index, player in ipairs(matchRoom.Players) do
-			local userId = self:ReadString(player.UserId, "")
-			if userId ~= "" then
-				self:OpenBattleGameplay(userId)
-			end
+		if self:IsCurrentRoomForMatch(matchRoom) ~= true then
+			log("[BRBattleLauncher] gameplay open notify skipped outside match room match=" .. self:ReadString(matchRoom.MatchId, "") .. " currentRoom=" .. self:GetCurrentRoomKey())
+			return
 		end
+
+		self:OpenBattleGameplay()
 		log("[BRBattleLauncher] gameplay opened match=" .. self:ReadString(matchRoom.MatchId, ""))
 	end
 
@@ -1220,16 +1925,15 @@ script BRBattleLauncher extends Logic
 		if matchRoom == nil or matchRoom.Players == nil then
 			return
 		end
+		if self:IsCurrentRoomForMatch(matchRoom) ~= true then
+			log("[BRBattleLauncher] countdown notify skipped outside match room match=" .. self:ReadString(matchRoom.MatchId, "") .. " currentRoom=" .. self:GetCurrentRoomKey())
+			return
+		end
 
 		local countdownRuid = self:GetBattleStartCountdownEffectRUID(nil)
 		local countdownSeconds = self:GetBattleStartCountdownSeconds(nil)
 		local scale = self:GetBattleStartEffectScale(nil)
-		for index, player in ipairs(matchRoom.Players) do
-			local userId = self:ReadString(player.UserId, "")
-			if userId ~= "" then
-				self:ShowBattleStartCountdown(countdownRuid, countdownSeconds, scale, userId)
-			end
-		end
+		self:ShowBattleStartCountdown(countdownRuid, countdownSeconds, scale)
 		log("[BRBattleLauncher] countdown effect notified match=" .. self:ReadString(matchRoom.MatchId, "") .. " ruid=" .. countdownRuid .. " seconds=" .. tostring(countdownSeconds))
 	end
 
@@ -1242,7 +1946,7 @@ script BRBattleLauncher extends Logic
 
 		for index, player in ipairs(matchRoom.Players) do
 			local userId = self:ReadString(player.UserId, "")
-			if userId ~= "" then
+			if self:CanSendClientRpcToUser(userId) == true then
 				self:HideMatchLoading("", userId)
 			end
 		end
@@ -1250,7 +1954,7 @@ script BRBattleLauncher extends Logic
 
 	@ExecSpace("ServerOnly")
 	method void NotifyMatchResults(any matchRoom, string winnerUserId, string reason, number elapsedSeconds)
-		-- Schedules a result popup for every match participant after lobby return starts.
+		-- Schedules a result popup for every match participant on the battle map.
 		if matchRoom == nil or matchRoom.Players == nil then
 			return
 		end
@@ -1261,9 +1965,58 @@ script BRBattleLauncher extends Logic
 			if userId ~= "" and player.ResultShown ~= true then
 				local title = self:GetResultTitle(userId, winnerUserId)
 				local body = self:BuildResultBody(matchRoom, userId, winnerUserId, reason, elapsedSeconds)
-				_TimerService:SetTimerOnce(function() self:ShowMatchResult(title, body, userId) end, delay)
+				player.ResultShown = true
+				player.ResultTitle = title
+				_TimerService:SetTimerOnce(function()
+					if self:CanSendClientRpcToUser(userId) == true then
+						self:ShowMatchResult(title, body, userId)
+					end
+				end, delay)
 			end
 		end
+	end
+
+	method boolean CanSendClientRpcToUser(string userId)
+		-- Client-targeted RPCs are valid only while the user exists in this room.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return false
+		end
+		if _UserService == nil then
+			return false
+		end
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		return playerEntity ~= nil and playerEntity.PlayerComponent ~= nil
+	end
+
+	method string GetCurrentRoomKey()
+		if _RoomService == nil then
+			return ""
+		end
+		return self:ReadString(_RoomService.RoomKey, "")
+	end
+
+	method string GetMatchInstanceRoomKey(any matchRoom)
+		if matchRoom == nil then
+			return ""
+		end
+		local roomKey = self:ReadString(matchRoom.InstanceRoomKey, "")
+		if roomKey == "" then
+			roomKey = self:ReadString(matchRoom.RoomKey, "")
+		end
+		return roomKey
+	end
+
+	method boolean IsCurrentRoomForMatch(any matchRoom)
+		local matchRoomKey = self:GetMatchInstanceRoomKey(matchRoom)
+		if matchRoomKey == "" then
+			return true
+		end
+		local currentRoomKey = self:GetCurrentRoomKey()
+		if currentRoomKey == "" then
+			return true
+		end
+		return currentRoomKey == matchRoomKey
 	end
 
 	method string GetResultTitle(string viewerUserId, string winnerUserId)
@@ -1520,7 +2273,7 @@ script BRBattleLauncher extends Logic
 	end
 
 	method number GetResultPopupDelaySeconds()
-		-- Returns the delay before result popups open after lobby return starts.
+		-- Returns the delay before result popups open on the battle map.
 		return math.max(0, self:ReadNumber(self.ResultPopupDelaySeconds, 0.75))
 	end
 
@@ -1631,7 +2384,7 @@ script BRBattleLauncher extends Logic
 	@ExecSpace("Client")
 	method void ShowMatchResult(string title, string body)
 		-- Shows the final match result popup on the local client.
-		self:SetLocalPlayerInputEnabled(true)
+		self:SetLocalPlayerInputEnabled(false)
 		local safeTitle = self:ReadString(title, "RESULT")
 		local safeBody = self:ReadString(body, "")
 		local matchFlowUI = self:GetMatchFlowUI()
@@ -1643,6 +2396,7 @@ script BRBattleLauncher extends Logic
 		elseif _UIToast ~= nil then
 			_UIToast:ShowMessage(safeTitle)
 		end
+		log("[BRBattleLauncher] local result shown title=" .. safeTitle)
 	end
 
 	@ExecSpace("ClientOnly")

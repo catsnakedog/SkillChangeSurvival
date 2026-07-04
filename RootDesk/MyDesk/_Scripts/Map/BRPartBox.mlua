@@ -16,7 +16,7 @@ script BRPartBox extends Component
 	property boolean RequirePickupKey = true
 
 	@Sync
-	property string BoxKind = "legacy"
+	property string BoxKind = "kiosk"
 
 	property number MaxHp = 3
 
@@ -600,6 +600,17 @@ script BRPartBox extends Component
 		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil and self:ReadString(self.KioskActionRUID, "") ~= "" then
 			self.Entity.SpriteRendererComponent.SpriteRUID = self:ReadString(self.KioskActionRUID, "")
 			_TimerService:SetTimerOnce(function() self:RestoreStandVisualIfAlive() end, 0.6)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void PlayKioskActionForSeconds(number seconds)
+		-- Keeps the kiosk action clip visible for a purchase delivery delay.
+		if self.Entity ~= nil and self.Entity.SpriteRendererComponent ~= nil and self:ReadString(self.KioskActionRUID, "") ~= "" then
+			local duration = math.max(0.1, self:ReadNumber(seconds, 15))
+			self.Entity.SpriteRendererComponent.SpriteRUID = self:ReadString(self.KioskActionRUID, "")
+			_TimerService:SetTimerOnce(function() self:RestoreStandVisualIfAlive() end, duration)
+			self:Log("kiosk action hold seconds=" .. tostring(duration))
 		end
 	end
 

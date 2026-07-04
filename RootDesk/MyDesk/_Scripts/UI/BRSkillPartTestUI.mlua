@@ -9,7 +9,7 @@ script BRSkillPartTestUI extends Logic
 
 	property string PlaceholderIconRUID = "4fea64a3307cda641809ad8be0d4890b"
 
-	property number SlotCount = 25
+	property number SlotCount = 9
 
 	property boolean VerboseLog = true
 
@@ -22,6 +22,8 @@ script BRSkillPartTestUI extends Logic
 	property number kioskY = 0
 
 	property number kioskPrice = 10
+
+	property string FreeKioskMapNames = "StartMap,Lobby,LobbyMap"
 
 	property any closeHandler = nil
 
@@ -69,7 +71,7 @@ script BRSkillPartTestUI extends Logic
 
 	@ExecSpace("Client")
 	method void OpenKiosk(string userId, string mapName, number x, number y, number price)
-		-- Opens the catalog in kiosk-purchase mode; dragging an icon orders a world drop.
+		-- Opens the catalog in kiosk-purchase mode; Buy buttons submit purchases.
 		local localUserId = self:GetLocalUserId()
 		if localUserId == "" or localUserId ~= self:ReadString(userId, "") then
 			return
@@ -78,7 +80,7 @@ script BRSkillPartTestUI extends Logic
 		self.kioskMapName = self:ReadString(mapName, "")
 		self.kioskX = self:ReadNumber(x, 0)
 		self.kioskY = self:ReadNumber(y, 0)
-		self.kioskPrice = math.max(0, math.floor(self:ReadNumber(price, 10)))
+		self.kioskPrice = self:GetKioskPriceForMap(self.kioskMapName, price)
 		self:Open()
 		self:Log("kiosk open map=" .. self.kioskMapName .. " price=" .. tostring(self.kioskPrice))
 	end
@@ -124,6 +126,12 @@ script BRSkillPartTestUI extends Logic
 				table.insert(self._T.handlers, { Entity = slot, EventType = "DOWN", Handler = downHandler })
 				table.insert(self._T.handlers, { Entity = slot, EventType = "DRAG", Handler = dragHandler })
 				table.insert(self._T.handlers, { Entity = slot, EventType = "UP", Handler = upHandler })
+				connectedUiCount = connectedUiCount + 1
+			end
+			local buyButton = self:GetEntity("Panel/Grid/Slot_" .. tostring(slotIndex) .. "/Buy")
+			if buyButton ~= nil then
+				local buyHandler = buyButton:ConnectEvent(ButtonClickEvent, function(event) self:OnBuyClick(slotIndex, event) end)
+				table.insert(self._T.handlers, { Entity = buyButton, EventType = "BUY", Handler = buyHandler })
 				connectedUiCount = connectedUiCount + 1
 			end
 		end
@@ -175,6 +183,8 @@ script BRSkillPartTestUI extends Logic
 					entry.Entity:DisconnectEvent(UITouchDragEvent, entry.Handler)
 				elseif entry.EventType == "UP" then
 					entry.Entity:DisconnectEvent(UITouchUpEvent, entry.Handler)
+				elseif entry.EventType == "BUY" then
+					entry.Entity:DisconnectEvent(ButtonClickEvent, entry.Handler)
 				end
 			end
 		end
@@ -192,7 +202,41 @@ script BRSkillPartTestUI extends Logic
 		if event == nil or self:IsPanelActive() ~= true then
 			return
 		end
+		if self.kioskMode == true then
+			return
+		end
 		self:StartDragFromSlot(slotIndex, event.TouchPoint, "slot")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnBuyClick(number slotIndex, ButtonClickEvent event)
+		self:RequestPurchaseItem(slotIndex)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestPurchaseItem(number slotIndex)
+		local item = self:GetCatalogItem(slotIndex)
+		if item == nil then
+			self:Log("buy ignored slot=" .. tostring(slotIndex) .. " reason=noItem")
+			return
+		end
+		if self.kioskMode ~= true then
+			self:Log("buy ignored slot=" .. tostring(slotIndex) .. " reason=notKiosk")
+			return
+		end
+		local userId = self:GetLocalUserId()
+		if userId == "" then
+			self:Log("buy ignored slot=" .. tostring(slotIndex) .. " reason=noLocalUser")
+			return
+		end
+		if _BRSkillSystem == nil then
+			self:Log("buy ignored slot=" .. tostring(slotIndex) .. " reason=noSkillSystem")
+			return
+		end
+		local partId = self:ReadString(item.PartId, "")
+		local skillKey = self:ReadString(item.SkillKey, "")
+		_BRSkillSystem:RequestKioskPurchase(userId, partId, self.kioskMapName, self.kioskX, self.kioskY, self.kioskPrice)
+		self:Log("kiosk buy requested skill=" .. skillKey .. " part=" .. partId .. " map=" .. self.kioskMapName .. " price=" .. tostring(self.kioskPrice))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -239,6 +283,9 @@ script BRSkillPartTestUI extends Logic
 	method void OnScreenTouchStart(ScreenTouchEvent event)
 		-- Fallback path for cases where a child visual consumes the slot touch event.
 		if event == nil or self:IsPanelActive() ~= true or self.draggingIndex > 0 then
+			return
+		end
+		if self.kioskMode == true then
 			return
 		end
 		local slotIndex = self:GetCatalogSlotAtScreenPoint(event.TouchPoint)
@@ -290,8 +337,7 @@ script BRSkillPartTestUI extends Logic
 			return
 		end
 		if self.kioskMode == true then
-			_BRSkillSystem:RequestKioskPurchase(userId, partId, self.kioskMapName, self.kioskX, self.kioskY, self.kioskPrice)
-			self:Log("kiosk purchase requested skill=" .. skillKey .. " price=" .. tostring(self.kioskPrice))
+			self:Log("drop ignored skill=" .. skillKey .. " reason=buyButtonRequired")
 			return
 		end
 		if targetSlot <= 0 then
@@ -356,69 +402,113 @@ script BRSkillPartTestUI extends Logic
 	method void LoadCatalog()
 		self:EnsureRuntime()
 		self._T.items = {}
+		if _BRSkillSystem ~= nil and _BRSkillSystem["EnsureRuntime"] ~= nil then
+			_BRSkillSystem:EnsureRuntime()
+		end
 		local data = self:GetDataTable(self.SkillTableName)
 		if data == nil then
 			self:Log("catalog skipped reason=noDataSet")
 			return
 		end
 		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
-		local basicCategory = self:GetBasicSkillCategory(data)
 		for row = 1, rowCount do
 			local skillId = self:GetDataCell(data, row, "id", "")
 			local category = self:GetDataCell(data, row, "skill_category", "")
-			if skillId ~= "" and self:IsCatalogSkillPart(skillId, category, basicCategory) == true then
+			local partId = self:ResolveCatalogPartId(skillId)
+			if partId ~= "" and self:IsCatalogFirstOrderSkill(skillId, category) == true then
 				local displayName = self:GetDataCell(data, row, "name", skillId)
-				local iconRuid = self:GetSkillIconRUID(skillId, data, row)
+				local iconRuid = self:GetSkillTierIconRUID(skillId, 1, data, row)
 				table.insert(self._T.items, {
 					SkillKey = skillId,
-					PartId = skillId .. "_part",
+					PartId = partId,
 					DisplayName = displayName,
-					IconRUID = iconRuid
+					IconRUID = iconRuid,
+					TierIcon1 = iconRuid,
+					TierIcon2 = self:GetSkillTierIconRUID(skillId, 2, data, row),
+					TierIcon3 = self:GetSkillTierIconRUID(skillId, 3, data, row),
+					TierIcon4 = self:GetSkillTierIconRUID(skillId, 4, data, row)
 				})
 			end
 		end
 		self:Log("catalog loaded count=" .. tostring(#self._T.items))
 	end
 
-	method boolean IsCatalogSkillPart(string skillId, string category, string basicCategory)
+	method string ResolveCatalogPartId(string skillId)
+		if _BRSkillSystem == nil or _BRSkillSystem["GetPartIdForSkillKey"] == nil then
+			return ""
+		end
+		return self:ReadString(_BRSkillSystem:GetPartIdForSkillKey(self:ReadString(skillId, "")), "")
+	end
+
+	method void AppendKioskConsumableCatalogItems()
+		if self.kioskMode ~= true or _BRSkillSystem == nil then
+			return
+		end
+		self:AppendKioskConsumableCatalogItem(
+			self:ReadString(_BRSkillSystem.HealthPotionPartId, "health_recovery_potion"),
+			self:ReadString(_BRSkillSystem.HealthPotionSkillKey, "Consumable_HealthPotion"),
+			"Health Potion",
+			self:ReadString(_BRSkillSystem.HealthPotionIconRUID, self.PlaceholderIconRUID)
+		)
+		self:AppendKioskConsumableCatalogItem(
+			self:ReadString(_BRSkillSystem.ShieldPotionPartId, "fairy_tear_shield_potion"),
+			self:ReadString(_BRSkillSystem.ShieldPotionSkillKey, "Consumable_ShieldPotion"),
+			"Fairy Tear",
+			self:ReadString(_BRSkillSystem.ShieldPotionIconRUID, self.PlaceholderIconRUID)
+		)
+	end
+
+	method void AppendKioskConsumableCatalogItem(string partId, string skillKey, string displayName, string iconRuid)
+		local resolvedPartId = self:ResolveCatalogPartId(partId)
+		if resolvedPartId == "" then
+			resolvedPartId = self:ResolveCatalogPartId(skillKey)
+		end
+		if resolvedPartId == "" or self:HasCatalogPartId(resolvedPartId) == true then
+			return
+		end
+		table.insert(self._T.items, {
+			SkillKey = self:ReadString(skillKey, resolvedPartId),
+			PartId = resolvedPartId,
+			DisplayName = self:ReadString(displayName, resolvedPartId),
+			IconRUID = self:ReadString(iconRuid, self.PlaceholderIconRUID)
+		})
+	end
+
+	method boolean HasCatalogPartId(string partId)
+		if self._T == nil or self._T.items == nil then
+			return false
+		end
+		local safePartId = self:ReadString(partId, "")
+		if safePartId == "" then
+			return false
+		end
+		for index, item in ipairs(self._T.items) do
+			if item ~= nil and self:ReadString(item.PartId, "") == safePartId then
+				return true
+			end
+		end
+		return false
+	end
+
+	method boolean IsCatalogFirstOrderSkill(string skillId, string category)
 		local safeSkillId = self:ReadString(skillId, "")
 		if safeSkillId == "" or safeSkillId == "Blink" or safeSkillId == "Nimbus" then
 			return false
 		end
 		local safeCategory = self:ReadString(category, "")
-		local safeBasicCategory = self:ReadString(basicCategory, "")
-		if safeCategory == "" then
+		if safeCategory == "스킬 파츠" or safeCategory == "트리거" then
 			return true
 		end
-		if safeBasicCategory ~= "" and safeCategory == safeBasicCategory then
-			return false
+		local lowerCategory = string.lower(safeCategory)
+		if lowerCategory == "part" or lowerCategory == "skill_part" or lowerCategory == "trigger" or lowerCategory == "starter" then
+			return true
 		end
-		return true
+		return false
 	end
 
-	method string GetBasicSkillCategory(any data)
-		if data == nil then
-			return ""
-		end
-		local rowCount = math.max(0, math.floor(self:ReadNumber(data:GetRowCount(), 0)))
-		for row = 1, rowCount do
-			local skillId = self:GetDataCell(data, row, "id", "")
-			if skillId == "Blink" or skillId == "Nimbus" then
-				local category = self:GetDataCell(data, row, "skill_category", "")
-				if category ~= "" then
-					return category
-				end
-			end
-		end
-		if rowCount > 0 then
-			return self:GetDataCell(data, 1, "skill_category", "")
-		end
-		return ""
-	end
-
-	method string GetSkillIconRUID(string skillId, any data, number row)
+	method string GetSkillTierIconRUID(string skillId, number tier, any data, number row)
 		if _BRSkillUIDatabase ~= nil then
-			local icon = _BRSkillUIDatabase:GetSlotIconRUID(skillId, 1, false)
+			local icon = _BRSkillUIDatabase:GetSlotIconRUID(skillId, tier, true)
 			if self:ReadString(icon, "") ~= "" then
 				return icon
 			end
@@ -432,6 +522,7 @@ script BRSkillPartTestUI extends Logic
 
 	@ExecSpace("ClientOnly")
 	method void RenderCatalog()
+		self:RenderHeader()
 		local count = self:GetSlotCount()
 		for slotIndex = 1, count do
 			local item = self:GetCatalogItem(slotIndex)
@@ -442,11 +533,82 @@ script BRSkillPartTestUI extends Logic
 				self:SetEntityActive(basePath, true)
 				self:SetTextByPath(basePath .. "/Name", self:ReadString(item.DisplayName, "Skill"))
 				self:SetSpriteImage(basePath .. "/Icon", self:ReadString(item.IconRUID, self.PlaceholderIconRUID))
+				self:SetSpriteImage(basePath .. "/Icon_1", self:ReadString(item.TierIcon1, item.IconRUID))
+				self:SetSpriteImage(basePath .. "/Icon_2", self:ReadString(item.TierIcon2, item.IconRUID))
+				self:SetSpriteImage(basePath .. "/Icon_3", self:ReadString(item.TierIcon3, item.IconRUID))
+				self:SetSpriteImage(basePath .. "/Icon_4", self:ReadString(item.TierIcon4, item.IconRUID))
 				self:SetSpriteColor(basePath .. "/Icon", Color(1, 1, 1, 0.96))
+				self:SetSpriteColor(basePath .. "/Icon_1", Color(1, 1, 1, 0.96))
+				self:SetSpriteColor(basePath .. "/Icon_2", Color(1, 1, 1, 0.96))
+				self:SetSpriteColor(basePath .. "/Icon_3", Color(1, 1, 1, 0.96))
+				self:SetSpriteColor(basePath .. "/Icon_4", Color(1, 1, 1, 0.96))
 				self:SetSpriteColor(basePath .. "/Bg", Color(0.05, 0.07, 0.1, 0.9))
 				self:SetFrameColor(basePath, self:GetFrameColor(slotIndex))
 			end
 		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RenderHeader()
+		if self.kioskMode == true then
+			self:SetTextByPath("Panel/Title", "Skill Kiosk")
+			self:SetTextByPath("Panel/Hint", "First-tier skills. Buy to receive.")
+			self:SetTextByPath("Panel/PriceLabel", self:GetKioskPriceLabel())
+			self:SetTextByPath("Panel/ModeLabel", self:GetKioskDropModeLabel())
+			self:SetPriceText(self:GetKioskPriceLabel())
+			return
+		end
+		self:SetTextByPath("Panel/Title", "Skill Part Test")
+		self:SetTextByPath("Panel/Hint", "Drag a part to the 5 chain slots.")
+		self:SetTextByPath("Panel/PriceLabel", "Test mode")
+		self:SetTextByPath("Panel/ModeLabel", "Chain slot drop")
+		self:SetPriceText(self:GetKioskPriceLabel())
+	end
+
+	method string GetKioskPriceLabel()
+		local cost = self:GetKioskPriceForMap(self.kioskMapName, self.kioskPrice)
+		return "Price : " .. self:FormatOneDecimalPrice(cost) .. "만메소"
+	end
+
+	method string GetKioskDropModeLabel()
+		if self:IsFreeKioskMap(self.kioskMapName) == true then
+			return "Drops now"
+		end
+		return "Drops in 15s"
+	end
+
+	method number GetKioskPriceForMap(string mapName, number price)
+		if self:IsFreeKioskMap(mapName) == true then
+			return 0
+		end
+		return self:FloorToOneDecimal(math.max(0, self:ReadNumber(price, 0)))
+	end
+
+	method number FloorToOneDecimal(number value)
+		return math.floor(self:ReadNumber(value, 0) * 10) / 10
+	end
+
+	method string FormatOneDecimalPrice(number value)
+		local floored = self:FloorToOneDecimal(value)
+		if floored == math.floor(floored) then
+			return tostring(math.floor(floored))
+		end
+		return tostring(floored)
+	end
+
+	method boolean IsFreeKioskMap(string mapName)
+		local safeMapName = string.lower(self:TrimString(self:ReadString(mapName, "")))
+		if safeMapName == "" then
+			return false
+		end
+		local names = self:ReadString(self.FreeKioskMapNames, "StartMap,Lobby,LobbyMap")
+		for token in string.gmatch(names, "([^,]+)") do
+			local safeToken = string.lower(self:TrimString(token))
+			if safeToken ~= "" and safeToken == safeMapName then
+				return true
+			end
+		end
+		return false
 	end
 
 	method Color GetFrameColor(number slotIndex)
@@ -603,7 +765,40 @@ script BRSkillPartTestUI extends Logic
 		local entity = self:GetEntity(relativePath)
 		if entity ~= nil and entity.TextComponent ~= nil then
 			entity.TextComponent.Text = self:ReadString(text, "")
+		elseif entity ~= nil and entity.TextGUIRendererComponent ~= nil then
+			entity.TextGUIRendererComponent.Text = self:ReadString(text, "")
 		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetPriceText(string text)
+		if self:SetTextIfExists("Panel/Grid/PriceText", text) == true then
+			return
+		end
+		if self:SetTextIfExists("Panel/PriceText", text) == true then
+			return
+		end
+		if self:SetTextIfExists("Panel/Grid/UIText", text) == true then
+			return
+		end
+		self:SetTextByPath("Panel/PriceLabel", text)
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean SetTextIfExists(string relativePath, string text)
+		local entity = self:GetEntity(relativePath)
+		if entity == nil then
+			return false
+		end
+		if entity.TextComponent ~= nil then
+			entity.TextComponent.Text = self:ReadString(text, "")
+			return true
+		end
+		if entity.TextGUIRendererComponent ~= nil then
+			entity.TextGUIRendererComponent.Text = self:ReadString(text, "")
+			return true
+		end
+		return false
 	end
 
 	@ExecSpace("ClientOnly")

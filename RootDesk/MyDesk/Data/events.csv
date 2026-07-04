@@ -16,6 +16,14 @@ PirateMonkeySummon/summon,action,,PirateMonkeySummon/summon
 PirateMonkeySummon2/summon,action,,PirateMonkeySummon2/summon
 PirateMonkeySummon3/summon,action,,PirateMonkeySummon3/summon
 PirateMonkeySummon4/summon,action,,PirateMonkeySummon4/summon
+PirateProjectileTrigger/fire,action,,PirateProjectileTrigger/projectile
+PirateProjectileTrigger/hit,action,,PirateProjectileTrigger/damage|PirateProjectileTrigger/trigger
+PirateProjectileTrigger2/fire,action,,PirateProjectileTrigger2/projectile
+PirateProjectileTrigger2/hit,action,,PirateProjectileTrigger2/damage|PirateProjectileTrigger2/trigger
+PirateProjectileTrigger3/fire,action,,PirateProjectileTrigger3/projectile
+PirateProjectileTrigger3/hit,action,,PirateProjectileTrigger3/damage|PirateProjectileTrigger3/trigger
+PirateProjectileTrigger4/fire,action,,PirateProjectileTrigger4/projectile
+PirateProjectileTrigger4/hit,action,,PirateProjectileTrigger4/damage|PirateProjectileTrigger4/trigger
 브랜디쉬/타격,area,브랜디쉬/범위,
 브랜디쉬2/타격,area,브랜디쉬2/범위,
 브랜디쉬3/타격,area,브랜디쉬3/범위,

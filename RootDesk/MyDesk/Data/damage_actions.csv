@@ -5,6 +5,10 @@
 기본공격_에너지볼트/피해,100,6beb8d728a7d4cca92eb7f4d2d9c45f9
 리트리트 샷/피해,140,bd00603136314be19ae4be785c3c3180
 슬래시 스톤/피해,95,6ce3e8c3483643c2b4993df78057eb77
+PirateProjectileTrigger/damage,100,ca39d3bc1eaf4c63b3eb0d662b4b8dcb
+PirateProjectileTrigger2/damage,120,070fcbb91e5c48f881ba29f0cad46689
+PirateProjectileTrigger3/damage,150,6aa68d4d9108400094709af1ee793169
+PirateProjectileTrigger4/damage,200,e71d087320a7476498d253efd964ab3e
 브랜디쉬/피해,80,38e9351c34b843ddbcc191c762e7464c
 브랜디쉬2/피해,120,7d4fd3b71abd42d6b37f49652d13a8d7
 브랜디쉬3/피해,100,b79cbdf6d06b487382f03d625a1fc464

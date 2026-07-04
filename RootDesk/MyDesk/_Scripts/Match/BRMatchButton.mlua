@@ -15,6 +15,16 @@ script BRMatchButton extends Component
 
 	property string BotWaitingText = "BOT MATCHING..."
 
+	property string LobbyRootPath = "/ui/LobbyGroup"
+
+	property string PeopleTogglePath = "PeopleHit"
+
+	property string BotTogglePath = "BotHit"
+
+	property string PeopleHighPath = "People/High"
+
+	property string BotHighPath = "Bot/High"
+
 	property boolean RequireLobbyMap = true
 
 	property number ClickCooldownSeconds = 0.5
@@ -22,6 +32,14 @@ script BRMatchButton extends Component
 	property number QueueRequestDebounceSeconds = 0.25
 
 	property any buttonHandler = nil
+
+	property any peopleToggleHandler = nil
+
+	property any botToggleHandler = nil
+
+	property any peopleToggleEntity = nil
+
+	property any botToggleEntity = nil
 
 	property number refreshTimerId = 0
 
@@ -35,19 +53,25 @@ script BRMatchButton extends Component
 
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
+		-- Initializes the lobby match button and mode toggles.
 		local entityName = "unknown"
 		if self.Entity ~= nil then
 			entityName = self:ReadString(self.Entity.Name, "unknown")
 		end
 		log("[BRMatchButton] ready entity=" .. entityName .. " bot=" .. tostring(self.BotMatchMode))
 		self:ConnectButton()
+		self:ConnectModeToggleButtons()
+		log("[BRMatchButton] mode toggles connected people=" .. tostring(self.peopleToggleHandler ~= nil) .. " bot=" .. tostring(self.botToggleHandler ~= nil))
+		self:UpdateModeHighlights()
 		self:RefreshButtonState()
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshButtonState() end, 0.25)
 	end
 
 	@ExecSpace("ClientOnly")
 	method void OnEndPlay()
+		-- Releases lobby button handlers and timers.
 		self:DisconnectButton()
+		self:DisconnectModeToggleButtons()
 		if self.refreshTimerId ~= nil and self.refreshTimerId > 0 then
 			_TimerService:ClearTimer(self.refreshTimerId)
 		end
@@ -57,6 +81,7 @@ script BRMatchButton extends Component
 
 	@ExecSpace("ClientOnly")
 	method void ConnectButton()
+		-- Connects the primary matching button click handler.
 		if self.buttonHandler ~= nil or self.Entity == nil then
 			return
 		end
@@ -65,6 +90,7 @@ script BRMatchButton extends Component
 
 	@ExecSpace("ClientOnly")
 	method void DisconnectButton()
+		-- Disconnects the primary matching button click handler.
 		if self.buttonHandler == nil or self.Entity == nil then
 			return
 		end
@@ -73,7 +99,76 @@ script BRMatchButton extends Component
 	end
 
 	@ExecSpace("ClientOnly")
+	method void ConnectModeToggleButtons()
+		-- Connects People/Bot toggle click handlers under the lobby group.
+		if self.peopleToggleHandler == nil then
+			local people = self:GetLobbyEntity(self.PeopleTogglePath)
+			if people ~= nil then
+				self.peopleToggleEntity = people
+				self.peopleToggleHandler = people:ConnectEvent(ButtonClickEvent, self.HandlePeopleToggleClickEvent)
+			end
+		end
+		if self.botToggleHandler == nil then
+			local bot = self:GetLobbyEntity(self.BotTogglePath)
+			if bot ~= nil then
+				self.botToggleEntity = bot
+				self.botToggleHandler = bot:ConnectEvent(ButtonClickEvent, self.HandleBotToggleClickEvent)
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisconnectModeToggleButtons()
+		-- Disconnects People/Bot toggle click handlers.
+		if self.peopleToggleHandler ~= nil and self.peopleToggleEntity ~= nil then
+			self.peopleToggleEntity:DisconnectEvent(ButtonClickEvent, self.peopleToggleHandler)
+		end
+		if self.botToggleHandler ~= nil and self.botToggleEntity ~= nil then
+			self.botToggleEntity:DisconnectEvent(ButtonClickEvent, self.botToggleHandler)
+		end
+		self.peopleToggleHandler = nil
+		self.botToggleHandler = nil
+		self.peopleToggleEntity = nil
+		self.botToggleEntity = nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void HandlePeopleToggleClickEvent(ButtonClickEvent event)
+		-- Selects human matchmaking mode from the People toggle.
+		self:SelectMatchMode(false)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void HandleBotToggleClickEvent(ButtonClickEvent event)
+		-- Selects bot matchmaking mode from the Bot toggle.
+		self:SelectMatchMode(true)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SelectMatchMode(boolean useBotMatch)
+		-- Applies the selected matching mode and updates the highlight state.
+		local wasHumanQueuePending = self.BotMatchMode == false and (self.waiting == true or self.committedWaiting == true)
+		if self.BotMatchMode == useBotMatch then
+			self:UpdateModeHighlights()
+			return
+		end
+		
+		self.BotMatchMode = useBotMatch
+		self.waiting = false
+		self.committedWaiting = false
+		self:ClearPendingQueueRequest()
+		self:UpdateModeHighlights()
+		self:RefreshButtonState()
+		
+		if wasHumanQueuePending == true then
+			self:RequestCancelQueueForLocalPlayer()
+		end
+		log("[BRMatchButton] mode selected bot=" .. tostring(self.BotMatchMode))
+	end
+
+	@ExecSpace("ClientOnly")
 	method void HandleButtonClickEvent(ButtonClickEvent event)
+		-- Starts or toggles matchmaking with the currently selected lobby mode.
 		if self.RequireLobbyMap == true and self:IsLocalPlayerInLobby() == false then
 			self:RefreshButtonState()
 			return
@@ -108,11 +203,14 @@ script BRMatchButton extends Component
 
 	@ExecSpace("ClientOnly")
 	method void RefreshButtonState()
+		-- Refreshes button availability, label text, and current mode highlight.
 		local inLobby = self:IsLocalPlayerInLobby()
 		local canUse = inLobby == true or self.RequireLobbyMap == false
 		if self.Entity ~= nil and self.Entity.ButtonComponent ~= nil then
 			self.Entity.ButtonComponent.Enable = canUse
 		end
+		self:SetModeToggleButtonsEnabled(canUse)
+		self:UpdateModeHighlights()
 		if canUse == false then
 			self.waiting = false
 			self.committedWaiting = false
@@ -181,8 +279,10 @@ script BRMatchButton extends Component
 		end
 		
 		if self.waiting == true then
+			log("[BRMatchButton] request human queue join user=" .. tostring(localPlayer.PlayerComponent.UserId))
 			matchmaker:RequestJoinQueue(localPlayer.PlayerComponent.UserId)
 		else
+			log("[BRMatchButton] request human queue cancel user=" .. tostring(localPlayer.PlayerComponent.UserId))
 			matchmaker:RequestCancelQueue(localPlayer.PlayerComponent.UserId)
 		end
 		self.committedWaiting = self.waiting
@@ -213,6 +313,83 @@ script BRMatchButton extends Component
 		if self.Entity ~= nil and self.Entity.TextComponent ~= nil then
 			self.Entity.TextComponent.Text = self:ReadString(text, "MATCH")
 		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetModeToggleButtonsEnabled(boolean enabled)
+		-- Mirrors the lobby availability state onto People/Bot toggle buttons.
+		local people = self:GetLobbyEntity(self.PeopleTogglePath)
+		if people ~= nil and people.ButtonComponent ~= nil then
+			people.ButtonComponent.Enable = enabled
+		end
+		local bot = self:GetLobbyEntity(self.BotTogglePath)
+		if bot ~= nil and bot.ButtonComponent ~= nil then
+			bot.ButtonComponent.Enable = enabled
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void UpdateModeHighlights()
+		-- Shows exactly one selected-mode highlight under People or Bot.
+		self:SetLobbyEntityActive(self.PeopleHighPath, self.BotMatchMode == false)
+		self:SetLobbyEntityActive(self.BotHighPath, self.BotMatchMode == true)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetLobbyEntityActive(string relativePath, boolean active)
+		-- Toggles a lobby UI child entity through Enable so input and children follow the state.
+		local entity = self:GetLobbyEntity(relativePath)
+		if entity == nil then
+			return
+		end
+		entity.Enable = active
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestCancelQueueForLocalPlayer()
+		-- Cancels a committed human queue ticket when the user switches away from people mode.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return
+		end
+		
+		local matchmaker = self:GetMatchmaker()
+		if matchmaker == nil then
+			return
+		end
+		
+		log("[BRMatchButton] cancel human queue on mode switch user=" .. tostring(localPlayer.PlayerComponent.UserId))
+		matchmaker:RequestCancelQueue(localPlayer.PlayerComponent.UserId)
+	end
+
+	@ExecSpace("ClientOnly")
+	method any GetLobbyEntity(string relativePath)
+		-- Resolves a lobby UI entity from either an absolute or root-relative path.
+		local path = self:BuildLobbyPath(relativePath)
+		if path == "" then
+			return nil
+		end
+		return _EntityService:GetEntityByPath(path)
+	end
+
+	method string BuildLobbyPath(string relativePath)
+		-- Builds an absolute LobbyGroup UI path for runtime entity lookup.
+		local path = self:ReadString(relativePath, "")
+		if path == "" then
+			return ""
+		end
+		if string.sub(path, 1, 1) == "/" then
+			return path
+		end
+		
+		local root = self:ReadString(self.LobbyRootPath, "/ui/LobbyGroup")
+		if root == "" then
+			root = "/ui/LobbyGroup"
+		end
+		if string.sub(root, string.len(root), string.len(root)) == "/" then
+			return root .. path
+		end
+		return root .. "/" .. path
 	end
 
 	@ExecSpace("ClientOnly")

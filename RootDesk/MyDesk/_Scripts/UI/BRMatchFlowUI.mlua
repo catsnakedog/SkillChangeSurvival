@@ -133,8 +133,12 @@ script BRMatchFlowUI extends Component
 		self:SetEntityActive("Loading", false)
 		self:SetEntityActive("Result", true)
 		self:SetRootRaycastBlocked(true)
-		self:SetTextByPath("Result/Title", self:ReadString(title, "RESULT"))
-		self:SetTextByPath("Result/Body", self:ReadString(body, ""))
+		local safeTitle = self:ReadString(title, "RESULT")
+		local safeBody = self:ReadString(body, "")
+		self:SetTextByPath("Result/Title", safeTitle)
+		self:SetTextByPath("Result/Body", safeBody)
+		self:ApplyResultDetails(safeTitle, safeBody)
+		log("[BRMatchFlowUI] result shown title=" .. safeTitle)
 	end
 
 	@ExecSpace("Client")
@@ -161,7 +165,55 @@ script BRMatchFlowUI extends Component
 	end
 
 	method void OnClickClose(ButtonClickEvent event)
+		-- Requests the server-side lobby return after the player has reviewed settlement.
+		if _BRBattleLauncher ~= nil then
+			_BRBattleLauncher:RequestReturnToLobbyFromResult()
+			_BRBattleLauncher:SetLocalPlayerInputEnabled(true)
+		end
 		self:HideResult()
+	end
+
+	method void ApplyResultDetails(string title, string body)
+		-- Splits the result body into PUBG-style settlement fields.
+		local safeTitle = self:ReadString(title, "RESULT")
+		local safeBody = self:ReadString(body, "")
+		local rank = self:ExtractResultValue(safeBody, "RANK ", "-")
+		local winner = self:ExtractResultValue(safeBody, "WINNER ", "NONE")
+		local matchId = self:ExtractResultValue(safeBody, "MATCH ", "-")
+		local timeText = self:ExtractResultValue(safeBody, "TIME ", "00:00")
+		local reason = self:ExtractResultValue(safeBody, "REASON ", "-")
+		local headline = "MATCH COMPLETE"
+		if safeTitle == "VICTORY" then
+			headline = "WINNER WINNER"
+		elseif safeTitle == "DEFEAT" then
+			headline = "BATTLE ENDED"
+		end
+
+		self:SetTextByPath("Result/Headline", headline)
+		self:SetTextByPath("Result/RankValue", rank)
+		self:SetTextByPath("Result/WinnerValue", winner)
+		self:SetTextByPath("Result/MatchValue", matchId)
+		self:SetTextByPath("Result/TimeValue", timeText)
+		self:SetTextByPath("Result/ReasonValue", reason)
+	end
+
+	method string ExtractResultValue(string body, string key, string fallback)
+		-- Reads one KEY value from a newline-separated result body.
+		local safeBody = self:ReadString(body, "")
+		local safeKey = self:ReadString(key, "")
+		if safeBody == "" or safeKey == "" then
+			return self:ReadString(fallback, "")
+		end
+
+		for line in string.gmatch(safeBody, "([^\n]+)") do
+			if string.sub(line, 1, string.len(safeKey)) == safeKey then
+				local value = string.sub(line, string.len(safeKey) + 1)
+				if value ~= nil and value ~= "" then
+					return value
+				end
+			end
+		end
+		return self:ReadString(fallback, "")
 	end
 
 	method void RefreshLoadingCountdown()

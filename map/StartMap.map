@@ -5269,7 +5269,7 @@
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1.0,
+              "SkillExperienceReward": 100000.0,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -5410,7 +5410,7 @@
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1.0,
+              "SkillExperienceReward": 100000.0,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -5551,7 +5551,7 @@
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1.0,
+              "SkillExperienceReward": 100000.0,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -6816,7 +6816,7 @@
               "VerboseLog": true,
               "NameTagTitle": "MOVING DUMMY",
               "GrantSkillExperienceOnBreak": true,
-              "SkillExperienceReward": 1.0,
+              "SkillExperienceReward": 100000.0,
               "PauseMovementWhenBroken": true
             }
           ],
@@ -9869,15 +9869,15 @@
                 "z": -0.001
               },
               "QuaternionRotation": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "w": 1.0
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
               },
               "Scale": {
-                "x": 1.0,
-                "y": 1.0,
-                "z": 1.0
+                "x": 1,
+                "y": 1,
+                "z": 1
               },
               "Enable": true
             },
@@ -9888,16 +9888,16 @@
               "EndFrameIndex": 2147483647,
               "FlipX": false,
               "FlipY": false,
-              "OrderInLayer": 12,
-              "PlayRate": 1.0,
+              "OrderInLayer": 35,
+              "PlayRate": 1,
               "RenderSetting": 0,
-              "SpriteRUID": "20bc51c8323e4edf8099eab2b54c3749",
+              "SpriteRUID": "fe310ca2f8e74eb18858ff45273f61e4",
               "StartFrameIndex": 0,
               "Color": {
-                "r": 1.0,
-                "g": 1.0,
-                "b": 1.0,
-                "a": 1.0
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
               },
               "Enable": true
             },
@@ -9905,11 +9905,147 @@
               "@type": "script.BRSkillPartTestNPC",
               "Enable": true,
               "InteractionKeyName": "F",
-              "InteractionRange": 2.0,
-              "VerboseLog": true
+              "InteractionRange": 2,
+              "VerboseLog": true,
+              "CandyMachineStandRUID": "fe310ca2f8e74eb18858ff45273f61e4",
+              "CandyMachineActionRUID": "ea9a08bfa95c4217b1796262feaa737b",
+              "CandyMachineEyeRUID": "31053e533872440598525ce6a660dff2",
+              "CandyMachineNeonRUID": "86ea9c13eb114bea9503ae4db05ecc6e",
+              "CandyMachineOrderInLayer": 35,
+              "CandyMachineActionPreviewSeconds": 0.6
             }
           ],
           "@version": 1
+        }
+      },
+      {
+        "id": "2b0880ec-6392-42d8-a1f9-025f88098fc0",
+        "path": "/maps/StartMap/SkillPartTestNPC/Eye",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent",
+        "jsonString": {
+          "name": "Eye",
+          "path": "/maps/StartMap/SkillPartTestNPC/Eye",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 98,
+          "pathConstraints": "////",
+          "revision": 1,
+          "modelId": "mapobject",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "QuaternionRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
+              },
+              "Scale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "SpriteRUID": "31053e533872440598525ce6a660dff2",
+              "Color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "DrawMode": 0,
+              "FlipX": false,
+              "FlipY": false,
+              "PlayRate": 1,
+              "OrderInLayer": 36,
+              "StartFrameIndex": 0,
+              "EndFrameIndex": 2147483647,
+              "Enable": true
+            }
+          ],
+          "@version": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "mapobject",
+            "sub_entity_id": null,
+            "root_entity_id": "2b0880ec-6392-42d8-a1f9-025f88098fc0",
+            "replaced_model_id": null
+          }
+        }
+      },
+      {
+        "id": "909caf14-c3d3-4b6b-88fd-cb55e4e1a41f",
+        "path": "/maps/StartMap/SkillPartTestNPC/Neon",
+        "componentNames": "MOD.Core.TransformComponent,MOD.Core.SpriteRendererComponent",
+        "jsonString": {
+          "name": "Neon",
+          "path": "/maps/StartMap/SkillPartTestNPC/Neon",
+          "nameEditable": true,
+          "enable": true,
+          "visible": true,
+          "localize": false,
+          "displayOrder": 99,
+          "pathConstraints": "////",
+          "revision": 1,
+          "modelId": "mapobject",
+          "@components": [
+            {
+              "@type": "MOD.Core.TransformComponent",
+              "Position": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "QuaternionRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
+              },
+              "Scale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "Enable": true
+            },
+            {
+              "@type": "MOD.Core.SpriteRendererComponent",
+              "SpriteRUID": "86ea9c13eb114bea9503ae4db05ecc6e",
+              "Color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "DrawMode": 0,
+              "FlipX": false,
+              "FlipY": false,
+              "PlayRate": 1,
+              "OrderInLayer": 37,
+              "StartFrameIndex": 0,
+              "EndFrameIndex": 2147483647,
+              "Enable": true
+            }
+          ],
+          "@version": 1,
+          "origin": {
+            "type": "Model",
+            "entry_id": "mapobject",
+            "sub_entity_id": null,
+            "root_entity_id": "909caf14-c3d3-4b6b-88fd-cb55e4e1a41f",
+            "replaced_model_id": null
+          }
         }
       }
     ]

@@ -1,0 +1,235 @@
+@Component
+script BRBattleHudNpcShortcutUI extends Component
+
+	property string RootPath = "/ui/BRBattleHudGroup"
+
+	property number SkillKioskPrice = 10
+
+	property boolean VerboseLog = true
+
+	property ButtonComponent characterNpcButton = "b3c63842-f400-47f2-9749-eff0aa42b355"
+
+	property ButtonComponent skillNpcButton = "f6874c02-483c-40c4-b470-e75485f05fdf"
+
+	property ButtonComponent shopNpcButton = "f800cf7e-df3a-4c1d-8b40-17c327ef1850"
+
+	property any characterNpcHandler = nil
+
+	property any skillNpcHandler = nil
+
+	property any shopNpcHandler = nil
+
+	@ExecSpace("ClientOnly")
+	method void OnBeginPlay()
+		-- Connects the authored BattleHub NPC shortcut buttons on the client.
+		self:DisconnectButtons()
+		self:ConnectButtons()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnEndPlay()
+		-- Releases button handlers when the HUD controller leaves play.
+		self:DisconnectButtons()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ConnectButtons()
+		-- Finds the shortcut buttons and connects their click handlers.
+		local connectedCount = 0
+		local characterButton = self:GetCharacterNpcButton()
+		if characterButton ~= nil and characterButton.Entity ~= nil then
+			self.characterNpcHandler = characterButton.Entity:ConnectEvent(ButtonClickEvent, self.OnCharacterNpcClicked)
+			connectedCount = connectedCount + 1
+		else
+			self:Log("connect skipped target=ChracaterNpc reason=missing")
+		end
+
+		local skillButton = self:GetSkillNpcButton()
+		if skillButton ~= nil and skillButton.Entity ~= nil then
+			self.skillNpcHandler = skillButton.Entity:ConnectEvent(ButtonClickEvent, self.OnSkillNpcClicked)
+			connectedCount = connectedCount + 1
+		else
+			self:Log("connect skipped target=SkillNpc reason=missing")
+		end
+
+		local shopButton = self:GetShopNpcButton()
+		if shopButton ~= nil and shopButton.Entity ~= nil then
+			self.shopNpcHandler = shopButton.Entity:ConnectEvent(ButtonClickEvent, self.OnShopNpcClicked)
+			connectedCount = connectedCount + 1
+		else
+			self:Log("connect skipped target=ShopNpc reason=missing")
+		end
+
+		self:Log("handlers connected count=" .. tostring(connectedCount))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void DisconnectButtons()
+		-- Disconnects any active shortcut click handlers.
+		local characterButton = self:GetCharacterNpcButton()
+		if self.characterNpcHandler ~= nil and characterButton ~= nil and characterButton.Entity ~= nil then
+			characterButton.Entity:DisconnectEvent(ButtonClickEvent, self.characterNpcHandler)
+		end
+		self.characterNpcHandler = nil
+
+		local skillButton = self:GetSkillNpcButton()
+		if self.skillNpcHandler ~= nil and skillButton ~= nil and skillButton.Entity ~= nil then
+			skillButton.Entity:DisconnectEvent(ButtonClickEvent, self.skillNpcHandler)
+		end
+		self.skillNpcHandler = nil
+
+		local shopButton = self:GetShopNpcButton()
+		if self.shopNpcHandler ~= nil and shopButton ~= nil and shopButton.Entity ~= nil then
+			shopButton.Entity:DisconnectEvent(ButtonClickEvent, self.shopNpcHandler)
+		end
+		self.shopNpcHandler = nil
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnCharacterNpcClicked()
+		-- Opens the character select UI from the BattleHub shortcut.
+		if _BRCharacterSystem == nil then
+			self:Log("character open skipped reason=noCharacterSystem")
+			return
+		end
+		_BRCharacterSystem:OpenClassSelectFromNpc("battle-hud:ChracaterNpc")
+		self:Log("character open requested source=ChracaterNpc")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnSkillNpcClicked()
+		-- Opens the skill credit kiosk from the BattleHub shortcut.
+		if _BRSkillPartTestUI == nil then
+			self:Log("skill kiosk skipped reason=noSkillPartTestUI")
+			return
+		end
+
+		local userId = self:GetLocalUserId()
+		if userId == "" then
+			self:Log("skill kiosk skipped reason=noLocalUser")
+			return
+		end
+
+		local position = self:GetLocalPlayerPosition()
+		local mapName = self:GetLocalMapName()
+		local price = self:GetSkillKioskPrice()
+		_BRSkillPartTestUI:OpenKiosk(userId, mapName, position.x, position.y, price)
+		self:Log("skill kiosk open requested map=" .. mapName .. " price=" .. tostring(price))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnShopNpcClicked()
+		-- Keeps the shop shortcut inert until the shop flow is ready.
+		self:Log("shop shortcut pending source=ShopNpc")
+	end
+
+	method ButtonComponent GetCharacterNpcButton()
+		-- Resolves the character shortcut, accepting the current typo and future corrected names.
+		return self:ResolveShortcutButton(self.characterNpcButton, "ChracaterNpc", "CharacterNpc", "CharactetNpc")
+	end
+
+	method ButtonComponent GetSkillNpcButton()
+		-- Resolves the skill shortcut button.
+		return self:ResolveShortcutButton(self.skillNpcButton, "SkillNpc", "", "")
+	end
+
+	method ButtonComponent GetShopNpcButton()
+		-- Resolves the held-back shop shortcut button.
+		return self:ResolveShortcutButton(self.shopNpcButton, "ShopNpc", "", "")
+	end
+
+	method ButtonComponent ResolveShortcutButton(ButtonComponent boundButton, string firstName, string secondName, string thirdName)
+		-- Finds a ButtonComponent by injected property first, then by BattleHub child name.
+		if boundButton ~= nil then
+			return boundButton
+		end
+		local entity = self:GetShortcutEntity(firstName)
+		if entity == nil then
+			entity = self:GetShortcutEntity(secondName)
+		end
+		if entity == nil then
+			entity = self:GetShortcutEntity(thirdName)
+		end
+		if entity == nil then
+			return nil
+		end
+		return entity.ButtonComponent
+	end
+
+	method Entity GetShortcutEntity(string buttonName)
+		-- Looks up a BattleHub shortcut entity by name.
+		local safeName = self:ReadString(buttonName, "")
+		if safeName == "" or _EntityService == nil then
+			return nil
+		end
+		local rootPath = self:ReadString(self.RootPath, "/ui/BRBattleHudGroup")
+		return _EntityService:GetEntityByPath(rootPath .. "/BattleHub/" .. safeName)
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalUserId()
+		-- Reads the local player's UserId for client-targeted kiosk opening.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return ""
+		end
+		return self:ReadString(localPlayer.PlayerComponent.UserId, "")
+	end
+
+	@ExecSpace("ClientOnly")
+	method string GetLocalMapName()
+		-- Reads the local player's current map name for kiosk pricing/drop routing.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return ""
+		end
+		local mapName = self:ReadString(localPlayer.CurrentMapName, "")
+		if mapName ~= "" then
+			return mapName
+		end
+		if localPlayer.CurrentMap ~= nil then
+			return self:ReadString(localPlayer.CurrentMap.Name, "")
+		end
+		return ""
+	end
+
+	@ExecSpace("ClientOnly")
+	method Vector3 GetLocalPlayerPosition()
+		-- Returns the local player's world position for kiosk drop placement.
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer ~= nil and localPlayer.TransformComponent ~= nil then
+			return localPlayer.TransformComponent.WorldPosition
+		end
+		return Vector3(0, 0, 0)
+	end
+
+	method number GetSkillKioskPrice()
+		-- Returns the configured skill kiosk price.
+		return math.max(0, math.floor(self:ReadNumber(self.SkillKioskPrice, 10)))
+	end
+
+	method string ReadString(any value, string fallback)
+		-- Reads a string-like value with fallback.
+		if value == nil or value == "" then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+	method number ReadNumber(any value, number fallback)
+		-- Reads a numeric value with fallback.
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method void Log(string message)
+		-- Writes shortcut debug logs when enabled.
+		if self.VerboseLog == true then
+			log("[BRBattleHudNpcShortcut] " .. self:ReadString(message, ""))
+		end
+	end
+
+end

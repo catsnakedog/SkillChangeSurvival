@@ -9,6 +9,10 @@ script BRCommonSkillSystem extends Logic
 
 	property number BlinkCooldownSeconds = 1.2
 
+	property number ChainSkillVisualCooldownSeconds = 0.45
+
+	property number ConsumableUseCooldownSeconds = 0.2
+
 	property number BlinkDistance = 2.2
 
 	property string BlinkSkillKey = "Blink"
@@ -96,6 +100,10 @@ script BRCommonSkillSystem extends Logic
 
 	property number localNextNimbusToggleAt = 0
 
+	property number localNextChainVisualAt = 0
+
+	property number localNextConsumableAt = 0
+
 	property boolean localNimbusActive = false
 
 	property boolean localNimbusToggleKeyHeld = false
@@ -105,7 +113,7 @@ script BRCommonSkillSystem extends Logic
 	@Sync
 	property string NimbusActiveUsersText = ""
 
-	-- Fixed-action key rebinding (client-local). Codes are KeyboardKey values (Q=113, C=99, E=101, R=114).
+	-- Fixed-action key rebinding (client-local). Codes are KeyboardKey values (Q=113, C=99, E=101, R=114, T=116).
 	-- The legacy "attack" action id below is the chain-skill hotkey. The native PlayerController
 	-- Attack action remains the basic attack key and is only discovered for conflict checks.
 	property string AttackActionName = "Attack"
@@ -116,11 +124,15 @@ script BRCommonSkillSystem extends Logic
 
 	property integer DefaultNimbusKeyCode = 101
 
+	property integer DefaultConsumableKeyCode = 116
+
 	property integer UniqueKeyCode = 113
 
 	property integer BlinkKeyCode = 99
 
 	property integer NimbusKeyCode = 101
+
+	property integer ConsumableKeyCode = 116
 
 	property integer AttackKeyCode = 114
 
@@ -130,15 +142,21 @@ script BRCommonSkillSystem extends Logic
 
 	property boolean basicAttackKeyDiscovered = false
 
+	property number ignoreMouseCaptureUntil = 0
+
 	property string capturingActionId = ""
 
 	property string rebindStatusText = ""
+
+	property boolean selectingHudRebindSlot = false
 
 	property integer snapUniqueKeyCode = 113
 
 	property integer snapBlinkKeyCode = 99
 
 	property integer snapNimbusKeyCode = 101
+
+	property integer snapConsumableKeyCode = 116
 
 	property integer snapAttackKeyCode = 114
 
@@ -165,9 +183,65 @@ script BRCommonSkillSystem extends Logic
 
 	method void OnUpdate(number delta)
 		if self:IsClient() then
+			self:EnsureRuntime()
 			self:TickLocalInputOverrides(delta)
 			self:TickLocalNimbus(delta)
 			self:TickRemoteNimbusVisuals()
+			local now = _UtilLogic.ElapsedSeconds
+			if now >= self:ReadNumber(self._T.nextHudCooldownVisualRefreshAt, 0) then
+				self._T.nextHudCooldownVisualRefreshAt = now + 0.05
+				local roots = {
+					"/ui/BRBattleHudGroup/BattleHub",
+					"/ui/BRBattleHudGroup/Bg"
+				}
+				local slots = {
+					{ Name = "Common_1", Action = "unique" },
+					{ Name = "Common_2", Action = "blink" },
+					{ Name = "Common_3", Action = "nimbus" },
+					{ Name = "SkillChain_5", Action = "attack" }
+				}
+				for _, rootPath in ipairs(roots) do
+					for _, slot in ipairs(slots) do
+						local slotPath = rootPath .. "/" .. slot.Name
+						local icon = _EntityService:GetEntityByPath(slotPath .. "/Icon")
+						if icon ~= nil and icon.SpriteGUIRendererComponent ~= nil then
+							local readyRatio = self:GetActionCooldownReadyRatio(slot.Action)
+							local safeRatio = math.max(0, math.min(1, self:ReadNumber(readyRatio, 1)))
+							if safeRatio >= 0.999 then
+								icon.SpriteGUIRendererComponent.Type = ImageType.Simple
+								icon.SpriteGUIRendererComponent.FillAmount = 1
+							else
+								icon.SpriteGUIRendererComponent.Type = ImageType.Filled
+								icon.SpriteGUIRendererComponent.FillMethod = FillMethodType.Vertical
+								icon.SpriteGUIRendererComponent.FillOrigin = 0
+								icon.SpriteGUIRendererComponent.FillAmount = safeRatio
+							end
+						end
+
+						local keyLabel = self:GetActionKeyName(slot.Action)
+						if self:IsCapturingRebind() == true and self:GetCapturingActionId() == slot.Action then
+							keyLabel = "?"
+						end
+						local textEntity = _EntityService:GetEntityByPath(slotPath .. "/UIText")
+						if textEntity ~= nil then
+							textEntity.Enable = true
+							if textEntity.TextComponent ~= nil then
+								textEntity.TextComponent.Text = keyLabel
+							elseif textEntity.TextGUIRendererComponent ~= nil then
+								textEntity.TextGUIRendererComponent.Text = keyLabel
+							end
+						end
+					end
+					local unusedTextEntity = _EntityService:GetEntityByPath(rootPath .. "/Common_4/UIText")
+					if unusedTextEntity ~= nil then
+						if unusedTextEntity.TextComponent ~= nil then
+							unusedTextEntity.TextComponent.Text = ""
+						elseif unusedTextEntity.TextGUIRendererComponent ~= nil then
+							unusedTextEntity.TextGUIRendererComponent.Text = ""
+						end
+					end
+				end
+			end
 		end
 	end
 
@@ -194,7 +268,7 @@ script BRCommonSkillSystem extends Logic
 		self.inputKeyUpHandler = _InputService:ConnectEvent(KeyUpEvent, self.OnCommonSkillKeyUp)
 		self:EnsureBasicAttackKeyDiscovered()
 		self:RemoveBlinkKeyDefaultAction(true)
-		log("[BRCommonSkill] client input ready unique=" .. self:GetKeyDisplayName(self:GetUniqueKeyCode()) .. " blink=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " nimbus=" .. self:GetKeyDisplayName(self:GetNimbusKeyCode()) .. " chain=" .. self:GetActionKeyName("attack") .. " basicAttack=" .. self:GetKeyDisplayName(self.BasicAttackKeyCode))
+		log("[BRCommonSkill] client input ready unique=" .. self:GetKeyDisplayName(self:GetUniqueKeyCode()) .. " blink=" .. self:GetKeyDisplayName(self:GetBlinkKeyCode()) .. " nimbus=" .. self:GetKeyDisplayName(self:GetNimbusKeyCode()) .. " consumable=" .. self:GetActionKeyName("consumable") .. " chain=" .. self:GetActionKeyName("attack") .. " basicAttack=" .. self:GetKeyDisplayName(self.BasicAttackKeyCode))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -220,6 +294,12 @@ script BRCommonSkillSystem extends Logic
 			self:HandleRebindCapture(event.key)
 			return
 		end
+		if self:IsSelectingHudRebindSlot() == true then
+			if event.key == KeyboardKey.Escape then
+				self:CancelRebind()
+			end
+			return
+		end
 		local key = event.key
 		if key == KeyboardKey.CastFrom(self:GetUniqueKeyCode()) then
 			self:TryUseUniqueSkill()
@@ -232,6 +312,8 @@ script BRCommonSkillSystem extends Logic
 			end
 			self.localNimbusToggleKeyHeld = true
 			self:TryToggleNimbus()
+		elseif key == KeyboardKey.CastFrom(self:GetConsumableKeyCode()) then
+			self:TryUseConsumable()
 		else
 			local chainKeyCode = self:GetActionKeyCode("attack")
 			if chainKeyCode > 0 and key == KeyboardKey.CastFrom(chainKeyCode) then
@@ -380,8 +462,34 @@ script BRCommonSkillSystem extends Logic
 		if userId == "" then
 			return
 		end
+		self.localNextChainVisualAt = _UtilLogic.ElapsedSeconds + self:GetChainSkillVisualCooldownSeconds()
 		_BRSkillSystem:RequestCastNextChainSkill(userId)
-		log("[BRCommonSkill] chain request user=" .. userId .. " key=" .. self:GetActionKeyName("attack"))
+		log("[BRCommonSkill] chain request user=" .. userId .. " key=" .. self:GetActionKeyName("attack") .. " visualCd=" .. tostring(self:GetChainSkillVisualCooldownSeconds()))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void TryUseConsumable()
+		local now = _UtilLogic.ElapsedSeconds
+		if now < self:ReadNumber(self.localNextConsumableAt, 0) then
+			return
+		end
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return
+		end
+		if localPlayer.PlayerComponent:IsDead() == true or localPlayer.PlayerComponent.Hp <= 0 then
+			return
+		end
+		if _BRSkillSystem == nil then
+			return
+		end
+		local userId = self:ReadString(localPlayer.PlayerComponent.UserId, "")
+		if userId == "" then
+			return
+		end
+		self.localNextConsumableAt = now + self:GetConsumableUseCooldownSeconds()
+		_BRSkillSystem:RequestUseConsumable(userId)
+		log("[BRCommonSkill] consumable request user=" .. userId .. " key=" .. self:GetActionKeyName("consumable"))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1847,6 +1955,66 @@ script BRCommonSkillSystem extends Logic
 		return math.max(0.05, self:ReadNumber(self:GetNimbusSkillDataCell("cooldown", tostring(self.NimbusToggleCooldownSeconds)), self.NimbusToggleCooldownSeconds))
 	end
 
+	method number GetChainSkillVisualCooldownSeconds()
+		-- Returns the short client-side refill duration used by the chain hotkey icon.
+		return math.max(0.05, self:ReadNumber(self.ChainSkillVisualCooldownSeconds, 0.45))
+	end
+
+	method number GetConsumableUseCooldownSeconds()
+		-- Returns a short local guard against repeated consumable keydown requests.
+		return math.max(0.05, self:ReadNumber(self.ConsumableUseCooldownSeconds, 0.2))
+	end
+
+	method number GetActionCooldownDurationSeconds(string actionId)
+		-- Returns the cooldown duration for a local hotkey action.
+		local id = self:NormalizeActionId(actionId)
+		if id == "unique" then
+			return self:GetUniqueCooldownSeconds()
+		elseif id == "blink" then
+			return self:GetBlinkCooldownSeconds()
+		elseif id == "nimbus" then
+			return self:GetNimbusToggleCooldownSeconds()
+		elseif id == "consumable" then
+			return self:GetConsumableUseCooldownSeconds()
+		elseif id == "attack" then
+			return self:GetChainSkillVisualCooldownSeconds()
+		end
+		return 0
+	end
+
+	method number GetActionCooldownRemainingSeconds(string actionId)
+		-- Returns remaining client-side cooldown seconds for a local hotkey action.
+		local id = self:NormalizeActionId(actionId)
+		local readyAt = 0
+		if id == "unique" then
+			readyAt = self:ReadNumber(self.localNextUniqueAt, 0)
+		elseif id == "blink" then
+			readyAt = self:ReadNumber(self.localNextBlinkAt, 0)
+		elseif id == "nimbus" then
+			readyAt = self:ReadNumber(self.localNextNimbusToggleAt, 0)
+		elseif id == "attack" then
+			readyAt = self:ReadNumber(self.localNextChainVisualAt, 0)
+		elseif id == "consumable" then
+			readyAt = self:ReadNumber(self.localNextConsumableAt, 0)
+		else
+			return 0
+		end
+		return math.max(0, readyAt - _UtilLogic.ElapsedSeconds)
+	end
+
+	method number GetActionCooldownReadyRatio(string actionId)
+		-- Returns 0 when visually disabled and 1 when the action is ready.
+		local duration = self:GetActionCooldownDurationSeconds(actionId)
+		if duration <= 0 then
+			return 1
+		end
+		local remaining = self:GetActionCooldownRemainingSeconds(actionId)
+		if remaining <= 0 then
+			return 1
+		end
+		return math.max(0, math.min(1, 1 - remaining / duration))
+	end
+
 	method number GetNimbusMoveSpeed()
 		-- Reads the Nimbus ride movement speed from skills.csv when present.
 		return math.max(0.1, self:ReadNumber(self:GetNimbusSkillDataCell("common_speed", tostring(self.NimbusMoveSpeed)), self.NimbusMoveSpeed))
@@ -1910,6 +2078,14 @@ script BRCommonSkillSystem extends Logic
 		return code
 	end
 
+	method integer GetConsumableKeyCode()
+		local code = math.floor(self:ReadNumber(self.ConsumableKeyCode, self.DefaultConsumableKeyCode))
+		if code <= 0 then
+			return math.floor(self:ReadNumber(self.DefaultConsumableKeyCode, 116))
+		end
+		return code
+	end
+
 	method integer GetActionKeyCode(string actionId)
 		local id = self:NormalizeActionId(actionId)
 		if id == "unique" then
@@ -1918,6 +2094,8 @@ script BRCommonSkillSystem extends Logic
 			return self:GetBlinkKeyCode()
 		elseif id == "nimbus" then
 			return self:GetNimbusKeyCode()
+		elseif id == "consumable" then
+			return self:GetConsumableKeyCode()
 		elseif id == "attack" then
 			return math.floor(self:ReadNumber(self.AttackKeyCode, 0))
 		end
@@ -1940,6 +2118,8 @@ script BRCommonSkillSystem extends Logic
 			return "블링크"
 		elseif id == "nimbus" then
 			return "근두운"
+		elseif id == "consumable" then
+			return "소모품"
 		elseif id == "attack" then
 			return "체인 스킬"
 		end
@@ -1948,7 +2128,7 @@ script BRCommonSkillSystem extends Logic
 
 	method string NormalizeActionId(string actionId)
 		local id = string.lower(self:ReadString(actionId, ""))
-		if id == "unique" or id == "blink" or id == "nimbus" or id == "attack" then
+		if id == "unique" or id == "blink" or id == "nimbus" or id == "consumable" or id == "attack" then
 			return id
 		end
 		return ""
@@ -1957,7 +2137,7 @@ script BRCommonSkillSystem extends Logic
 	method string GetActionUsingKeyCode(integer code, string exceptActionId)
 		-- Returns the action id already bound to code (excluding exceptActionId), or "" when free.
 		local except = self:NormalizeActionId(exceptActionId)
-		local ids = {"unique", "blink", "nimbus", "attack"}
+		local ids = {"unique", "blink", "nimbus", "consumable", "attack"}
 		local target = math.floor(self:ReadNumber(code, 0))
 		for index, id in ipairs(ids) do
 			if id ~= except and self:GetActionKeyCode(id) == target then
@@ -1975,8 +2155,32 @@ script BRCommonSkillSystem extends Logic
 		return self:ReadString(self.capturingActionId, "")
 	end
 
+	method boolean IsSelectingHudRebindSlot()
+		return self.selectingHudRebindSlot == true
+	end
+
 	method string GetRebindStatusText()
 		return self:ReadString(self.rebindStatusText, "")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void BeginHudRebindSlotSelection()
+		self:EnsureBasicAttackKeyDiscovered()
+		self.capturingActionId = ""
+		self.selectingHudRebindSlot = true
+		self.rebindStatusText = "Select a skill slot, then press a key"
+		log("[BRCommonSkill] hud rebind slot select begin")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void BeginHudSlotRebind(string actionId)
+		local safeId = self:NormalizeActionId(actionId)
+		if safeId == "" then
+			return
+		end
+		self.selectingHudRebindSlot = false
+		self.ignoreMouseCaptureUntil = _UtilLogic.ElapsedSeconds + 0.2
+		self:BeginRebind(safeId)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1986,19 +2190,26 @@ script BRCommonSkillSystem extends Logic
 		if safeId == "" then
 			return
 		end
+		self.selectingHudRebindSlot = false
 		self.capturingActionId = safeId
-		self.rebindStatusText = self:GetActionLabel(safeId) .. " : 새 키를 누르세요 (ESC 취소)"
+		self.rebindStatusText = self:GetActionLabel(safeId) .. " : press a key (ESC cancel)"
 		log("[BRCommonSkill] rebind begin action=" .. safeId)
 	end
 
 	@ExecSpace("ClientOnly")
 	method void CancelRebind()
+		local wasSelecting = self.selectingHudRebindSlot == true
+		self.selectingHudRebindSlot = false
 		if self:ReadString(self.capturingActionId, "") == "" then
+			if wasSelecting == true then
+				self.rebindStatusText = "Key change canceled"
+				log("[BRCommonSkill] hud rebind slot select cancel")
+			end
 			return
 		end
 		local id = self.capturingActionId
 		self.capturingActionId = ""
-		self.rebindStatusText = "변경을 취소했습니다"
+		self.rebindStatusText = "Key change canceled"
 		log("[BRCommonSkill] rebind cancel action=" .. id)
 	end
 
@@ -2012,6 +2223,9 @@ script BRCommonSkillSystem extends Logic
 		local code = self:ResolveKeyCode(key)
 		if code == 27 then
 			self:CancelRebind()
+			return
+		end
+		if (code == 323 or code == 324 or code == 325) and _UtilLogic.ElapsedSeconds <= self:ReadNumber(self.ignoreMouseCaptureUntil, 0) then
 			return
 		end
 		if code <= 0 then
@@ -2034,7 +2248,8 @@ script BRCommonSkillSystem extends Logic
 		end
 		self:ApplyBinding(actionId, code)
 		self.capturingActionId = ""
-		self.rebindStatusText = self:GetActionLabel(actionId) .. " → " .. self:GetKeyDisplayName(code)
+		self.selectingHudRebindSlot = false
+		self.rebindStatusText = self:GetActionLabel(actionId) .. " -> " .. self:GetKeyDisplayName(code)
 		log("[BRCommonSkill] rebind apply action=" .. actionId .. " key=" .. self:GetKeyDisplayName(code))
 	end
 
@@ -2048,6 +2263,8 @@ script BRCommonSkillSystem extends Logic
 			self:RemoveBlinkKeyDefaultAction(true)
 		elseif actionId == "nimbus" then
 			self.NimbusKeyCode = safeCode
+		elseif actionId == "consumable" then
+			self.ConsumableKeyCode = safeCode
 		elseif actionId == "attack" then
 			self.AttackKeyCode = safeCode
 		end
@@ -2094,10 +2311,12 @@ script BRCommonSkillSystem extends Logic
 		-- Called when the key-config panel opens so Cancel can restore this exact state.
 		self:EnsureBasicAttackKeyDiscovered()
 		self.capturingActionId = ""
+		self.selectingHudRebindSlot = false
 		self.rebindStatusText = ""
 		self.snapUniqueKeyCode = self:GetUniqueKeyCode()
 		self.snapBlinkKeyCode = self:GetBlinkKeyCode()
 		self.snapNimbusKeyCode = self:GetNimbusKeyCode()
+		self.snapConsumableKeyCode = self:GetConsumableKeyCode()
 		self.snapAttackKeyCode = math.floor(self:ReadNumber(self.AttackKeyCode, 0))
 	end
 
@@ -2105,9 +2324,11 @@ script BRCommonSkillSystem extends Logic
 	method void RestoreBindings()
 		-- Rolls back to the snapshot taken on panel open (Cancel / X button).
 		self.capturingActionId = ""
+		self.selectingHudRebindSlot = false
 		self.UniqueKeyCode = math.floor(self:ReadNumber(self.snapUniqueKeyCode, self.DefaultUniqueKeyCode))
 		self.BlinkKeyCode = math.floor(self:ReadNumber(self.snapBlinkKeyCode, self.DefaultBlinkKeyCode))
 		self.NimbusKeyCode = math.floor(self:ReadNumber(self.snapNimbusKeyCode, self.DefaultNimbusKeyCode))
+		self.ConsumableKeyCode = math.floor(self:ReadNumber(self.snapConsumableKeyCode, self.DefaultConsumableKeyCode))
 		local snapAttack = math.floor(self:ReadNumber(self.snapAttackKeyCode, 0))
 		if snapAttack ~= math.floor(self:ReadNumber(self.AttackKeyCode, 0)) then
 			self.AttackKeyCode = snapAttack
@@ -2121,9 +2342,11 @@ script BRCommonSkillSystem extends Logic
 	method void CommitBindings()
 		-- Confirm: promote the current bindings to the new baseline snapshot.
 		self.capturingActionId = ""
+		self.selectingHudRebindSlot = false
 		self.snapUniqueKeyCode = self:GetUniqueKeyCode()
 		self.snapBlinkKeyCode = self:GetBlinkKeyCode()
 		self.snapNimbusKeyCode = self:GetNimbusKeyCode()
+		self.snapConsumableKeyCode = self:GetConsumableKeyCode()
 		self.snapAttackKeyCode = math.floor(self:ReadNumber(self.AttackKeyCode, 0))
 		self.rebindStatusText = "저장되었습니다"
 		log("[BRCommonSkill] rebind commit")
@@ -2132,9 +2355,11 @@ script BRCommonSkillSystem extends Logic
 	@ExecSpace("ClientOnly")
 	method void ResetBindingsToDefault()
 		self.capturingActionId = ""
+		self.selectingHudRebindSlot = false
 		self.UniqueKeyCode = math.floor(self:ReadNumber(self.DefaultUniqueKeyCode, 113))
 		self.BlinkKeyCode = math.floor(self:ReadNumber(self.DefaultBlinkKeyCode, 99))
 		self.NimbusKeyCode = math.floor(self:ReadNumber(self.DefaultNimbusKeyCode, 101))
+		self.ConsumableKeyCode = math.floor(self:ReadNumber(self.DefaultConsumableKeyCode, 116))
 		local defaultAttack = math.floor(self:ReadNumber(self.DefaultAttackKeyCode, 0))
 		if defaultAttack > 0 then
 			self.AttackKeyCode = defaultAttack

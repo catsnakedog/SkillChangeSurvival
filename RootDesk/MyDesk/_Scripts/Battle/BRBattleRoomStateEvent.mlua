@@ -1,0 +1,6 @@
+@Event
+script BRBattleRoomStateEvent extends EventType
+
+    property string Payload = ""
+
+end

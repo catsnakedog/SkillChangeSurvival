@@ -47,6 +47,8 @@ script BRSkillChainUI extends Component
 
 	property number draggingSourceBagIndex = 0
 
+	property number draggingSourceConsumableIndex = 0
+
 	property boolean tooltipLocked = false
 
 	property string tooltipSkillKey = ""
@@ -173,6 +175,7 @@ script BRSkillChainUI extends Component
 
 		self._T.chainSlots = self:ParseChainText(_BRSkillSystem:GetLocalChainText())
 		self._T.bagParts = self:ParseBagText(_BRSkillSystem:GetLocalBagText())
+		self._T.consumableSlot = nil
 		self:RenderChain()
 		self:RenderBag()
 		self:RefreshCommonSkillSlots()
@@ -240,6 +243,29 @@ script BRSkillChainUI extends Component
 			end
 		end
 
+		if _BRCommonSkillSystem ~= nil then
+			local hotkeySlots = {
+				{ Path = "Panel/Chain/Common_1", Action = "unique" },
+				{ Path = "Panel/Chain/Common_2", Action = "blink" },
+				{ Path = "Panel/Chain/Common_3", Action = "nimbus" },
+				{ Path = self:GetRepresentativeChainSlotPath(), Action = "attack" }
+			}
+			for _, slot in ipairs(hotkeySlots) do
+				local hotkeyEntity = self:GetChainEntity(slot.Path)
+				local hotkeyActionId = self:ReadString(slot.Action, "")
+				if hotkeyEntity ~= nil and hotkeyActionId ~= "" then
+					local hotkeyDownHandler = hotkeyEntity:ConnectEvent(UITouchDownEvent, function(event)
+						if _BRCommonSkillSystem ~= nil and _BRCommonSkillSystem:IsSelectingHudRebindSlot() == true then
+							if event == nil or (self:IsRightClick(event.TouchId) ~= true and self:IsMiddleClick(event.TouchId) ~= true) then
+								_BRCommonSkillSystem:BeginHudSlotRebind(hotkeyActionId)
+								self:Log("hotkey rebind action selected=" .. hotkeyActionId)
+							end
+						end
+					end)
+					table.insert(self._T.handlers, { Entity = hotkeyEntity, EventType = "DOWN", Handler = hotkeyDownHandler })
+				end
+			end
+		end
 		self:Log("handlers connected count=" .. tostring(#self._T.handlers))
 	end
 
@@ -286,6 +312,26 @@ script BRSkillChainUI extends Component
 		table.insert(self._T.handlers, { Entity = entity, EventType = "UP", Handler = upHandler })
 		table.insert(self._T.handlers, { Entity = entity, EventType = "ENTER", Handler = enterHandler })
 		table.insert(self._T.handlers, { Entity = entity, EventType = "EXIT", Handler = exitHandler })
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ConnectHotkeyRebindSlots()
+		self:ConnectHotkeyRebindSlot("Panel/Chain/Common_1", "unique")
+		self:ConnectHotkeyRebindSlot("Panel/Chain/Common_2", "blink")
+		self:ConnectHotkeyRebindSlot("Panel/Chain/Common_3", "nimbus")
+		self:ConnectHotkeyRebindSlot(self:GetRepresentativeChainSlotPath(), "attack")
+		self:ConnectHotkeyRebindSlot("Panel/Chain/Sobie_1", "consumable")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ConnectHotkeyRebindSlot(string relativePath, string actionId)
+		local entity = self:GetChainEntity(relativePath)
+		if entity == nil then
+			return
+		end
+		local safeActionId = self:ReadString(actionId, "")
+		local hotkeyDownHandler = entity:ConnectEvent(UITouchDownEvent, function(event) self:OnHotkeyRebindSlotTouch(safeActionId, event) end)
+		table.insert(self._T.handlers, { Entity = entity, EventType = "DOWN", Handler = hotkeyDownHandler })
 	end
 
 	@ExecSpace("ClientOnly")
@@ -340,6 +386,9 @@ script BRSkillChainUI extends Component
 	@ExecSpace("ClientOnly")
 	method void OnInputKeyDown(KeyDownEvent event)
 		if event == nil then
+			return
+		end
+		if _BRCommonSkillSystem ~= nil and _BRCommonSkillSystem:IsSelectingHudRebindSlot() == true then
 			return
 		end
 
@@ -401,6 +450,32 @@ script BRSkillChainUI extends Component
 		end
 
 		local screenPoint = event.TouchPoint
+		if _BRCommonSkillSystem ~= nil and _BRCommonSkillSystem:IsSelectingHudRebindSlot() == true then
+			local actionId = ""
+			for commonIndex = 1, self:GetCommonSkillSlotCount() do
+				local common = self:GetChainEntity("Panel/Chain/Common_" .. tostring(commonIndex))
+				if self:IsScreenPointInsideEntity(screenPoint, common) == true then
+					if commonIndex == 1 then
+						actionId = "unique"
+					elseif commonIndex == 2 then
+						actionId = "blink"
+					elseif commonIndex == 3 then
+						actionId = "nimbus"
+					end
+				end
+			end
+			if actionId == "" then
+				local representative = self:GetChainEntity(self:GetRepresentativeChainSlotPath())
+				if self:IsScreenPointInsideEntity(screenPoint, representative) == true then
+					actionId = "attack"
+				end
+			end
+			if actionId ~= "" then
+				_BRCommonSkillSystem:BeginHudSlotRebind(actionId)
+				self:Log("hotkey rebind action selected=" .. actionId)
+			end
+			return
+		end
 		local slotIndex = self:GetSlotIndexAtScreenPoint(screenPoint)
 		if slotIndex > 0 then
 			if self:BeginChainSlotDragAtScreen(slotIndex, screenPoint) == true then
@@ -439,6 +514,10 @@ script BRSkillChainUI extends Component
 	method void OnMouseMove(MouseMoveEvent event)
 		-- Tracks PC mouse dragging and hover tooltip updates between UI touch events.
 		local cursorPosition = _InputService:GetCursorPosition()
+		if _BRCommonSkillSystem ~= nil and _BRCommonSkillSystem:IsSelectingHudRebindSlot() == true then
+			self:ClearSkillTooltipState()
+			return
+		end
 		if self.draggingInstanceId > 0 then
 			if _InputService:IsKeyPressed(KeyboardKey.Mouse0) == false then
 				return
@@ -456,6 +535,9 @@ script BRSkillChainUI extends Component
 	@ExecSpace("ClientOnly")
 	method void OnTouchDown(string kind, number index, UITouchDownEvent event)
 		if event == nil then
+			return
+		end
+		if _BRCommonSkillSystem ~= nil and _BRCommonSkillSystem:IsSelectingHudRebindSlot() == true then
 			return
 		end
 
@@ -477,6 +559,8 @@ script BRSkillChainUI extends Component
 				return
 			end
 			self:BeginBagPartDrag(index, event)
+		elseif kind == "CONSUMABLE" then
+			return
 		end
 	end
 
@@ -519,6 +603,78 @@ script BRSkillChainUI extends Component
 	end
 
 	@ExecSpace("ClientOnly")
+	method void OnHotkeyRebindSlotTouch(string actionId, UITouchDownEvent event)
+		if self:IsHudRebindSelectionActive() ~= true then
+			return
+		end
+		if event ~= nil and (self:IsRightClick(event.TouchId) == true or self:IsMiddleClick(event.TouchId) == true) then
+			return
+		end
+		self:BeginHotkeyRebindAction(actionId)
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean TryBeginHotkeyRebindAtScreen(Vector2 screenPoint)
+		if self:IsHudRebindSelectionActive() ~= true then
+			return false
+		end
+		local actionId = self:GetHotkeyActionAtScreenPoint(screenPoint)
+		if actionId == "" then
+			return false
+		end
+		return self:BeginHotkeyRebindAction(actionId)
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean BeginHotkeyRebindAction(string actionId)
+		local safeActionId = self:ReadString(actionId, "")
+		if safeActionId == "" or _BRCommonSkillSystem == nil then
+			return false
+		end
+		_BRCommonSkillSystem:BeginHudSlotRebind(safeActionId)
+		self:RefreshHotkeyLabels()
+		self:Log("hotkey rebind action selected=" .. safeActionId)
+		return true
+	end
+
+	method string GetHotkeyActionAtScreenPoint(Vector2 screenPoint)
+		for commonIndex = 1, self:GetCommonSkillSlotCount() do
+			local common = self:GetChainEntity("Panel/Chain/Common_" .. tostring(commonIndex))
+			if self:IsScreenPointInsideEntity(screenPoint, common) == true then
+				return self:GetCommonHotkeyActionId(commonIndex)
+			end
+		end
+		local representative = self:GetChainEntity(self:GetRepresentativeChainSlotPath())
+		if self:IsScreenPointInsideEntity(screenPoint, representative) == true then
+			return "attack"
+		end
+		local consumable = self:GetConsumableTouchEntity()
+		if self:IsScreenPointInsideEntity(screenPoint, consumable) == true then
+			return "consumable"
+		end
+		return ""
+	end
+
+	method string GetCommonHotkeyActionId(number index)
+		local safeIndex = math.floor(self:ReadNumber(index, 0))
+		if safeIndex == 1 then
+			return "unique"
+		elseif safeIndex == 2 then
+			return "blink"
+		elseif safeIndex == 3 then
+			return "nimbus"
+		end
+		return ""
+	end
+
+	method boolean IsHudRebindSelectionActive()
+		if _BRCommonSkillSystem == nil then
+			return false
+		end
+		return _BRCommonSkillSystem:IsSelectingHudRebindSlot() == true
+	end
+
+	@ExecSpace("ClientOnly")
 	method void BeginBagPartDrag(number bagIndex, UITouchDownEvent event)
 		local part = self:GetBagPart(bagIndex)
 		if part == nil then
@@ -542,10 +698,44 @@ script BRSkillChainUI extends Component
 		self.draggingInstanceId = math.floor(self:ReadNumber(part.InstanceId, 0))
 		self.draggingSourceSlot = 0
 		self.draggingSourceBagIndex = math.floor(self:ReadNumber(bagIndex, 0))
+		self.draggingSourceConsumableIndex = 0
 		self.draggingStartX = screenPoint.x
 		self.draggingStartY = screenPoint.y
 		self.draggingMoved = false
 		self.draggingLabel = self:FormatSkillIconText(self:ReadString(part.Short, "S"), 1)
+		self:RenderDragGhostVisual(part, 1, false)
+		self:SetDragGhostActive(true)
+		self:MoveGhostToTouch(screenPoint)
+		return true
+	end
+
+	@ExecSpace("ClientOnly")
+	method void BeginConsumableSlotDrag(number slotIndex, UITouchDownEvent event)
+		local part = self:GetConsumableSlotPart()
+		if part == nil or event == nil then
+			return
+		end
+		if self:BeginConsumableSlotDragAtScreen(slotIndex, event.TouchPoint) ~= true then
+			return
+		end
+		self:Log("drag begin consumable instance=" .. tostring(self.draggingInstanceId))
+	end
+
+	@ExecSpace("ClientOnly")
+	method boolean BeginConsumableSlotDragAtScreen(number slotIndex, Vector2 screenPoint)
+		-- Starts dragging the Sobie_1 consumable from the given screen position.
+		local part = self:GetConsumableSlotPart()
+		if part == nil then
+			return false
+		end
+		self.draggingInstanceId = math.floor(self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0))
+		self.draggingSourceSlot = 0
+		self.draggingSourceBagIndex = 0
+		self.draggingSourceConsumableIndex = math.floor(self:ReadNumber(slotIndex, 1))
+		self.draggingStartX = screenPoint.x
+		self.draggingStartY = screenPoint.y
+		self.draggingMoved = false
+		self.draggingLabel = self:FormatSkillIconText(self:ReadString(self:ReadRecordValue(part, "Short"), "USE"), 1)
 		self:RenderDragGhostVisual(part, 1, false)
 		self:SetDragGhostActive(true)
 		self:MoveGhostToTouch(screenPoint)
@@ -576,6 +766,7 @@ script BRSkillChainUI extends Component
 		self.draggingInstanceId = math.floor(self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0))
 		self.draggingSourceSlot = math.floor(self:ReadNumber(slotIndex, 0))
 		self.draggingSourceBagIndex = 0
+		self.draggingSourceConsumableIndex = 0
 		self.draggingStartX = screenPoint.x
 		self.draggingStartY = screenPoint.y
 		self.draggingMoved = false
@@ -622,12 +813,16 @@ script BRSkillChainUI extends Component
 		end
 		self:MoveGhostToTouch(screenPoint)
 		self:UpdateDragMoved(screenPoint)
+		local targetConsumableIndex = self:GetConsumableIndexAtScreenPoint(screenPoint)
 		local targetSlot = self:GetSlotIndexAtScreenPoint(screenPoint)
 		local targetBagIndex = self:GetBagIndexAtScreenPoint(screenPoint)
 		local instanceId = self.draggingInstanceId
 		local sourceSlot = self.draggingSourceSlot
 		local sourceBagIndex = self.draggingSourceBagIndex
+		local sourceConsumableIndex = self.draggingSourceConsumableIndex
 		local wasClick = self.draggingMoved == false
+		local dragRecord = self:GetLocalRecordByInstanceId(instanceId)
+		local isConsumable = self:IsConsumableRecord(dragRecord)
 		self:ResetDrag()
 		self:SetDragGhostActive(false)
 
@@ -640,7 +835,15 @@ script BRSkillChainUI extends Component
 			return
 		end
 
-		if targetSlot > 0 and sourceSlot > 0 then
+		if targetConsumableIndex > 0 then
+			if isConsumable == true then
+				self:RequestEquipConsumableToSlot(instanceId, "drop")
+			else
+				self:Log("consumable drop rejected instance=" .. tostring(instanceId) .. " reason=notConsumable")
+			end
+		elseif targetSlot > 0 and isConsumable == true then
+			self:Log("chain drop rejected instance=" .. tostring(instanceId) .. " reason=consumable")
+		elseif targetSlot > 0 and sourceSlot > 0 then
 			if sourceSlot == targetSlot then
 				self:Log("chain click sourceSlot=" .. tostring(sourceSlot) .. " instance=" .. tostring(instanceId))
 			else
@@ -658,17 +861,27 @@ script BRSkillChainUI extends Component
 				elseif sourceBagIndex ~= targetBagIndex then
 					self:RequestMovePartToBagSlot(instanceId, targetBagIndex, "bag")
 				end
+			elseif sourceConsumableIndex > 0 then
+				self:RequestMovePartToBagSlot(instanceId, targetBagIndex, "consumable")
 			end
 		elseif wasClick == true and sourceBagIndex > 0 then
 			self:HandleBagPartClick(instanceId, sourceBagIndex)
+		elseif wasClick == true and sourceConsumableIndex > 0 then
+			self:Log("consumable click ignored instance=" .. tostring(instanceId))
 		elseif wasClick == false and (sourceSlot > 0 or sourceBagIndex > 0) then
-			self:RequestDropPartToWorld(instanceId, "outside")
+			if isConsumable == true then
+				self:Log("world drop skipped instance=" .. tostring(instanceId) .. " reason=consumableInventoryOnly")
+			else
+				self:RequestDropPartToWorld(instanceId, "outside")
+			end
+		elseif wasClick == false and sourceConsumableIndex > 0 then
+			self:Log("world drop skipped instance=" .. tostring(instanceId) .. " reason=consumableSlot")
 		else
 			self:Log("drop ignored instance=" .. tostring(instanceId) .. " sourceSlot=" .. tostring(sourceSlot))
 		end
 
 		self.nextRequestAt = 0
-		self:Log("drop instance=" .. tostring(instanceId) .. " sourceSlot=" .. tostring(sourceSlot) .. " sourceBag=" .. tostring(sourceBagIndex) .. " targetSlot=" .. tostring(targetSlot) .. " targetBag=" .. tostring(targetBagIndex))
+		self:Log("drop instance=" .. tostring(instanceId) .. " sourceSlot=" .. tostring(sourceSlot) .. " sourceBag=" .. tostring(sourceBagIndex) .. " sourceConsumable=" .. tostring(sourceConsumableIndex) .. " targetSlot=" .. tostring(targetSlot) .. " targetBag=" .. tostring(targetBagIndex) .. " targetConsumable=" .. tostring(targetConsumableIndex))
 	end
 
 	@ExecSpace("ClientOnly")
@@ -713,6 +926,15 @@ script BRSkillChainUI extends Component
 			if visual ~= tile and self:IsScreenPointInsideEntity(screenPoint, visual) == true then
 				return bagIndex
 			end
+		end
+		return 0
+	end
+
+	@ExecSpace("ClientOnly")
+	method number GetConsumableIndexAtScreenPoint(Vector2 screenPoint)
+		local slot = self:GetConsumableTouchEntity()
+		if self:IsScreenPointInsideEntity(screenPoint, slot) == true then
+			return 1
 		end
 		return 0
 	end
@@ -1149,6 +1371,20 @@ script BRSkillChainUI extends Component
 	end
 
 	@ExecSpace("ClientOnly")
+	method void RenderConsumableSlot()
+		-- Renders the authored BattleHub/Sobie_1 consumable slot.
+		local part = self:GetConsumableSlotPart()
+		local occupied = part ~= nil and self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0) > 0
+		local skillKey = "Default"
+		if occupied == true then
+			skillKey = self:GetRecordSkillKey(part)
+		end
+		self:SetSkillSlotVisual("CHAIN", "Panel/Chain/Sobie_1", skillKey, 1, occupied, false, false)
+		self:ApplySlotCooldownVisual("CHAIN", "Panel/Chain/Sobie_1", "consumable", occupied)
+		self:SetSlotFrameColor("CHAIN", "Panel/Chain/Sobie_1", Color(0.45, 0.95, 0.78, 0.95))
+	end
+
+	@ExecSpace("ClientOnly")
 	method void RenderChainSlotVisual(number slotIndex, any record)
 		-- Applies icon, base tint, and order frame to one internal chain slot.
 		local safeSlotIndex = math.floor(self:ReadNumber(slotIndex, 0))
@@ -1242,7 +1478,7 @@ script BRSkillChainUI extends Component
 		if occupied == true then
 			skillKey = self:GetRecordSkillKey(part)
 		end
-		self:RenderBagSlotVisualByKey(safeBagIndex, skillKey, occupied, equipped == true)
+		self:SetSkillSlotVisual("BAG", "Panel/Inventory/Item_" .. tostring(safeBagIndex), skillKey, 1, occupied == true, false, equipped == true)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1266,7 +1502,7 @@ script BRSkillChainUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void SetSkillSlotVisual(string rootKind, string basePath, string skillKey, number tier, boolean occupied, boolean isLeadSlot, boolean equipped)
-		-- Updates the visual entities under a skill slot.
+		-- Updates one slot from the canonical skill UI database.
 		local safeRootKind = self:ReadString(rootKind, "CHAIN")
 		local safeBasePath = self:ReadString(basePath, "")
 		local safeTier = math.max(1, math.floor(self:ReadNumber(tier, 1)))
@@ -1280,8 +1516,18 @@ script BRSkillChainUI extends Component
 		local iconPath = self:ApplySlotIconVisual(safeRootKind, safeBasePath, iconRuid, iconColor)
 		if iconPath ~= "" then
 			self:SetVisualEntityEnabled(safeRootKind, iconPath, true)
+			local iconEntity = self:GetVisualEntity(safeRootKind, iconPath)
+			if iconEntity ~= nil and iconEntity.SpriteGUIRendererComponent ~= nil then
+				iconEntity.SpriteGUIRendererComponent.Type = ImageType.Simple
+				iconEntity.SpriteGUIRendererComponent.FillAmount = 1
+			end
 		else
 			self:SetVisualSpriteImage(safeRootKind, safeBasePath, iconRuid)
+			local baseEntity = self:GetVisualEntity(safeRootKind, safeBasePath)
+			if baseEntity ~= nil and baseEntity.SpriteGUIRendererComponent ~= nil then
+				baseEntity.SpriteGUIRendererComponent.Type = ImageType.Simple
+				baseEntity.SpriteGUIRendererComponent.FillAmount = 1
+			end
 			if occupied == true then
 				self:SetVisualSpriteColor(safeRootKind, safeBasePath, iconColor)
 			else
@@ -1307,6 +1553,65 @@ script BRSkillChainUI extends Component
 		for index, iconPath in ipairs(candidates) do
 			if self:SetVisualSpriteImage(rootKind, iconPath, iconRuid) == true then
 				self:SetVisualSpriteColor(rootKind, iconPath, iconColor)
+				return iconPath
+			end
+		end
+		return ""
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ResetSlotIconCooldownFill(string rootKind, string iconPath)
+		-- Restores a slot icon before a per-action cooldown fill is applied.
+		local iconEntity = self:GetVisualEntity(rootKind, iconPath)
+		if iconEntity == nil or iconEntity.SpriteGUIRendererComponent == nil then
+			return
+		end
+		iconEntity.SpriteGUIRendererComponent.Type = ImageType.Simple
+		iconEntity.SpriteGUIRendererComponent.FillAmount = 1
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplySlotCooldownVisual(string rootKind, string basePath, string actionId, boolean available)
+		-- Applies Maple-style bottom-up refill to hotkey skill icons during cooldown.
+		local iconPath = self:FindSlotIconPath(rootKind, basePath)
+		if iconPath == "" then
+			return
+		end
+		local iconEntity = self:GetVisualEntity(rootKind, iconPath)
+		if iconEntity == nil or iconEntity.SpriteGUIRendererComponent == nil then
+			return
+		end
+		local readyRatio = 1
+		if available == true and _BRCommonSkillSystem ~= nil then
+			readyRatio = _BRCommonSkillSystem:GetActionCooldownReadyRatio(actionId)
+		end
+		local safeRatio = math.max(0, math.min(1, self:ReadNumber(readyRatio, 1)))
+		if safeRatio >= 0.999 then
+			iconEntity.SpriteGUIRendererComponent.Type = ImageType.Simple
+			iconEntity.SpriteGUIRendererComponent.FillAmount = 1
+			return
+		end
+		iconEntity.SpriteGUIRendererComponent.Type = ImageType.Filled
+		iconEntity.SpriteGUIRendererComponent.FillMethod = FillMethodType.Vertical
+		iconEntity.SpriteGUIRendererComponent.FillOrigin = 0
+		iconEntity.SpriteGUIRendererComponent.FillAmount = safeRatio
+	end
+
+	method string FindSlotIconPath(string rootKind, string basePath)
+		-- Finds the authored icon surface used by SetSkillSlotVisual.
+		local safeBasePath = self:ReadString(basePath, "")
+		local candidates = {
+			safeBasePath .. "/Icon",
+			safeBasePath .. "/SkillIcon",
+			safeBasePath .. "/Image",
+			safeBasePath .. "/IconImage",
+			safeBasePath .. "/ItemIcon",
+			safeBasePath .. "/Skill",
+			safeBasePath
+		}
+		for index, iconPath in ipairs(candidates) do
+			local entity = self:GetVisualEntity(rootKind, iconPath)
+			if entity ~= nil and entity.SpriteGUIRendererComponent ~= nil then
 				return iconPath
 			end
 		end
@@ -1371,6 +1676,10 @@ script BRSkillChainUI extends Component
 		if useSolidIcon == true then
 			return self:GetFallbackIconRUID()
 		end
+		local consumableIcon = self:GetConsumableIconRUID(skillKey)
+		if consumableIcon ~= "" then
+			return consumableIcon
+		end
 		if _BRSkillUIDatabase ~= nil then
 			local iconRuid = _BRSkillUIDatabase:GetSlotIconRUID(skillKey, tier, isLeadSlot == true)
 			if self:ReadString(iconRuid, "") ~= "" then
@@ -1378,6 +1687,16 @@ script BRSkillChainUI extends Component
 			end
 		end
 		return self:GetFallbackIconRUID()
+	end
+
+	method string GetConsumableIconRUID(string skillKey)
+		local key = self:ReadString(skillKey, "")
+		if key == "Consumable_HealthPotion" then
+			return "fb1622f63b424e62bc9668dfa880a449"
+		elseif key == "Consumable_ShieldPotion" then
+			return "d6237415a0ba4576b860874bbf5d0d4b"
+		end
+		return ""
 	end
 
 	method Color GetSlotIconDisplayColor(string skillKey, number tier, boolean occupied, boolean isRepresentative, boolean useSolidIcon)
@@ -1786,7 +2105,9 @@ script BRSkillChainUI extends Component
 					Tier = math.floor(self:ReadNumber(parts[4], 0)),
 					DisplayName = self:ReadString(parts[5], "-"),
 					SkillKey = self:ReadString(parts[6], self:InferSkillKey(parts[3], parts[5])),
-					HasTrigger = self:ReadString(parts[7], "0") == "1"
+					HasTrigger = self:ReadString(parts[7], "0") == "1",
+					ItemType = self:ReadString(parts[8], "SKILL"),
+					IconRUID = self:ReadString(parts[9], "")
 				}
 			end
 		end
@@ -1804,6 +2125,8 @@ script BRSkillChainUI extends Component
 			local displayIndex = 5
 			local skillKeyIndex = 6
 			local triggerIndex = 7
+			local itemTypeIndex = 8
+			local iconRuidIndex = 9
 			if tonumber(parts[2]) ~= nil then
 				slotIndex = math.floor(self:ReadNumber(parts[1], 0))
 				instanceId = math.floor(self:ReadNumber(parts[2], 0))
@@ -1812,6 +2135,8 @@ script BRSkillChainUI extends Component
 				displayIndex = 5
 				skillKeyIndex = 6
 				triggerIndex = 7
+				itemTypeIndex = 8
+				iconRuidIndex = 9
 			end
 			if instanceId > 0 then
 				result[slotIndex] = {
@@ -1821,7 +2146,32 @@ script BRSkillChainUI extends Component
 					Tier = math.floor(self:ReadNumber(parts[tierIndex], 0)),
 					DisplayName = self:ReadString(parts[displayIndex], "Skill"),
 					SkillKey = self:ReadString(parts[skillKeyIndex], self:InferSkillKey(parts[shortIndex], parts[displayIndex])),
-					HasTrigger = self:ReadString(parts[triggerIndex], "0") == "1"
+					HasTrigger = self:ReadString(parts[triggerIndex], "0") == "1",
+					ItemType = self:ReadString(parts[itemTypeIndex], "SKILL"),
+					IconRUID = self:ReadString(parts[iconRuidIndex], "")
+				}
+			end
+		end
+		return result
+	end
+
+	method any ParseConsumableText(string text)
+		local result = nil
+		for record in string.gmatch(self:ReadString(text, ""), "([^;]+)") do
+			local parts = self:SplitCommaRecord(record)
+			local instanceId = math.floor(self:ReadNumber(parts[2], 0))
+			if instanceId > 0 then
+				result = {
+					Slot = math.floor(self:ReadNumber(parts[1], 1)),
+					InstanceId = instanceId,
+					Short = self:ReadString(parts[3], "USE"),
+					EquippedSlot = 0,
+					Tier = math.floor(self:ReadNumber(parts[4], 1)),
+					DisplayName = self:ReadString(parts[5], "Consumable"),
+					SkillKey = self:ReadString(parts[6], "Default"),
+					HasTrigger = false,
+					ItemType = self:ReadString(parts[8], "CONSUMABLE"),
+					IconRUID = self:ReadString(parts[9], "")
 				}
 			end
 		end
@@ -1853,6 +2203,45 @@ script BRSkillChainUI extends Component
 			return nil
 		end
 		return part
+	end
+
+	method any GetConsumableSlotPart()
+		local part = self._T.consumableSlot
+		if part == nil or math.floor(self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0)) <= 0 then
+			return nil
+		end
+		return part
+	end
+
+	method any GetLocalRecordByInstanceId(number instanceId)
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return nil
+		end
+		local consumable = self:GetConsumableSlotPart()
+		if consumable ~= nil and math.floor(self:ReadNumber(self:ReadRecordValue(consumable, "InstanceId"), 0)) == safeInstanceId then
+			return consumable
+		end
+		local bagPart = self:FindLocalBagPartByInstanceId(safeInstanceId)
+		if bagPart ~= nil then
+			return bagPart
+		end
+		local chainSlot = self:FindLocalChainSlotByInstanceId(safeInstanceId)
+		if chainSlot > 0 then
+			return self:GetChainSlot(chainSlot)
+		end
+		return nil
+	end
+
+	method boolean IsConsumableRecord(any record)
+		if record == nil then
+			return false
+		end
+		if string.upper(self:ReadString(self:ReadRecordValue(record, "ItemType"), "SKILL")) == "CONSUMABLE" then
+			return true
+		end
+		local skillKey = self:GetRecordSkillKey(record)
+		return skillKey == "Consumable_HealthPotion" or skillKey == "Consumable_ShieldPotion"
 	end
 
 	@ExecSpace("ClientOnly")
@@ -1975,6 +2364,43 @@ script BRSkillChainUI extends Component
 	end
 
 	@ExecSpace("ClientOnly")
+	method void RequestEquipConsumableToSlot(number instanceId, string reason)
+		if _BRSkillSystem == nil then
+			return
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return
+		end
+		if self:IsConsumableRecord(self:GetLocalRecordByInstanceId(safeInstanceId)) ~= true then
+			self:Log("consumable insert skipped instance=" .. tostring(safeInstanceId) .. " reason=notConsumable")
+			return
+		end
+		_BRSkillSystem:RequestEquipConsumableToSlot(self:GetLocalUserId(), safeInstanceId)
+		self:ApplyLocalEquipConsumableToSlot(safeInstanceId)
+		self.nextRequestAt = 0
+		self:Log("consumable insert " .. self:ReadString(reason, "request") .. " instance=" .. tostring(safeInstanceId))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RequestClearConsumableSlot()
+		if _BRSkillSystem == nil then
+			return
+		end
+		if self:GetConsumableSlotPart() == nil then
+			return
+		end
+		if self:FindFirstEmptyLocalBagSlot() <= 0 then
+			self:Log("consumable clear skipped reason=noInventorySpace")
+			return
+		end
+		_BRSkillSystem:RequestClearConsumableSlot(self:GetLocalUserId())
+		self:ApplyLocalClearConsumableSlot()
+		self.nextRequestAt = 0
+		self:Log("consumable clear")
+	end
+
+	@ExecSpace("ClientOnly")
 	method void RequestMovePartToBagSlot(number instanceId, number targetBagSlot, string reason)
 		if _BRSkillSystem == nil then
 			return
@@ -2004,6 +2430,49 @@ script BRSkillChainUI extends Component
 		self:ApplyLocalDropPart(safeInstanceId)
 		self.nextRequestAt = 0
 		self:Log("world drop " .. self:ReadString(reason, "request") .. " instance=" .. tostring(safeInstanceId))
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalEquipConsumableToSlot(number instanceId)
+		-- Moves one visible inventory consumable into Sobie_1 while waiting for the server snapshot.
+		self:EnsureRuntime()
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return
+		end
+		local sourceBagIndex = self:FindLocalBagIndexByInstanceId(safeInstanceId)
+		local sourcePart = self:GetBagPart(sourceBagIndex)
+		if sourcePart == nil then
+			sourcePart = self:GetConsumableSlotPart()
+		end
+		if self:IsConsumableRecord(sourcePart) ~= true then
+			return
+		end
+		local previous = self:GetConsumableSlotPart()
+		if previous ~= nil and math.floor(self:ReadNumber(self:ReadRecordValue(previous, "InstanceId"), 0)) ~= safeInstanceId then
+			if sourceBagIndex > 0 then
+				self._T.bagParts[sourceBagIndex] = self:BuildBagPartFromAnyRecord(previous)
+			else
+				self:AppendLocalBagPart(previous)
+			end
+		elseif sourceBagIndex > 0 then
+			self._T.bagParts[sourceBagIndex] = nil
+		end
+		self:RemoveLocalBagPartByInstanceId(safeInstanceId)
+		self._T.consumableSlot = self:BuildConsumableRecordFromAnyRecord(sourcePart)
+		self:RenderBag()
+		self:RenderConsumableSlot()
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ApplyLocalClearConsumableSlot()
+		local part = self:GetConsumableSlotPart()
+		if part ~= nil then
+			self:AppendLocalBagPart(part)
+		end
+		self._T.consumableSlot = nil
+		self:RenderBag()
+		self:RenderConsumableSlot()
 	end
 
 	@ExecSpace("ClientOnly")
@@ -2057,7 +2526,10 @@ script BRSkillChainUI extends Component
 			Short = self:ReadString(self:ReadRecordValue(bagPart, "Short"), "S"),
 			Tier = 1,
 			DisplayName = self:ReadString(self:ReadRecordValue(bagPart, "DisplayName"), "Skill"),
-			SkillKey = self:GetRecordSkillKey(bagPart)
+			SkillKey = self:GetRecordSkillKey(bagPart),
+			HasTrigger = self:ReadRecordValue(bagPart, "HasTrigger") == true,
+			ItemType = self:ReadString(self:ReadRecordValue(bagPart, "ItemType"), "SKILL"),
+			IconRUID = self:ReadString(self:ReadRecordValue(bagPart, "IconRUID"), "")
 		}
 		self:RemoveLocalBagPartByInstanceId(safeInstanceId)
 		self:RenderChain()
@@ -2261,12 +2733,14 @@ script BRSkillChainUI extends Component
 			Tier = 1,
 			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill"),
 			SkillKey = self:GetRecordSkillKey(part),
-			HasTrigger = self:ReadRecordValue(part, "HasTrigger") == true
+			HasTrigger = self:ReadRecordValue(part, "HasTrigger") == true,
+			ItemType = self:ReadString(self:ReadRecordValue(part, "ItemType"), "SKILL"),
+			IconRUID = self:ReadString(self:ReadRecordValue(part, "IconRUID"), "")
 		}
 	end
 
-	method any BuildBagPartFromChainRecord(any record)
-		-- Converts one chain slot record into an unequipped bag record.
+	method any BuildBagPartFromAnyRecord(any record)
+		-- Converts a chain, bag, or consumable record into a spare inventory record.
 		if record == nil then
 			return nil
 		end
@@ -2281,8 +2755,15 @@ script BRSkillChainUI extends Component
 			Tier = 1,
 			DisplayName = self:ReadString(self:ReadRecordValue(record, "DisplayName"), "Skill"),
 			SkillKey = self:GetRecordSkillKey(record),
-			HasTrigger = self:ReadRecordValue(record, "HasTrigger") == true
+			HasTrigger = self:ReadRecordValue(record, "HasTrigger") == true,
+			ItemType = self:ReadString(self:ReadRecordValue(record, "ItemType"), "SKILL"),
+			IconRUID = self:ReadString(self:ReadRecordValue(record, "IconRUID"), "")
 		}
+	end
+
+	method any BuildBagPartFromChainRecord(any record)
+		-- Converts one chain slot record into an unequipped bag record.
+		return self:BuildBagPartFromAnyRecord(record)
 	end
 
 	method any BuildChainRecordFromBagPart(any part, number slotIndex)
@@ -2301,7 +2782,31 @@ script BRSkillChainUI extends Component
 			Tier = 1,
 			DisplayName = self:ReadString(self:ReadRecordValue(part, "DisplayName"), "Skill"),
 			SkillKey = self:GetRecordSkillKey(part),
-			HasTrigger = self:ReadRecordValue(part, "HasTrigger") == true
+			HasTrigger = self:ReadRecordValue(part, "HasTrigger") == true,
+			ItemType = self:ReadString(self:ReadRecordValue(part, "ItemType"), "SKILL"),
+			IconRUID = self:ReadString(self:ReadRecordValue(part, "IconRUID"), "")
+		}
+	end
+
+	method any BuildConsumableRecordFromAnyRecord(any record)
+		if record == nil then
+			return nil
+		end
+		local instanceId = math.floor(self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0))
+		if instanceId <= 0 then
+			return nil
+		end
+		return {
+			Slot = 1,
+			InstanceId = instanceId,
+			Short = self:ReadString(self:ReadRecordValue(record, "Short"), "USE"),
+			EquippedSlot = 0,
+			Tier = 1,
+			DisplayName = self:ReadString(self:ReadRecordValue(record, "DisplayName"), "Consumable"),
+			SkillKey = self:GetRecordSkillKey(record),
+			HasTrigger = false,
+			ItemType = "CONSUMABLE",
+			IconRUID = self:ReadString(self:ReadRecordValue(record, "IconRUID"), "")
 		}
 	end
 
@@ -2346,10 +2851,23 @@ script BRSkillChainUI extends Component
 		return 0
 	end
 
+	method number FindLocalConsumableSlotByInstanceId(number instanceId)
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return 0
+		end
+		local part = self:GetConsumableSlotPart()
+		if part ~= nil and math.floor(self:ReadNumber(self:ReadRecordValue(part, "InstanceId"), 0)) == safeInstanceId then
+			return 1
+		end
+		return 0
+	end
+
 	method void ResetDrag()
 		self.draggingInstanceId = 0
 		self.draggingSourceSlot = 0
 		self.draggingSourceBagIndex = 0
+		self.draggingSourceConsumableIndex = 0
 		self.draggingStartX = 0
 		self.draggingStartY = 0
 		self.draggingMoved = false
@@ -2406,6 +2924,18 @@ script BRSkillChainUI extends Component
 			return nil
 		end
 		return self:GetEntityFromRoot(self:GetChainRootPath(), self:GetAuthoredBattleHudContainerPath() .. "/ChainPart_" .. tostring(safeSlotIndex))
+	end
+
+	method Entity GetConsumableTouchEntity()
+		local authored = self:GetEntityFromRoot(self:GetChainRootPath(), self:GetAuthoredBattleHudContainerPath() .. "/Sobie_1")
+		if authored ~= nil then
+			return authored
+		end
+		local touch = self:GetChainEntity("Panel/Chain/Sobie_1/Touch")
+		if touch ~= nil then
+			return touch
+		end
+		return self:GetChainEntity("Panel/Chain/Sobie_1")
 	end
 
 	method Entity GetBagTouchEntity(number bagIndex)
@@ -2511,6 +3041,18 @@ script BRSkillChainUI extends Component
 		end
 		if self:StartsWith(path, "Panel/Chain/Representative/") == true then
 			return hubPath .. "/SkillChain_5" .. string.sub(path, string.len("Panel/Chain/Representative") + 1)
+		end
+		if path == "Panel/Chain/Sobie_1" or path == "Panel/Chain/Consumable_1" then
+			return hubPath .. "/Sobie_1"
+		end
+		if self:StartsWith(path, "Panel/Chain/Sobie_1/") == true then
+			return hubPath .. "/Sobie_1" .. string.sub(path, string.len("Panel/Chain/Sobie_1") + 1)
+		end
+		if self:StartsWith(path, "Panel/Chain/Consumable_1/") == true then
+			return hubPath .. "/Sobie_1" .. string.sub(path, string.len("Panel/Chain/Consumable_1") + 1)
+		end
+		if path == "Panel/Chain/SobieTouch_1" then
+			return hubPath .. "/Sobie_1"
 		end
 		if self:StartsWith(path, "Panel/Chain/SlotTouch_") == true then
 			return self:GetBattleHudSlotAlias(path, "Panel/Chain/SlotTouch_")
@@ -2819,11 +3361,52 @@ script BRSkillChainUI extends Component
 			local path = "Panel/Chain/Common_" .. tostring(index)
 			local skillKey = self:GetCommonSkillKey(index)
 			local occupied = self:IsCommonSkillAvailable(skillKey) == true
+			local actionId = ""
+			if index == 1 then
+				actionId = "unique"
+			elseif index == 2 then
+				actionId = "blink"
+			elseif index == 3 then
+				actionId = "nimbus"
+			end
 			if occupied == true then
 				self:SetSkillSlotVisual("CHAIN", path, skillKey, 1, true, false, false)
 			else
 				self:SetSkillSlotVisual("CHAIN", path, "Default", 0, false, false, false)
 				self:SetSlotFrameColor("CHAIN", path, Color(0.28, 0.34, 0.43, 0.42))
+			end
+			local iconCandidates = {
+				path .. "/Icon",
+				path .. "/SkillIcon",
+				path .. "/Image",
+				path .. "/IconImage",
+				path .. "/ItemIcon",
+				path .. "/Skill",
+				path
+			}
+			local iconEntity = nil
+			for _, iconPath in ipairs(iconCandidates) do
+				local candidate = self:GetVisualEntity("CHAIN", iconPath)
+				if candidate ~= nil and candidate.SpriteGUIRendererComponent ~= nil then
+					iconEntity = candidate
+					break
+				end
+			end
+			if iconEntity ~= nil then
+				local readyRatio = 1
+				if _BRCommonSkillSystem ~= nil and actionId ~= "" then
+					readyRatio = _BRCommonSkillSystem:GetActionCooldownReadyRatio(actionId)
+				end
+				local safeRatio = math.max(0, math.min(1, self:ReadNumber(readyRatio, 1)))
+				if safeRatio >= 0.999 then
+					iconEntity.SpriteGUIRendererComponent.Type = ImageType.Simple
+					iconEntity.SpriteGUIRendererComponent.FillAmount = 1
+				else
+					iconEntity.SpriteGUIRendererComponent.Type = ImageType.Filled
+					iconEntity.SpriteGUIRendererComponent.FillMethod = FillMethodType.Vertical
+					iconEntity.SpriteGUIRendererComponent.FillOrigin = 0
+					iconEntity.SpriteGUIRendererComponent.FillAmount = safeRatio
+				end
 			end
 		end
 		for index = self:GetCommonSkillSlotCount() + 1, 6 do
@@ -2836,6 +3419,153 @@ script BRSkillChainUI extends Component
 		if _BRCommonSkillSystem ~= nil and _BRCommonSkillSystem:IsLocalNimbusActive() == true then
 			self:SetSlotFrameColor("CHAIN", "Panel/Chain/Common_3", Color(0.42, 0.95, 1.0, 1.0))
 		end
+
+		local representativePath = self:GetRepresentativeChainSlotPath()
+		local representativeSlotIndex = self:GetRepresentativeChainSlotIndex(self._T.chainSlots)
+		local record = self:GetChainSlotRecordFromSnapshot(self._T.chainSlots, representativeSlotIndex)
+		local representativeOccupied = false
+		if record ~= nil then
+			representativeOccupied = self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0
+		end
+		local representativeIconCandidates = {
+			representativePath .. "/Icon",
+			representativePath .. "/SkillIcon",
+			representativePath .. "/Image",
+			representativePath .. "/IconImage",
+			representativePath .. "/ItemIcon",
+			representativePath .. "/Skill",
+			representativePath
+		}
+		local representativeIcon = nil
+		for _, iconPath in ipairs(representativeIconCandidates) do
+			local candidate = self:GetVisualEntity("CHAIN", iconPath)
+			if candidate ~= nil and candidate.SpriteGUIRendererComponent ~= nil then
+				representativeIcon = candidate
+				break
+			end
+		end
+		if representativeIcon ~= nil then
+			local readyRatio = 1
+			if _BRCommonSkillSystem ~= nil then
+				readyRatio = _BRCommonSkillSystem:GetActionCooldownReadyRatio("attack")
+			end
+			local safeRatio = math.max(0, math.min(1, self:ReadNumber(readyRatio, 1)))
+			if safeRatio >= 0.999 then
+				representativeIcon.SpriteGUIRendererComponent.Type = ImageType.Simple
+				representativeIcon.SpriteGUIRendererComponent.FillAmount = 1
+			else
+				representativeIcon.SpriteGUIRendererComponent.Type = ImageType.Filled
+				representativeIcon.SpriteGUIRendererComponent.FillMethod = FillMethodType.Vertical
+				representativeIcon.SpriteGUIRendererComponent.FillOrigin = 0
+				representativeIcon.SpriteGUIRendererComponent.FillAmount = safeRatio
+			end
+		end
+		self:RefreshConsumableCooldownVisual()
+
+		if _BRCommonSkillSystem ~= nil then
+			local labels = {
+				{ Path = "Panel/Chain/Common_1", Action = "unique" },
+				{ Path = "Panel/Chain/Common_2", Action = "blink" },
+				{ Path = "Panel/Chain/Common_3", Action = "nimbus" },
+				{ Path = representativePath, Action = "attack" },
+				{ Path = "Panel/Chain/Sobie_1", Action = "consumable" }
+			}
+			for _, row in ipairs(labels) do
+				local label = _BRCommonSkillSystem:GetActionKeyName(row.Action)
+				if _BRCommonSkillSystem:IsCapturingRebind() == true and _BRCommonSkillSystem:GetCapturingActionId() == row.Action then
+					label = "?"
+				end
+				local textEntity = self:GetChainEntity(row.Path .. "/UIText")
+				if textEntity ~= nil then
+					textEntity.Enable = true
+					if textEntity.TextComponent ~= nil then
+						textEntity.TextComponent.Text = self:ReadString(label, "")
+					elseif textEntity.TextGUIRendererComponent ~= nil then
+						textEntity.TextGUIRendererComponent.Text = self:ReadString(label, "")
+					end
+				end
+			end
+		end
+		local unusedTextEntity = self:GetChainEntity("Panel/Chain/Common_4/UIText")
+		if unusedTextEntity ~= nil then
+			if unusedTextEntity.TextComponent ~= nil then
+				unusedTextEntity.TextComponent.Text = ""
+			elseif unusedTextEntity.TextGUIRendererComponent ~= nil then
+				unusedTextEntity.TextGUIRendererComponent.Text = ""
+			end
+		end
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshRepresentativeCooldownVisual()
+		-- Keeps the chain hotkey icon refill moving even when the chain snapshot does not change.
+		local representativePath = self:GetRepresentativeChainSlotPath()
+		local representativeSlotIndex = self:GetRepresentativeChainSlotIndex(self._T.chainSlots)
+		local record = self:GetChainSlotRecordFromSnapshot(self._T.chainSlots, representativeSlotIndex)
+		local occupied = false
+		if record ~= nil then
+			occupied = self:ReadNumber(self:ReadRecordValue(record, "InstanceId"), 0) > 0
+		end
+		self:ApplySlotCooldownVisual("CHAIN", representativePath, "attack", occupied)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshConsumableCooldownVisual()
+		local occupied = self:GetConsumableSlotPart() ~= nil
+		self:ApplySlotCooldownVisual("CHAIN", "Panel/Chain/Sobie_1", "consumable", occupied)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RefreshHotkeyLabels()
+		if _BRCommonSkillSystem == nil then
+			return
+		end
+		self:SetHotkeyLabel("Panel/Chain/Common_1", "unique")
+		self:SetHotkeyLabel("Panel/Chain/Common_2", "blink")
+		self:SetHotkeyLabel("Panel/Chain/Common_3", "nimbus")
+		self:SetHotkeyLabel(self:GetRepresentativeChainSlotPath(), "attack")
+		self:SetHotkeyLabel("Panel/Chain/Sobie_1", "consumable")
+		self:SetHotkeyText("Panel/Chain/Common_4", "")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetHotkeyLabel(string relativePath, string actionId)
+		local label = _BRCommonSkillSystem:GetActionKeyName(actionId)
+		if _BRCommonSkillSystem:IsCapturingRebind() == true and _BRCommonSkillSystem:GetCapturingActionId() == actionId then
+			label = "?"
+		end
+		self:SetHotkeyText(relativePath, label)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetHotkeyText(string relativePath, string text)
+		local textEntity = self:GetHotkeyTextEntity(relativePath)
+		if textEntity == nil then
+			return
+		end
+		textEntity.Enable = true
+		if textEntity.TextComponent ~= nil then
+			textEntity.TextComponent.Text = self:ReadString(text, "")
+		elseif textEntity.TextGUIRendererComponent ~= nil then
+			textEntity.TextGUIRendererComponent.Text = self:ReadString(text, "")
+		end
+	end
+
+	method Entity GetHotkeyTextEntity(string relativePath)
+		local path = self:ReadString(relativePath, "")
+		local textEntity = self:GetChainEntity(path .. "/UIText")
+		if textEntity ~= nil then
+			return textEntity
+		end
+		textEntity = self:GetChainEntity(path .. "/KeyText")
+		if textEntity ~= nil then
+			return textEntity
+		end
+		local slot = self:GetChainEntity(path)
+		if slot ~= nil then
+			return slot:GetChildByName("UIText", false)
+		end
+		return nil
 	end
 
 	@ExecSpace("ClientOnly")
@@ -3104,6 +3834,9 @@ script BRSkillChainUI extends Component
 		end
 		if self._T.bagParts == nil then
 			self._T.bagParts = {}
+		end
+		if self._T.consumableSlot == nil then
+			self._T.consumableSlot = nil
 		end
 		if self._T.handlers == nil then
 			self._T.handlers = {}

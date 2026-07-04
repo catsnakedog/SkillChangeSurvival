@@ -114,7 +114,12 @@ script BRKeyConfigUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void OnOpenClick(ButtonClickEvent event)
-		self:SetPanelOpen(self.panelOpen ~= true)
+		local shouldOpen = self.panelOpen ~= true
+		self:SetPanelOpen(shouldOpen)
+		if shouldOpen == true and _BRCommonSkillSystem ~= nil then
+			_BRCommonSkillSystem:BeginHudRebindSlotSelection()
+			self:RefreshPanel()
+		end
 	end
 
 	@ExecSpace("ClientOnly")

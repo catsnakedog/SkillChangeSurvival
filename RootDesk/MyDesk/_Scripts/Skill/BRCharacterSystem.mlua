@@ -9,7 +9,7 @@ script BRCharacterSystem extends Logic
 
 	property Entity classSelectRoot = "ff877862-5ed0-4b36-81e3-29f3385d63e8"
 
-	property Entity classSelectPanel = "c84fe406-b377-46af-81fa-33ac3aa8abd3"
+	property Entity classSelectPanel = "c5e6bdc6-d1c4-41dd-85fc-728eed241ea6"
 
 	property ButtonComponent knightButton = "5ca001f2-2e6d-4b66-a64a-0a800a369375"
 
@@ -21,19 +21,29 @@ script BRCharacterSystem extends Logic
 
 	property ButtonComponent classSelectCloseButton = "6fc62a6d-79f2-47c3-a61d-a85fca15aca9"
 
-	property Entity knightFrame = "e43a4ad3-7c6c-43f7-8958-e6f0927a8d98"
+	property ButtonComponent classSelectConfirmButton = "fd5e9419-1cb0-42b0-b2e4-0074219c032b"
 
-	property Entity mageFrame = "d4efca76-4e6a-4929-b5e7-b4c1a4b3ec12"
+	property ButtonComponent classSelectRandomButton = "06ca18ce-68b1-42d6-b743-89623b3ef6d7"
 
-	property Entity rogueFrame = "c28c0e86-bee6-444c-af00-1db17763257d"
+	property Entity knightFrame = "29423e89-2752-48e0-82fb-28a09fbecd45"
 
-	property Entity archerFrame = "5456b985-8baa-4cbb-a039-f38ebcc5c3e2"
+	property Entity mageFrame = "0d630ddd-9f46-4ff9-afcb-44b616cf4340"
+
+	property Entity rogueFrame = "b3c94cb6-db5a-49a8-9f8a-ecde48afbc3d"
+
+	property Entity archerFrame = "c0518a53-e8cb-4541-8a6d-0dc9e832b4ec"
+
+	property SpriteGUIRendererComponent classSelectBasicSkillIcon = "2b593614-29ca-49d5-8f2f-ef1208a69e67"
+
+	property SpriteGUIRendererComponent classSelectUniqueSkillIcon = "1ba1a03d-032c-4c3c-8a28-fe852a8fd2a8"
 
 	property number clientSnapshotTimerId = 0
 
 	property boolean classSelectOpen = false
 
 	property string classSelectSource = ""
+
+	property string classSelectPreviewKey = ""
 
 	property any knightHandler = nil
 
@@ -44,6 +54,12 @@ script BRCharacterSystem extends Logic
 	property any archerHandler = nil
 
 	property any classSelectCloseHandler = nil
+
+	property any classSelectConfirmHandler = nil
+
+	property any classSelectRandomHandler = nil
+
+	property any classSelectKeyDownHandler = nil
 
 	method void OnBeginPlay()
 		self:EnsureRuntime()
@@ -81,24 +97,8 @@ script BRCharacterSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method void RequestCycleCharacter(string source)
-		if self:IsClassSelectReady() ~= true then
-			self:Log("classSelect open skipped reason=notReady source=" .. self:ReadString(source, ""))
-			return
-		end
-		self.classSelectSource = self:ReadString(source, "npc")
-		self:ConnectClassSelectButtons()
-		self.classSelectOpen = true
-		self.classSelectRoot.Enable = true
-		self.classSelectRoot.Visible = true
-		self.classSelectPanel.Enable = true
-		self.classSelectPanel.Visible = true
-		if self.classSelectRoot.CanvasGroupComponent ~= nil then
-			self.classSelectRoot.CanvasGroupComponent.GroupAlpha = 1
-			self.classSelectRoot.CanvasGroupComponent.BlocksRaycasts = true
-			self.classSelectRoot.CanvasGroupComponent.Interactable = true
-		end
-		self:RefreshClassSelection()
-		self:Log("classSelect opened source=" .. self.classSelectSource)
+		-- Opens the class select popup from NPC interaction.
+		self:OpenClassSelectInternal(source)
 	end
 
 	@ExecSpace("Server")
@@ -149,8 +149,15 @@ script BRCharacterSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method void OpenClassSelectFromNpc(string source)
+		-- Opens the class select popup from direct UI/NPC callers.
+		self:OpenClassSelectInternal(source)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OpenClassSelectInternal(string source)
+		-- Shows the class selector after verifying the current authored UI bindings.
 		if self:IsClassSelectReady() ~= true then
-			self:Log("classSelect open skipped reason=notReady source=" .. self:ReadString(source, ""))
+			self:Log("classSelect open skipped reason=notReady missing=" .. self:GetClassSelectMissingReason() .. " source=" .. self:ReadString(source, ""))
 			return
 		end
 		self.classSelectSource = self:ReadString(source, "npc")
@@ -165,8 +172,9 @@ script BRCharacterSystem extends Logic
 			self.classSelectRoot.CanvasGroupComponent.BlocksRaycasts = true
 			self.classSelectRoot.CanvasGroupComponent.Interactable = true
 		end
-		self:RefreshClassSelection()
-		self:Log("classSelect opened source=" .. self.classSelectSource)
+		self.classSelectPreviewKey = self:GetLocalCharacterKey()
+		self:RefreshClassSelectionByKey(self.classSelectPreviewKey)
+		self:Log("classSelect opened source=" .. self.classSelectSource .. " preview=" .. self.classSelectPreviewKey)
 	end
 
 	@ExecSpace("ClientOnly")
@@ -182,12 +190,69 @@ script BRCharacterSystem extends Logic
 
 	@ExecSpace("ClientOnly")
 	method void SelectClassFromUI(string characterKey)
+		-- Compatibility entry point for old button wiring; a job click now previews only.
+		self:PreviewClassFromUI(characterKey)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void PreviewClassFromUI(string characterKey)
+		-- Updates the pending class and toggles the matching CharacterFull image.
 		local safeKey = self:NormalizeCharacterKey(characterKey)
+		self.classSelectPreviewKey = safeKey
+		self:RefreshClassSelectionByKey(safeKey)
+		self:Log("classSelect preview key=" .. safeKey)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void ConfirmClassSelection()
+		-- Confirms the currently previewed class through the server-authoritative flow.
+		local safeKey = self:NormalizeCharacterKey(self:ReadString(self.classSelectPreviewKey, self:GetLocalCharacterKey()))
 		local reason = "class-ui:" .. self.classSelectSource
 		self:PreviewLocalCharacter(safeKey, reason)
 		self:RequestSetCharacter(safeKey, reason)
 		self:RefreshClassSelectionByKey(safeKey)
-		self:Log("classSelect selected key=" .. safeKey)
+		self:Log("classSelect confirmed key=" .. safeKey)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void RandomPreviewClass()
+		-- Picks one visible class button and applies the same preview flow as a button click.
+		local candidates = {}
+		if self.knightButton ~= nil then
+			table.insert(candidates, "Knight")
+		end
+		if self.mageButton ~= nil then
+			table.insert(candidates, "Mage")
+		end
+		if self.rogueButton ~= nil then
+			table.insert(candidates, "Rogue")
+		end
+		if self.archerButton ~= nil then
+			table.insert(candidates, "Archer")
+		end
+		if #candidates <= 0 then
+			self:Log("classSelect random skipped reason=noCandidates")
+			return
+		end
+		local index = 1
+		if _UtilLogic ~= nil then
+			index = _UtilLogic:RandomIntegerRange(1, #candidates)
+		end
+		local key = self:ReadString(candidates[index], self:GetDefaultCharacterKey())
+		self:PreviewClassFromUI(key)
+		self:Log("classSelect random key=" .. key)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void OnClassSelectKeyDown(KeyDownEvent event)
+		-- Closes the class selector when Escape is pressed.
+		if self.classSelectOpen ~= true then
+			return
+		end
+		if event == nil or event.key ~= KeyboardKey.Escape then
+			return
+		end
+		self:CloseClassSelect()
 	end
 
 	@ExecSpace("ClientOnly")
@@ -685,28 +750,105 @@ script BRCharacterSystem extends Logic
 		self:SetClassSelectFrameActive(self.mageFrame, key == "Mage")
 		self:SetClassSelectFrameActive(self.rogueFrame, key == "Rogue")
 		self:SetClassSelectFrameActive(self.archerFrame, key == "Archer")
+		self:RefreshClassSelectSkillIcons(key)
+	end
+
+	method void RefreshClassSelectSkillIcons(string characterKey)
+		local key = self:NormalizeCharacterKey(characterKey)
+		local basicSkillKey = self:GetCharacterDefaultSkillValue(key, "basic_skill_id")
+		local uniqueSkillKey = self:GetCharacterDefaultSkillValue(key, "unique_skill_id")
+		local basicIconRuid = self:GetSkillIconRUID(basicSkillKey)
+		local uniqueIconRuid = self:GetSkillIconRUID(uniqueSkillKey)
+		self:SetClassSelectSkillIcon(self.classSelectBasicSkillIcon, basicIconRuid)
+		self:SetClassSelectSkillIcon(self.classSelectUniqueSkillIcon, uniqueIconRuid)
+		self:SetClassSelectSkillIconByPath("Common_1/Icon", basicIconRuid)
+		self:SetClassSelectSkillIconByPath("Common_2/Icon", uniqueIconRuid)
+		self:Log("classSelect icons key=" .. key .. " basic=" .. basicSkillKey .. " unique=" .. uniqueSkillKey)
+	end
+
+	method void SetClassSelectSkillIcon(SpriteGUIRendererComponent renderer, string iconRuid)
+		if renderer == nil then
+			return
+		end
+		self:ApplyClassSelectSkillIcon(renderer, iconRuid)
+	end
+
+	method void SetClassSelectSkillIconByPath(string relativePath, string iconRuid)
+		local path = "/ui/BRClassSelectGroup/Bg/" .. self:ReadString(relativePath, "")
+		local entity = _EntityService:GetEntityByPath(path)
+		if entity == nil or entity.SpriteGUIRendererComponent == nil then
+			return
+		end
+		self:ApplyClassSelectSkillIcon(entity.SpriteGUIRendererComponent, iconRuid)
+	end
+
+	method void ApplyClassSelectSkillIcon(SpriteGUIRendererComponent renderer, string iconRuid)
+		if renderer == nil then
+			return
+		end
+		local safeRuid = self:ReadString(iconRuid, "")
+		if safeRuid == "" then
+			safeRuid = "4fea64a3307cda641809ad8be0d4890b"
+		end
+		renderer.Enable = true
+		renderer.ImageRUID = DataRef(safeRuid)
+		renderer.Color = Color(1, 1, 1, 0.96)
+	end
+
+	method string GetSkillIconRUID(string skillKey)
+		local safeSkillKey = self:ReadString(skillKey, "")
+		if safeSkillKey == "" then
+			return ""
+		end
+		if _BRSkillUIDatabase ~= nil then
+			local iconRuid = _BRSkillUIDatabase:GetSlotIconRUID(safeSkillKey, 1, false)
+			if self:ReadString(iconRuid, "") ~= "" then
+				return iconRuid
+			end
+		end
+		local data = self:GetDataTable("skills")
+		if data == nil then
+			return ""
+		end
+		local row = self:GetDataRowIndex(data, "id", safeSkillKey)
+		if row <= 0 then
+			return ""
+		end
+		return self:GetDataCell(data, row, "icon_ruid", "")
 	end
 
 	method void ConnectClassSelectButtons()
+		-- Connects class select buttons and the Escape close key on the client.
 		self:DisconnectClassSelectButtons()
 		if self.knightButton ~= nil and self.knightButton.Entity ~= nil then
-			self.knightHandler = self.knightButton.Entity:ConnectEvent(ButtonClickEvent, function() self:SelectClassFromUI("Knight") end)
+			self.knightHandler = self.knightButton.Entity:ConnectEvent(ButtonClickEvent, function() self:PreviewClassFromUI("Knight") end)
 		end
 		if self.mageButton ~= nil and self.mageButton.Entity ~= nil then
-			self.mageHandler = self.mageButton.Entity:ConnectEvent(ButtonClickEvent, function() self:SelectClassFromUI("Mage") end)
+			self.mageHandler = self.mageButton.Entity:ConnectEvent(ButtonClickEvent, function() self:PreviewClassFromUI("Mage") end)
 		end
 		if self.rogueButton ~= nil and self.rogueButton.Entity ~= nil then
-			self.rogueHandler = self.rogueButton.Entity:ConnectEvent(ButtonClickEvent, function() self:SelectClassFromUI("Rogue") end)
+			self.rogueHandler = self.rogueButton.Entity:ConnectEvent(ButtonClickEvent, function() self:PreviewClassFromUI("Rogue") end)
 		end
 		if self.archerButton ~= nil and self.archerButton.Entity ~= nil then
-			self.archerHandler = self.archerButton.Entity:ConnectEvent(ButtonClickEvent, function() self:SelectClassFromUI("Archer") end)
+			self.archerHandler = self.archerButton.Entity:ConnectEvent(ButtonClickEvent, function() self:PreviewClassFromUI("Archer") end)
 		end
 		if self.classSelectCloseButton ~= nil and self.classSelectCloseButton.Entity ~= nil then
 			self.classSelectCloseHandler = self.classSelectCloseButton.Entity:ConnectEvent(ButtonClickEvent, self.CloseClassSelect)
 		end
+		if self.classSelectConfirmButton ~= nil and self.classSelectConfirmButton.Entity ~= nil then
+			self.classSelectConfirmHandler = self.classSelectConfirmButton.Entity:ConnectEvent(ButtonClickEvent, self.ConfirmClassSelection)
+		end
+		if self.classSelectRandomButton ~= nil and self.classSelectRandomButton.Entity ~= nil then
+			self.classSelectRandomHandler = self.classSelectRandomButton.Entity:ConnectEvent(ButtonClickEvent, self.RandomPreviewClass)
+		end
+		if self.classSelectKeyDownHandler == nil and _InputService ~= nil then
+			self.classSelectKeyDownHandler = _InputService:ConnectEvent(KeyDownEvent, self.OnClassSelectKeyDown)
+		end
+		self:Log("classSelect handlers connected missing=" .. self:GetClassSelectMissingReason())
 	end
 
 	method void DisconnectClassSelectButtons()
+		-- Disconnects all class select UI handlers.
 		if self.knightHandler ~= nil and self.knightButton ~= nil and self.knightButton.Entity ~= nil then
 			self.knightButton.Entity:DisconnectEvent(ButtonClickEvent, self.knightHandler)
 		end
@@ -722,14 +864,27 @@ script BRCharacterSystem extends Logic
 		if self.classSelectCloseHandler ~= nil and self.classSelectCloseButton ~= nil and self.classSelectCloseButton.Entity ~= nil then
 			self.classSelectCloseButton.Entity:DisconnectEvent(ButtonClickEvent, self.classSelectCloseHandler)
 		end
+		if self.classSelectConfirmHandler ~= nil and self.classSelectConfirmButton ~= nil and self.classSelectConfirmButton.Entity ~= nil then
+			self.classSelectConfirmButton.Entity:DisconnectEvent(ButtonClickEvent, self.classSelectConfirmHandler)
+		end
+		if self.classSelectRandomHandler ~= nil and self.classSelectRandomButton ~= nil and self.classSelectRandomButton.Entity ~= nil then
+			self.classSelectRandomButton.Entity:DisconnectEvent(ButtonClickEvent, self.classSelectRandomHandler)
+		end
+		if self.classSelectKeyDownHandler ~= nil and _InputService ~= nil then
+			_InputService:DisconnectEvent(KeyDownEvent, self.classSelectKeyDownHandler)
+		end
 		self.knightHandler = nil
 		self.mageHandler = nil
 		self.rogueHandler = nil
 		self.archerHandler = nil
 		self.classSelectCloseHandler = nil
+		self.classSelectConfirmHandler = nil
+		self.classSelectRandomHandler = nil
+		self.classSelectKeyDownHandler = nil
 	end
 
 	method void HideClassSelectImmediate()
+		-- Hides the class select root and panel immediately without changing selection state.
 		if self.classSelectRoot ~= nil then
 			self.classSelectRoot.Enable = false
 			self.classSelectRoot.Visible = false
@@ -746,6 +901,7 @@ script BRCharacterSystem extends Logic
 	end
 
 	method void SetClassSelectFrameActive(Entity frame, boolean active)
+		-- Shows one CharacterFull entity and hides the others.
 		if frame == nil then
 			return
 		end
@@ -754,13 +910,49 @@ script BRCharacterSystem extends Logic
 	end
 
 	method boolean IsClassSelectReady()
-		return self.classSelectRoot ~= nil
-			and self.classSelectPanel ~= nil
-			and self.knightButton ~= nil
-			and self.mageButton ~= nil
-			and self.rogueButton ~= nil
-			and self.archerButton ~= nil
-			and self.classSelectCloseButton ~= nil
+		-- Returns true when every required class select binding exists.
+		return self:GetClassSelectMissingReason() == ""
+	end
+
+	method string GetClassSelectMissingReason()
+		-- Describes the first missing required UI binding for class select.
+		if self.classSelectRoot == nil then
+			return "classSelectRoot"
+		end
+		if self.classSelectPanel == nil then
+			return "classSelectPanel"
+		end
+		if self.knightButton == nil then
+			return "KnightButton"
+		end
+		if self.mageButton == nil then
+			return "MageButton"
+		end
+		if self.rogueButton == nil then
+			return "RogueButton"
+		end
+		if self.archerButton == nil then
+			return "ArcherButton"
+		end
+		if self.classSelectConfirmButton == nil then
+			return "SelectButton"
+		end
+		if self.classSelectRandomButton == nil then
+			return "RandomButton"
+		end
+		if self.knightFrame == nil then
+			return "KnightCharacterFull"
+		end
+		if self.mageFrame == nil then
+			return "MageCharacterFull"
+		end
+		if self.rogueFrame == nil then
+			return "RogueCharacterFull"
+		end
+		if self.archerFrame == nil then
+			return "ArcherCharacterFull"
+		end
+		return ""
 	end
 
 	method string ReadAvatarRuid(any avatar, string key)

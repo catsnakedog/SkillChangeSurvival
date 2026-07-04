@@ -115,7 +115,7 @@
       {
         "id": "f5aa3831-41cd-49ae-ac7b-5164efe7682c",
         "path": "/ui/BRSkillChainGroup/Controller",
-        "componentNames": "MOD.Core.UITransformComponent,script.BRSkillChainUI",
+        "componentNames": "MOD.Core.UITransformComponent",
         "jsonString": {
           "name": "Controller",
           "path": "/ui/BRSkillChainGroup/Controller",
@@ -192,10 +192,6 @@
                 "z": 1.0
               },
               "Enable": true
-            },
-            {
-              "@type": "script.BRSkillChainUI",
-              "Enable": false
             }
           ],
           "@version": 1

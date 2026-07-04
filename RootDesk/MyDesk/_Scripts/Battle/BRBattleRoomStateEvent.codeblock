@@ -1,0 +1,33 @@
+{
+  "Id": "",
+  "GameId": "",
+  "EntryKey": "codeblock://60e0d4d1-ca02-4fc3-8ccf-e592a3dc3fde",
+  "ContentType": "x-mod/codeblock",
+  "Content": "",
+  "Usage": 0,
+  "UsePublish": 1,
+  "UseService": 0,
+  "CoreVersion": "26.5.0.0",
+  "StudioVersion": "",
+  "DynamicLoading": 0,
+  "ContentProto": {
+    "Use": "Json",
+    "Json": {
+      "CoreVersion": {
+        "Major": 0,
+        "Minor": 2
+      },
+      "ScriptVersion": {
+        "Major": 1,
+        "Minor": 1
+      },
+      "Description": "",
+      "Id": "60e0d4d1-ca02-4fc3-8ccf-e592a3dc3fde",
+      "Language": 1,
+      "Name": "BRBattleRoomStateEvent",
+      "Type": 3,
+      "Source": 0,
+      "Target": null
+    }
+  }
+}

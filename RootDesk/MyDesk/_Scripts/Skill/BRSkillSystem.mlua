@@ -27,6 +27,32 @@ script BRSkillSystem extends Logic
 
 	property number BagSlotCount = 4
 
+	property string HealthPotionPartId = "health_recovery_potion"
+
+	property string ShieldPotionPartId = "fairy_tear_shield_potion"
+
+	property string HealthPotionSkillKey = "Consumable_HealthPotion"
+
+	property string ShieldPotionSkillKey = "Consumable_ShieldPotion"
+
+	property string HealthPotionIconRUID = "fb1622f63b424e62bc9668dfa880a449"
+
+	property string ShieldPotionIconRUID = "d6237415a0ba4576b860874bbf5d0d4b"
+
+	property string ConsumableUseSoundRUID = "e577bb4e3ff44671a9ab99797770e1b0"
+
+	property number ConsumableUseSoundVolume = 0.9
+
+	property number HealthPotionHealPerTick = 500
+
+	property number HealthPotionTickIntervalSeconds = 0.5
+
+	property number HealthPotionDurationSeconds = 3
+
+	property number ShieldPotionAmount = 1500
+
+	property number ShieldPotionDurationSeconds = 3
+
 	property number SkillFrameSeconds = 0.03
 
 	property number SkillChainResetSeconds = 2.5
@@ -59,13 +85,17 @@ script BRSkillSystem extends Logic
 
 	property string PartBoxNameTokens = "SkillPartBox,LobbySkillPartBox,PartBox,SupplyBox,SupplyPoint"
 
+	property string FreeKioskMapNames = "StartMap,Lobby,LobbyMap"
+
+	property number KioskInGameDropDelaySeconds = 15
+
 	property string DroppedPartModelId = "skillpartbox"
 
 	property number DroppedPartSpawnYOffset = 0
 
 	property number DroppedPartSpawnXOffset = 0
 
-	property number DroppedPartGroundYOffset = 0.12
+	property number DroppedPartGroundYOffset = 0.03
 
 	property number DroppedPartGroundSearchUp = 3
 
@@ -102,6 +132,10 @@ script BRSkillSystem extends Logic
 	property number SkillEffectAlpha = 1.0
 
 	property integer SkillEffectOrderInLayer = 30
+
+	property string SkillTriggerEffectRUID = "5da2af5003e34799b63c2ab71bfa0c93"
+
+	property number SkillTriggerEffectScale = 0.7
 
 	property string SummonObjectModelId = "brskillsummonobject"
 
@@ -150,6 +184,7 @@ script BRSkillSystem extends Logic
 		self:TickActiveFields(delta)
 		self:TickActiveSummons(delta)
 		self:TickStatuses()
+		self:TickConsumableEffects(delta)
 		self:TickPlayerBoundsReturn(delta)
 	end
 
@@ -235,6 +270,12 @@ script BRSkillSystem extends Logic
 		end
 		if self._T.statusByEntityId == nil then
 			self._T.statusByEntityId = {}
+		end
+		if self._T.consumableHealByUser == nil then
+			self._T.consumableHealByUser = {}
+		end
+		if self._T.consumableShieldByUser == nil then
+			self._T.consumableShieldByUser = {}
 		end
 		if self._T.casterLocks == nil then
 			self._T.casterLocks = {}
@@ -393,6 +434,7 @@ script BRSkillSystem extends Logic
 		if self:GetTableCount(catalog) <= 0 then
 			self:Log("part catalog empty reason=noChainSkillRows")
 		end
+		self:AddConsumableDefinitions(catalog)
 		return catalog
 	end
 
@@ -404,16 +446,68 @@ script BRSkillSystem extends Logic
 			SkillKey = skillKey,
 			DisplayName = displayName,
 			ShortKey = shortKey,
-			IconRUID = self:ReadString(iconRuid, "")
+			IconRUID = self:ReadString(iconRuid, ""),
+			ItemType = "SKILL"
+		}
+	end
+
+	method void AddConsumableDefinitions(any catalog)
+		-- Adds inventory-only consumables that may be equipped in the authored Sobie_1 slot.
+		self:AddConsumableDefinition(
+			catalog,
+			self:ReadString(self.HealthPotionPartId, "health_recovery_potion"),
+			self:ReadString(self.HealthPotionSkillKey, "Consumable_HealthPotion"),
+			"체력 회복 물약",
+			"HP",
+			self:ReadString(self.HealthPotionIconRUID, ""),
+			"HEAL"
+		)
+		self:AddConsumableDefinition(
+			catalog,
+			self:ReadString(self.ShieldPotionPartId, "fairy_tear_shield_potion"),
+			self:ReadString(self.ShieldPotionSkillKey, "Consumable_ShieldPotion"),
+			"요정의 눈물",
+			"SHD",
+			self:ReadString(self.ShieldPotionIconRUID, ""),
+			"SHIELD"
+		)
+	end
+
+	method void AddConsumableDefinition(any catalog, string partId, string skillKey, string displayName, string shortKey, string iconRuid, string consumableKind)
+		if catalog == nil then
+			return
+		end
+		local safePartId = self:ReadString(partId, "")
+		if safePartId == "" then
+			return
+		end
+		catalog[safePartId] = {
+			PartId = safePartId,
+			SlotKey = "Consumable",
+			SkillKey = self:ReadString(skillKey, safePartId),
+			DisplayName = self:ReadString(displayName, safePartId),
+			ShortKey = self:ReadString(shortKey, "USE"),
+			IconRUID = self:ReadString(iconRuid, ""),
+			ItemType = "CONSUMABLE",
+			ConsumableKind = self:ReadString(consumableKind, ""),
+			UseSoundRUID = self:ReadString(self.ConsumableUseSoundRUID, ""),
+			HealPerTick = math.max(1, math.floor(self:ReadNumber(self.HealthPotionHealPerTick, 500))),
+			HealIntervalSeconds = math.max(0.05, self:ReadNumber(self.HealthPotionTickIntervalSeconds, 0.5)),
+			HealDurationSeconds = math.max(0.05, self:ReadNumber(self.HealthPotionDurationSeconds, 3)),
+			ShieldAmount = math.max(1, math.floor(self:ReadNumber(self.ShieldPotionAmount, 1500))),
+			ShieldDurationSeconds = math.max(0.05, self:ReadNumber(self.ShieldPotionDurationSeconds, 3)),
+			Rollable = true
 		}
 	end
 
 	method any CreatePartIdList()
-		-- Returns rollable skill part ids.
+		-- Returns rollable skill part and consumable ids.
 		local ids = {}
 		if self._T.catalog ~= nil then
 			for partId, definition in pairs(self._T.catalog) do
-				table.insert(ids, partId)
+				if self:IsConsumableDefinition(definition) ~= true or definition.Rollable == true then
+					table.insert(ids, partId)
+				end
 			end
 		end
 		table.sort(ids)
@@ -3174,7 +3268,10 @@ script BRSkillSystem extends Logic
 		elseif actionType == "trigger" then
 			if context.IsVirtualCaster ~= true and context.TriggerFired ~= true then
 				context.TriggerFired = true
-				self:PlaySkillVisualAt(context, self:GetContextVisualRUID(context, ""), triggerX, triggerY, self:GetContextDirection(context), 0.9, "trigger:" .. self:ReadString(actionDef.ActionId, "trigger"))
+				local triggerRuid = self:GetSkillTriggerEffectRUID(context)
+				local triggerScale = self:GetSkillTriggerEffectScale()
+				self:PlaySkillVisualAt(context, triggerRuid, triggerX, triggerY, self:GetContextDirection(context), triggerScale, "trigger:" .. self:ReadString(actionDef.ActionId, "trigger"))
+				self:Log("trigger effect user=" .. self:ReadString(context.UserId, "") .. " action=" .. self:ReadString(actionDef.ActionId, "trigger") .. " ruid=" .. self:ReadString(triggerRuid, "") .. " scale=" .. tostring(triggerScale) .. " at=(" .. tostring(triggerX) .. "," .. tostring(triggerY) .. ")")
 				self:StartVirtualEndSkill(context, triggerX, triggerY)
 			end
 		elseif actionType == "move" then
@@ -3541,6 +3638,7 @@ script BRSkillSystem extends Logic
 		if targetEntity.PlayerComponent ~= nil then
 			local player = targetEntity.PlayerComponent
 			damage = math.max(1, math.floor(damage * self:GetDamageTakenRate(targetEntity)))
+			damage = self:ApplyConsumableShieldToDamage(targetEntity, damage, sourceId)
 			player.Hp = math.max(0, player.Hp - damage)
 			self:Log("damage player user=" .. self:ReadString(context.UserId, "") .. " target=" .. self:ReadString(player.UserId, "") .. " amount=" .. tostring(damage) .. " hp=" .. tostring(player.Hp) .. " critical=" .. tostring(critical))
 			if _BRDamageSkinSystem ~= nil then
@@ -3710,6 +3808,7 @@ script BRSkillSystem extends Logic
 		if target.PlayerComponent ~= nil then
 			local player = target.PlayerComponent
 			dmg = math.max(1, math.floor(dmg * self:GetDamageTakenRate(target)))
+			dmg = self:ApplyConsumableShieldToDamage(target, dmg, "meso")
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("meso coin damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
 			if _BRDamageSkinSystem ~= nil then
@@ -4194,6 +4293,7 @@ script BRSkillSystem extends Logic
 		if target.PlayerComponent ~= nil then
 			local player = target.PlayerComponent
 			dmg = math.max(1, math.floor(dmg * self:GetDamageTakenRate(target)))
+			dmg = self:ApplyConsumableShieldToDamage(target, dmg, "throwstar")
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("throw star damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
 			if _BRDamageSkinSystem ~= nil then
@@ -4457,6 +4557,20 @@ script BRSkillSystem extends Logic
 		end
 		local ruid = self:ReadString(overrideRUID, "")
 		self:PlaySkillVisualAt(context, ruid, x, y, self:GetContextDirection(context), scaleRate, "hit:" .. safeSourceId)
+	end
+
+	method string GetSkillTriggerEffectRUID(any context)
+		-- Returns the visual-only effect RUID shown at the trigger activation position.
+		local overrideRuid = self:ReadString(self.SkillTriggerEffectRUID, "")
+		if overrideRuid ~= "" then
+			return overrideRuid
+		end
+		return self:GetContextVisualRUID(context, "")
+	end
+
+	method number GetSkillTriggerEffectScale()
+		-- Returns a compact scale for trigger activation visuals.
+		return math.max(0.05, self:ReadNumber(self.SkillTriggerEffectScale, 0.7))
 	end
 
 	method string GetSkillEffectRUID(string eventId)
@@ -5562,6 +5676,12 @@ script BRSkillSystem extends Logic
 		if self._T.uniqueRuntimeByUser ~= nil then
 			self._T.uniqueRuntimeByUser[safeUserId] = nil
 		end
+		if self._T.consumableHealByUser ~= nil then
+			self._T.consumableHealByUser[safeUserId] = nil
+		end
+		if self._T.consumableShieldByUser ~= nil then
+			self._T.consumableShieldByUser[safeUserId] = nil
+		end
 		if self._T.lastSafeFootholdByUser ~= nil then
 			self._T.lastSafeFootholdByUser[safeUserId] = nil
 		end
@@ -5793,6 +5913,7 @@ script BRSkillSystem extends Logic
 			Parts = {},
 			Equipped = {},
 			EquippedChainSlots = {},
+			ConsumableSlot = nil,
 			BagSlots = {},
 			Level = self:GetStartingSkillLevel(),
 			Experience = 0,
@@ -5907,7 +6028,7 @@ script BRSkillSystem extends Logic
 		local part = self:CreatePartInstance(state, definition, sourceId)
 		table.insert(state.Parts, part)
 		local placed = false
-		if autoEquip == true then
+		if autoEquip == true and self:IsConsumablePart(part) ~= true then
 			local chainSlot = self:FindFirstEmptyChainSlot(state)
 			if chainSlot > 0 then
 				placed = self:EquipPartInstanceToChainSlot(userId, part.InstanceId, chainSlot)
@@ -5949,6 +6070,14 @@ script BRSkillSystem extends Logic
 			DisplayName = definition.DisplayName,
 			ShortKey = definition.ShortKey,
 			IconRUID = self:ReadString(definition.IconRUID, ""),
+			ItemType = self:ReadString(definition.ItemType, "SKILL"),
+			ConsumableKind = self:ReadString(definition.ConsumableKind, ""),
+			UseSoundRUID = self:ReadString(definition.UseSoundRUID, ""),
+			HealPerTick = self:ReadNumber(definition.HealPerTick, 0),
+			HealIntervalSeconds = self:ReadNumber(definition.HealIntervalSeconds, 0),
+			HealDurationSeconds = self:ReadNumber(definition.HealDurationSeconds, 0),
+			ShieldAmount = self:ReadNumber(definition.ShieldAmount, 0),
+			ShieldDurationSeconds = self:ReadNumber(definition.ShieldDurationSeconds, 0),
 			SourceId = self:ReadString(sourceId, "")
 		}
 	end
@@ -5969,6 +6098,14 @@ script BRSkillSystem extends Logic
 			DisplayName = definition.DisplayName,
 			ShortKey = definition.ShortKey,
 			IconRUID = self:ReadString(definition.IconRUID, ""),
+			ItemType = self:ReadString(definition.ItemType, "SKILL"),
+			ConsumableKind = self:ReadString(definition.ConsumableKind, ""),
+			UseSoundRUID = self:ReadString(definition.UseSoundRUID, ""),
+			HealPerTick = self:ReadNumber(definition.HealPerTick, 0),
+			HealIntervalSeconds = self:ReadNumber(definition.HealIntervalSeconds, 0),
+			HealDurationSeconds = self:ReadNumber(definition.HealDurationSeconds, 0),
+			ShieldAmount = self:ReadNumber(definition.ShieldAmount, 0),
+			ShieldDurationSeconds = self:ReadNumber(definition.ShieldDurationSeconds, 0),
 			SourceId = self:ReadString(sourceId, "")
 		}
 	end
@@ -5980,52 +6117,226 @@ script BRSkillSystem extends Logic
 			return 0
 		end
 		local count = math.max(1, math.floor(self:ReadNumber(dropCount, 1)))
+		local originX = self:ReadNumber(worldPosition.x, 0)
+		local originY = self:ReadNumber(worldPosition.y, 0)
+		local originZ = self:ReadNumber(worldPosition.z, 0)
 		local dropped = 0
 		for index = 1, count do
 			local partId = self:RollPartId()
 			local part = self:CreateWorldPartInstance(partId, sourceId)
 			if part ~= nil then
 				local offsetIndex = index - ((count + 1) * 0.5)
-				local spawnPosition = Vector3(worldPosition.x + offsetIndex * 0.32, worldPosition.y + 0.08, worldPosition.z)
+				local spawnPosition = Vector3(originX + offsetIndex * 0.32, originY, originZ)
 				local dropEntity = self:SpawnDroppedPartAt(mapEntity, spawnPosition, part, "")
 				if dropEntity ~= nil then
 					dropped = dropped + 1
+					local dropPosition = self:GetEntityPosition2(dropEntity)
+					self:Log("world random drop item source=" .. self:ReadString(sourceId, "")
+						.. " index=" .. tostring(index)
+						.. " requested=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")"
+						.. " actual=(" .. tostring(dropPosition.x) .. "," .. tostring(dropPosition.y) .. ")")
 				end
 			end
 		end
-		self:Log("world random drop source=" .. self:ReadString(sourceId, "") .. " count=" .. tostring(dropped) .. "/" .. tostring(count))
+		self:Log("world random drop source=" .. self:ReadString(sourceId, "")
+			.. " origin=(" .. tostring(originX) .. "," .. tostring(originY) .. ")"
+			.. " count=" .. tostring(dropped) .. "/" .. tostring(count))
 		return dropped
 	end
 
 	@ExecSpace("Server")
 	method boolean RequestKioskPurchase(string userId, string partId, string mapName, number x, number y, number price)
-		-- Purchases one desired skill part from a kiosk and drops it at the kiosk position.
+		-- Purchases one desired kiosk item and routes lobby/in-game delivery differently.
 		self:EnsureRuntime()
-		local safeUserId = self:ReadString(userId, "")
+		local safeUserId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), userId)
 		local safePartId = self:ReadString(partId, "")
 		local targetMapName = self:ReadString(mapName, "")
-		if safeUserId == "" or safePartId == "" or targetMapName == "" then
+		if targetMapName == "" then
+			local playerEntity = self:FindPlayerEntityByUserId(safeUserId)
+			if playerEntity ~= nil then
+				targetMapName = self:ReadString(playerEntity.CurrentMapName, "")
+			end
+		end
+		if safeUserId == "" or safePartId == "" then
 			self:Log("kiosk purchase skipped reason=badRequest user=" .. safeUserId .. " part=" .. safePartId .. " map=" .. targetMapName)
 			return false
 		end
-		local cost = math.max(0, math.floor(self:ReadNumber(price, 0)))
-		if cost > 0 and self:SpendUserMeso(safeUserId, cost, "kiosk") ~= true then
-			return false
-		end
-		local mapEntity = _EntityService:GetEntityByPath("/maps/" .. targetMapName)
-		if mapEntity == nil then
-			self:Log("kiosk purchase skipped reason=noMap map=" .. targetMapName)
-			return false
-		end
-		local part = self:CreateWorldPartInstance(safePartId, "kiosk:" .. safeUserId)
-		if part == nil then
+		if self._T.catalog[safePartId] == nil then
 			self:Log("kiosk purchase skipped reason=noPart part=" .. safePartId)
 			return false
 		end
-		local drop = self:SpawnDroppedPartAt(mapEntity, Vector3(self:ReadNumber(x, 0), self:ReadNumber(y, 0) + 0.08, 0), part, safeUserId)
-		local success = drop ~= nil
-		self:Log("kiosk purchase user=" .. safeUserId .. " part=" .. safePartId .. " cost=" .. tostring(cost) .. " success=" .. tostring(success))
-		return success
+		local targetMap = self:GetKioskTargetMap(targetMapName)
+		if targetMap == nil then
+			self:Log("kiosk purchase skipped user=" .. safeUserId .. " part=" .. safePartId .. " map=" .. targetMapName .. " reason=noMap")
+			return false
+		end
+		local cost = self:GetKioskPriceForMap(targetMapName, price)
+		local spent = false
+		if cost > 0 and self:SpendUserMeso(safeUserId, cost, "kiosk") ~= true then
+			return false
+		end
+		spent = cost > 0
+		local delay = self:GetKioskDropDelayForMap(targetMapName)
+		if delay > 0 then
+			local dropPoint = self:GetKioskDropPoint(targetMap, x, y)
+			local dropX = dropPoint.x
+			local dropY = dropPoint.y
+			self:PlayNearestKioskPurchaseAnimation(targetMap, dropX, dropY, delay)
+			_TimerService:SetTimerOnce(function()
+				if self:SpawnKioskPurchasedPart(safeUserId, safePartId, targetMapName, dropX, dropY) ~= true and spent == true then
+					self:AddUserMeso(safeUserId, cost, "kioskDropRefund")
+				end
+			end, delay)
+			self:Log("kiosk purchase scheduled user=" .. safeUserId .. " map=" .. targetMapName .. " part=" .. safePartId .. " cost=" .. tostring(cost) .. " delay=" .. tostring(delay) .. " drop=(" .. tostring(dropX) .. "," .. tostring(dropY) .. ")")
+			return true
+		end
+		if self:GrantPart(safeUserId, safePartId, false, "kiosk:" .. targetMapName) == nil then
+			if spent == true then
+				self:AddUserMeso(safeUserId, cost, "kioskInventoryRefund")
+			end
+			self:Log("kiosk purchase skipped user=" .. safeUserId .. " part=" .. safePartId .. " reason=inventoryGrantFailed refunded=" .. tostring(spent))
+			return false
+		end
+		self:Log("kiosk purchase user=" .. safeUserId .. " map=" .. targetMapName .. " part=" .. safePartId .. " cost=" .. tostring(cost) .. " delay=0 inventory=true success=true")
+		return true
+	end
+
+	method number GetKioskPriceForMap(string mapName, number price)
+		if self:IsFreeKioskMap(mapName) == true then
+			return 0
+		end
+		return self:FloorToOneDecimal(math.max(0, self:ReadNumber(price, 0)))
+	end
+
+	method number FloorToOneDecimal(number value)
+		return math.floor(self:ReadNumber(value, 0) * 10) / 10
+	end
+
+	method boolean IsFreeKioskMap(string mapName)
+		local safeMapName = string.lower(self:TrimString(self:ReadString(mapName, "")))
+		if safeMapName == "" then
+			return false
+		end
+		local names = self:ReadString(self.FreeKioskMapNames, "StartMap,Lobby,LobbyMap")
+		for token in string.gmatch(names, "([^,]+)") do
+			local safeToken = string.lower(self:TrimString(token))
+			if safeToken ~= "" and safeToken == safeMapName then
+				return true
+			end
+		end
+		return false
+	end
+
+	method number GetKioskDropDelayForMap(string mapName)
+		if self:IsFreeKioskMap(mapName) == true then
+			return 0
+		end
+		return math.max(0, self:ReadNumber(self.KioskInGameDropDelaySeconds, 15))
+	end
+
+	method Vector2 GetKioskDropPoint(Entity mapEntity, number x, number y)
+		local fallback = Vector2(self:ReadNumber(x, 0), self:ReadNumber(y, 0))
+		local kioskBox = self:FindNearestKioskBoxComponent(mapEntity, fallback.x, fallback.y)
+		if kioskBox == nil or kioskBox.Entity == nil then
+			return fallback
+		end
+		return self:GetEntityPosition2(kioskBox.Entity)
+	end
+
+	method void PlayNearestKioskPurchaseAnimation(Entity mapEntity, number x, number y, number duration)
+		local kioskBox = self:FindNearestKioskBoxComponent(mapEntity, x, y)
+		if kioskBox == nil then
+			self:Log("kiosk animation skipped reason=noKioskBox map=" .. self:ReadString(mapEntity.Name, ""))
+			return
+		end
+		local play = kioskBox["PlayKioskActionForSeconds"]
+		if play ~= nil then
+			play(kioskBox, math.max(0.1, self:ReadNumber(duration, 15)))
+			return
+		end
+		local fallback = kioskBox["PlayKioskAction"]
+		if fallback ~= nil then
+			fallback(kioskBox)
+		end
+	end
+
+	method any FindNearestKioskBoxComponent(Entity mapEntity, number x, number y)
+		if mapEntity == nil then
+			return nil
+		end
+		local boxes = mapEntity:GetChildComponentsByTypeName("script.BRPartBox", true)
+		if boxes == nil or boxes[1] == nil then
+			boxes = mapEntity:GetChildComponentsByTypeName("BRPartBox", true)
+		end
+		if boxes == nil then
+			return nil
+		end
+		local originX = self:ReadNumber(x, 0)
+		local originY = self:ReadNumber(y, 0)
+		local best = nil
+		local bestDistance = nil
+		for index, box in ipairs(boxes) do
+			if self:IsKioskBoxComponent(box) == true and box.Entity ~= nil then
+				local position = self:GetEntityPosition2(box.Entity)
+				local dx = position.x - originX
+				local dy = position.y - originY
+				local distance = dx * dx + dy * dy
+				if best == nil or distance < bestDistance then
+					best = box
+					bestDistance = distance
+				end
+			end
+		end
+		return best
+	end
+
+	method boolean IsKioskBoxComponent(any box)
+		if box == nil then
+			return false
+		end
+		return string.lower(self:ReadString(box.BoxKind, "")) == "kiosk"
+	end
+
+	method Entity GetKioskTargetMap(string mapName)
+		local safeMapName = self:ReadString(mapName, "")
+		if safeMapName == "" then
+			return nil
+		end
+		return _EntityService:GetEntityByPath("/maps/" .. safeMapName)
+	end
+
+	method boolean SpawnKioskPurchasedPart(string userId, string partId, string mapName, number x, number y)
+		local safeUserId = self:ReadString(userId, "")
+		local safePartId = self:ReadString(partId, "")
+		local safeMapName = self:ReadString(mapName, "")
+		local mapEntity = self:GetKioskTargetMap(safeMapName)
+		if mapEntity == nil then
+			self:Log("kiosk drop failed user=" .. safeUserId .. " map=" .. safeMapName .. " part=" .. safePartId .. " reason=noMap")
+			return false
+		end
+		local part = self:CreateWorldPartInstance(safePartId, "kiosk:" .. safeMapName)
+		if part == nil then
+			self:Log("kiosk drop failed user=" .. safeUserId .. " map=" .. safeMapName .. " part=" .. safePartId .. " reason=noPart")
+			return false
+		end
+		local spawnPosition = Vector3(
+			self:ReadNumber(x, 0) + self:GetDroppedPartSpawnXOffset(),
+			self:ReadNumber(y, 0) + self:GetDroppedPartSpawnYOffset(),
+			0
+		)
+		local dropEntity = self:SpawnDroppedPartAt(mapEntity, spawnPosition, part, "")
+		if dropEntity == nil then
+			self:Log("kiosk drop failed user=" .. safeUserId .. " map=" .. safeMapName .. " part=" .. safePartId .. " reason=spawnFailed")
+			return false
+		end
+		local dropPosition = self:GetEntityPosition2(dropEntity)
+		self:Log("kiosk drop user=" .. safeUserId
+			.. " map=" .. safeMapName
+			.. " part=" .. safePartId
+			.. " itemType=" .. self:ReadString(part.ItemType, "SKILL")
+			.. " requested=(" .. tostring(spawnPosition.x) .. "," .. tostring(spawnPosition.y) .. ")"
+			.. " actual=(" .. tostring(dropPosition.x) .. "," .. tostring(dropPosition.y) .. ")")
+		return true
 	end
 
 	method boolean EquipPartInstance(string userId, number instanceId)
@@ -6057,6 +6368,10 @@ script BRSkillSystem extends Logic
 		if part == nil then
 			return false
 		end
+		if self:IsConsumablePart(part) == true then
+			self:Log("chain equip failed user=" .. userId .. " instance=" .. tostring(instanceId) .. " reason=consumable")
+			return false
+		end
 
 		local slotIndex = self:ClampChainSlot(chainSlot)
 		if self:IsChainSlotUnlocked(state, slotIndex) ~= true then
@@ -6085,6 +6400,69 @@ script BRSkillSystem extends Logic
 		state.Equipped["Chain" .. tostring(slotIndex)] = part.InstanceId
 		self:NotifyUserChanged(userId)
 		self:Log("chain equip user=" .. userId .. " slot=" .. tostring(slotIndex) .. " part=" .. part.PartId .. " tier=" .. tostring(self:GetPartChainTier(state, part.InstanceId)))
+		return true
+	end
+
+	method boolean EquipConsumableInstanceToSlot(string userId, number instanceId)
+		-- Equips one owned consumable into the single Sobie_1 consumable slot.
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		local part = self:FindPartInState(state, safeInstanceId)
+		if part == nil then
+			return false
+		end
+		if self:IsConsumablePart(part) ~= true then
+			self:Log("consumable equip failed user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " reason=notConsumable")
+			return false
+		end
+		if state.ConsumableSlot == safeInstanceId then
+			return true
+		end
+
+		local sourceBagSlot = self:GetBagSlotIndexByInstanceId(state, safeInstanceId)
+		if sourceBagSlot <= 0 then
+			self:Log("consumable equip failed user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " reason=notInInventory")
+			return false
+		end
+
+		local previousInstanceId = state.ConsumableSlot
+		local previousPart = self:FindPartInState(state, previousInstanceId)
+		if previousPart ~= nil then
+			state.BagSlots[sourceBagSlot] = previousInstanceId
+		else
+			state.BagSlots[sourceBagSlot] = nil
+		end
+		self:RemovePartFromChain(state, safeInstanceId)
+		self:RemovePartFromBag(state, safeInstanceId)
+		state.ConsumableSlot = safeInstanceId
+		self:NotifyUserChanged(userId)
+		self:Log("consumable equip user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " part=" .. self:ReadString(part.PartId, "") .. " previous=" .. tostring(previousInstanceId))
+		return true
+	end
+
+	method boolean ClearConsumableSlot(string userId)
+		-- Moves the Sobie_1 consumable back into the first spare inventory slot.
+		local state = self:GetUserState(userId)
+		if state == nil then
+			return false
+		end
+		local instanceId = state.ConsumableSlot
+		if instanceId == nil or self:FindPartInState(state, instanceId) == nil then
+			state.ConsumableSlot = nil
+			return false
+		end
+		local bagSlot = self:FindFirstEmptyBagSlot(state)
+		if bagSlot <= 0 then
+			self:Log("consumable clear failed user=" .. userId .. " reason=noInventorySpace")
+			return false
+		end
+		state.BagSlots[bagSlot] = instanceId
+		state.ConsumableSlot = nil
+		self:NotifyUserChanged(userId)
+		self:Log("consumable clear user=" .. userId .. " bag=" .. tostring(bagSlot) .. " instance=" .. tostring(instanceId))
 		return true
 	end
 
@@ -6150,8 +6528,10 @@ script BRSkillSystem extends Logic
 		local targetBagSlot = self:ClampBagSlot(bagSlot)
 		local sourceChainSlot = self:GetEquippedPartSlotIndex(state, part)
 		local sourceBagSlot = self:GetBagSlotIndexByInstanceId(state, safeInstanceId)
+		local sourceConsumableSlot = self:GetConsumableSlotIndexByInstanceId(state, safeInstanceId)
 		local targetInstanceId = state.BagSlots[targetBagSlot]
-		if sourceChainSlot <= 0 and sourceBagSlot <= 0 then
+		local targetPart = self:FindPartInState(state, targetInstanceId)
+		if sourceChainSlot <= 0 and sourceBagSlot <= 0 and sourceConsumableSlot <= 0 then
 			return false
 		end
 		if sourceBagSlot == targetBagSlot then
@@ -6159,12 +6539,27 @@ script BRSkillSystem extends Logic
 		end
 
 		if sourceChainSlot > 0 then
-			if targetInstanceId ~= nil and self:FindPartInState(state, targetInstanceId) ~= nil then
+			if targetPart ~= nil and self:IsConsumablePart(targetPart) == true then
+				self:Log("bag move failed user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " reason=targetConsumableCannotEnterChain")
+				return false
+			end
+			if targetPart ~= nil then
 				state.EquippedChainSlots[sourceChainSlot] = targetInstanceId
 				state.Equipped["Chain" .. tostring(sourceChainSlot)] = targetInstanceId
 			else
 				state.EquippedChainSlots[sourceChainSlot] = nil
 				state.Equipped["Chain" .. tostring(sourceChainSlot)] = nil
+			end
+			state.BagSlots[targetBagSlot] = safeInstanceId
+		elseif sourceConsumableSlot > 0 then
+			if targetPart ~= nil and self:IsConsumablePart(targetPart) ~= true then
+				self:Log("bag move failed user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " reason=skillPartCannotEnterConsumableSlot")
+				return false
+			end
+			if targetPart ~= nil then
+				state.ConsumableSlot = targetInstanceId
+			else
+				state.ConsumableSlot = nil
 			end
 			state.BagSlots[targetBagSlot] = safeInstanceId
 		else
@@ -6173,7 +6568,7 @@ script BRSkillSystem extends Logic
 		end
 
 		self:NotifyUserChanged(userId)
-		self:Log("bag move user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " bag=" .. tostring(targetBagSlot) .. " fromChain=" .. tostring(sourceChainSlot))
+		self:Log("bag move user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " bag=" .. tostring(targetBagSlot) .. " fromChain=" .. tostring(sourceChainSlot) .. " fromConsumable=" .. tostring(sourceConsumableSlot))
 		return true
 	end
 
@@ -6186,6 +6581,10 @@ script BRSkillSystem extends Logic
 		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
 		local part = self:FindPartInState(state, safeInstanceId)
 		if part == nil then
+			return false
+		end
+		if self:IsConsumablePart(part) == true then
+			self:Log("world drop failed user=" .. userId .. " instance=" .. tostring(safeInstanceId) .. " reason=consumableInventoryOnly")
 			return false
 		end
 		local playerEntity = self:FindPlayerEntityByUserId(userId)
@@ -6275,25 +6674,40 @@ script BRSkillSystem extends Logic
 
 		local searchUp = self:GetDroppedPartGroundSearchUp()
 		local searchDown = self:GetDroppedPartGroundSearchDown()
-		local rayStart = Vector2(x, y + searchUp)
-		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchUp + searchDown)
+		local rayStart = Vector2(x, y + 0.05)
+		local foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchDown + 0.05)
+		local landing = self:GetDroppedPartFootholdPosition(foothold, x, z)
+		if landing ~= nil then
+			return landing
+		end
+
+		rayStart = Vector2(x, y + searchUp)
+		foothold = mapEntity.FootholdComponent:Raycast(rayStart, Vector2(0, -1), searchUp + searchDown)
 		if foothold == nil then
 			foothold = mapEntity.FootholdComponent:GetNearestFootholdByPoint(Vector2(x, y), searchUp + searchDown)
 		end
-		if foothold == nil or foothold:IsVertical() == true then
-			return Vector3(x, y, z)
+		landing = self:GetDroppedPartFootholdPosition(foothold, x, z)
+		if landing ~= nil and landing.y <= y + 0.15 then
+			return landing
 		end
+		return Vector3(x, y, z)
+	end
 
+	method any GetDroppedPartFootholdPosition(any foothold, number requestedX, number z)
+		-- Converts a foothold hit into a clamped item drop position.
+		if foothold == nil or foothold:IsVertical() == true then
+			return nil
+		end
 		local startPoint = foothold.StartPoint
 		local endPoint = foothold.EndPoint
 		if startPoint == nil or endPoint == nil then
-			return Vector3(x, y, z)
+			return nil
 		end
 		local minX = math.min(startPoint.x, endPoint.x) + 0.05
 		local maxX = math.max(startPoint.x, endPoint.x) - 0.05
-		local alignedX = x
+		local alignedX = self:ReadNumber(requestedX, 0)
 		if maxX >= minX then
-			alignedX = math.max(minX, math.min(maxX, x))
+			alignedX = math.max(minX, math.min(maxX, alignedX))
 		end
 		return Vector3(alignedX, foothold:GetYByX(alignedX) + self:GetDroppedPartGroundYOffset(), z)
 	end
@@ -6519,6 +6933,9 @@ script BRSkillSystem extends Logic
 		if part == nil then
 			return ""
 		end
+		if self:IsConsumablePart(part) == true then
+			return self:GetSkillName(part)
+		end
 		return self:GetSkillTierText(part, 1)
 	end
 
@@ -6579,6 +6996,9 @@ script BRSkillSystem extends Logic
 
 	method string GetSkillTierText(any part, number tier)
 		-- Formats the current chain tier label for one folded skill definition.
+		if self:IsConsumablePart(part) == true then
+			return self:GetSkillName(part)
+		end
 		local order = self:ClampSkillTier(tier)
 		local skillDef = self:GetSkillDefinitionForPart(part, order)
 		local displayName = self:GetSkillName(part)
@@ -6586,6 +7006,222 @@ script BRSkillSystem extends Logic
 			displayName = self:ReadString(skillDef.DisplayName, displayName)
 		end
 		return displayName .. " " .. tostring(order) .. "차"
+	end
+
+	method string GetPartItemType(any part)
+		-- Separates skill-chain parts from inventory-only consumables.
+		if part == nil then
+			return "SKILL"
+		end
+		local itemType = string.upper(self:ReadString(part.ItemType, "SKILL"))
+		if itemType == "CONSUMABLE" then
+			return "CONSUMABLE"
+		end
+		return "SKILL"
+	end
+
+	method boolean IsConsumablePart(any part)
+		return self:GetPartItemType(part) == "CONSUMABLE"
+	end
+
+	method boolean IsConsumableDefinition(any definition)
+		if definition == nil then
+			return false
+		end
+		return string.upper(self:ReadString(definition.ItemType, "SKILL")) == "CONSUMABLE"
+	end
+
+	method boolean UseEquippedConsumable(string userId)
+		-- Consumes one Sobie_1 item and starts its server-side effect.
+		self:EnsureRuntime()
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return false
+		end
+		local state = self:GetUserState(safeUserId)
+		local part = self:GetConsumableSlotPart(state)
+		if part == nil then
+			self:Log("consumable use skipped user=" .. safeUserId .. " reason=emptySlot")
+			return false
+		end
+		if self:IsConsumablePart(part) ~= true then
+			self:Log("consumable use skipped user=" .. safeUserId .. " reason=notConsumable instance=" .. tostring(self:ReadNumber(part.InstanceId, 0)))
+			return false
+		end
+		local playerEntity = self:FindPlayerEntityByUserId(safeUserId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			self:Log("consumable use skipped user=" .. safeUserId .. " reason=noPlayer")
+			return false
+		end
+		if playerEntity.PlayerComponent:IsDead() == true or playerEntity.PlayerComponent.Hp <= 0 then
+			self:Log("consumable use skipped user=" .. safeUserId .. " reason=dead")
+			return false
+		end
+
+		local instanceId = math.floor(self:ReadNumber(part.InstanceId, 0))
+		local kind = string.upper(self:ReadString(part.ConsumableKind, ""))
+		local displayName = self:GetSkillName(part)
+		local soundRuid = self:ReadString(part.UseSoundRUID, self:ReadString(self.ConsumableUseSoundRUID, ""))
+		local used = false
+		if kind == "HEAL" then
+			self:StartHealthPotionEffect(safeUserId, part)
+			used = true
+		elseif kind == "SHIELD" then
+			self:StartShieldPotionEffect(safeUserId, part)
+			used = true
+		else
+			self:Log("consumable use skipped user=" .. safeUserId .. " instance=" .. tostring(instanceId) .. " reason=unknownKind kind=" .. kind)
+			return false
+		end
+
+		if used == true then
+			self:RemovePartFromOwned(state, instanceId)
+			self:NotifyUserChanged(safeUserId)
+			self:PlayConsumableUseSoundClient(safeUserId, soundRuid)
+			self:Log("consumable use user=" .. safeUserId .. " instance=" .. tostring(instanceId) .. " item=" .. displayName .. " kind=" .. kind)
+		end
+		return used
+	end
+
+	method void StartHealthPotionEffect(string userId, any part)
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		local interval = math.max(0.05, self:ReadNumber(part.HealIntervalSeconds, self.HealthPotionTickIntervalSeconds))
+		local duration = math.max(interval, self:ReadNumber(part.HealDurationSeconds, self.HealthPotionDurationSeconds))
+		local ticks = math.max(1, math.floor(duration / interval + 0.0001))
+		self._T.consumableHealByUser[safeUserId] = {
+			HealPerTick = math.max(1, math.floor(self:ReadNumber(part.HealPerTick, self.HealthPotionHealPerTick))),
+			IntervalSeconds = interval,
+			TicksRemaining = ticks,
+			NextTickAt = self:Now() + interval
+		}
+		self:Log("consumable heal start user=" .. safeUserId .. " ticks=" .. tostring(ticks) .. " interval=" .. tostring(interval))
+	end
+
+	method void StartShieldPotionEffect(string userId, any part)
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		local amount = math.max(1, math.floor(self:ReadNumber(part.ShieldAmount, self.ShieldPotionAmount)))
+		local duration = math.max(0.05, self:ReadNumber(part.ShieldDurationSeconds, self.ShieldPotionDurationSeconds))
+		self._T.consumableShieldByUser[safeUserId] = {
+			Remaining = amount,
+			ExpiresAt = self:Now() + duration
+		}
+		self:Log("consumable shield start user=" .. safeUserId .. " amount=" .. tostring(amount) .. " duration=" .. tostring(duration))
+	end
+
+	method void TickConsumableEffects(number delta)
+		-- Advances health potion ticks and shield expiration.
+		if self._T.consumableHealByUser ~= nil then
+			local now = self:Now()
+			for userId, effect in pairs(self._T.consumableHealByUser) do
+				self:TickHealthPotionEffect(userId, effect, now)
+			end
+		end
+		if self._T.consumableShieldByUser ~= nil then
+			local now = self:Now()
+			for userId, shield in pairs(self._T.consumableShieldByUser) do
+				if shield == nil or self:ReadNumber(shield.Remaining, 0) <= 0 or now >= self:ReadNumber(shield.ExpiresAt, 0) then
+					self._T.consumableShieldByUser[userId] = nil
+					self:Log("consumable shield end user=" .. tostring(userId))
+				end
+			end
+		end
+	end
+
+	method void TickHealthPotionEffect(string userId, any effect, number now)
+		if effect == nil then
+			self._T.consumableHealByUser[userId] = nil
+			return
+		end
+		local ticksRemaining = math.floor(self:ReadNumber(effect.TicksRemaining, 0))
+		if ticksRemaining <= 0 then
+			self._T.consumableHealByUser[userId] = nil
+			self:Log("consumable heal end user=" .. tostring(userId))
+			return
+		end
+		local interval = math.max(0.05, self:ReadNumber(effect.IntervalSeconds, self.HealthPotionTickIntervalSeconds))
+		local guard = 0
+		while ticksRemaining > 0 and now + 0.0001 >= self:ReadNumber(effect.NextTickAt, now + interval) and guard < 8 do
+			self:ApplyHealthPotionTick(userId, math.max(1, math.floor(self:ReadNumber(effect.HealPerTick, self.HealthPotionHealPerTick))))
+			ticksRemaining = ticksRemaining - 1
+			effect.TicksRemaining = ticksRemaining
+			effect.NextTickAt = self:ReadNumber(effect.NextTickAt, now) + interval
+			guard = guard + 1
+		end
+		if ticksRemaining <= 0 then
+			self._T.consumableHealByUser[userId] = nil
+			self:Log("consumable heal end user=" .. tostring(userId))
+		end
+	end
+
+	method void ApplyHealthPotionTick(string userId, number amount)
+		local playerEntity = self:FindPlayerEntityByUserId(userId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		local player = playerEntity.PlayerComponent
+		if player:IsDead() == true or player.Hp <= 0 then
+			return
+		end
+		local maxHp = math.max(1, math.floor(self:ReadNumber(player.MaxHp, 1)))
+		local oldHp = math.max(0, math.floor(self:ReadNumber(player.Hp, 0)))
+		local healAmount = math.max(1, math.floor(self:ReadNumber(amount, 1)))
+		player.Hp = math.min(maxHp, oldHp + healAmount)
+		self:Log("consumable heal tick user=" .. self:ReadString(userId, "") .. " amount=" .. tostring(healAmount) .. " hp=" .. tostring(oldHp) .. "->" .. tostring(player.Hp))
+	end
+
+	method number ApplyConsumableShieldToDamage(Entity targetEntity, number incomingDamage, string sourceId)
+		-- Lets the Sobie shield potion absorb final incoming player damage.
+		self:EnsureRuntime()
+		local damage = math.max(0, math.floor(self:ReadNumber(incomingDamage, 0)))
+		if damage <= 0 or targetEntity == nil or targetEntity.PlayerComponent == nil then
+			return damage
+		end
+		local userId = self:ReadString(targetEntity.PlayerComponent.UserId, "")
+		if userId == "" or self._T.consumableShieldByUser == nil then
+			return damage
+		end
+		local shield = self._T.consumableShieldByUser[userId]
+		if shield == nil then
+			return damage
+		end
+		local now = self:Now()
+		local remaining = math.max(0, math.floor(self:ReadNumber(shield.Remaining, 0)))
+		if remaining <= 0 or now >= self:ReadNumber(shield.ExpiresAt, 0) then
+			self._T.consumableShieldByUser[userId] = nil
+			return damage
+		end
+		local absorbed = math.min(damage, remaining)
+		remaining = remaining - absorbed
+		damage = damage - absorbed
+		if remaining <= 0 then
+			self._T.consumableShieldByUser[userId] = nil
+		else
+			shield.Remaining = remaining
+		end
+		self:Log("consumable shield absorb user=" .. userId .. " absorbed=" .. tostring(absorbed) .. " remaining=" .. tostring(remaining) .. " damage=" .. tostring(damage) .. " source=" .. self:ReadString(sourceId, ""))
+		return damage
+	end
+
+	@ExecSpace("Client")
+	method void PlayConsumableUseSoundClient(string effectUserId, string soundRuid)
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil or localPlayer.PlayerComponent == nil then
+			return
+		end
+		if self:ReadString(effectUserId, "") ~= self:ReadString(localPlayer.PlayerComponent.UserId, "") then
+			return
+		end
+		local safeRuid = self:ReadString(soundRuid, "")
+		if safeRuid == "" then
+			return
+		end
+		_SoundService:PlaySound(safeRuid, math.max(0, self:ReadNumber(self.ConsumableUseSoundVolume, 0.9)))
 	end
 
 	@ExecSpace("Server")
@@ -6604,6 +7240,45 @@ script BRSkillSystem extends Logic
 		end
 		if self:EquipPartInstanceToChainSlot(userId, instanceId, chainSlot) == false then
 			self:Log("chain equip request failed user=" .. userId .. " instance=" .. tostring(instanceId) .. " slot=" .. tostring(chainSlot))
+		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestEquipConsumableToSlot(string requestUserId, number instanceId)
+		-- Handles drag-and-drop placement into the Sobie_1 consumable slot.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("consumable equip request skipped reason=noUser instance=" .. tostring(instanceId))
+			return
+		end
+		if self:EquipConsumableInstanceToSlot(userId, instanceId) == false then
+			self:Log("consumable equip request failed user=" .. userId .. " instance=" .. tostring(instanceId))
+		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestClearConsumableSlot(string requestUserId)
+		-- Handles explicit clearing of the Sobie_1 consumable slot.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("consumable clear request skipped reason=noUser")
+			return
+		end
+		if self:ClearConsumableSlot(userId) == false then
+			self:Log("consumable clear request failed user=" .. userId)
+		end
+	end
+
+	@ExecSpace("Server")
+	method void RequestUseConsumable(string requestUserId)
+		-- Uses the consumable currently equipped in Sobie_1.
+		local userId = self:ResolveRequestUserId(self:ReadString(senderUserId, ""), requestUserId)
+		if userId == "" then
+			self:Log("consumable use request skipped reason=noUser")
+			return
+		end
+		if self:UseEquippedConsumable(userId) == false then
+			self:Log("consumable use request failed user=" .. userId)
 		end
 	end
 
@@ -6637,12 +7312,17 @@ script BRSkillSystem extends Logic
 			return
 		end
 
+		local definition = self._T.catalog[partId]
+		if self:IsConsumableDefinition(definition) == true then
+			self:Log("test grant skipped user=" .. userId .. " reason=consumableCannotEnterChain part=" .. partId)
+			return
+		end
+
 		local previousInstanceId = state.EquippedChainSlots[slotIndex]
 		if previousInstanceId ~= nil then
 			self:RemovePartFromOwned(state, previousInstanceId)
 		end
 
-		local definition = self._T.catalog[partId]
 		local part = self:CreatePartInstance(state, definition, "testnpc:" .. tostring(slotIndex))
 		table.insert(state.Parts, part)
 		if self:EquipPartInstanceToChainSlot(userId, part.InstanceId, slotIndex) ~= true then
@@ -6728,11 +7408,11 @@ script BRSkillSystem extends Logic
 		self:EnsureRuntime()
 		self._T.snapshotVersions[userId] = self:ReadNumber(self._T.snapshotVersions[userId], 0) + 1
 		local snapshot = self:BuildUserSnapshot(userId)
-		self:PushUserSnapshot(userId, snapshot.PanelText, snapshot.HasParts, snapshot.ChainText, snapshot.BagText, snapshot.RecipeText, snapshot.Version, snapshot.Level, snapshot.Experience, snapshot.RequiredExperience, snapshot.UnlockedSlots)
+		self:PushUserSnapshot(userId, snapshot.PanelText, snapshot.HasParts, snapshot.ChainText, snapshot.BagText, snapshot.ConsumableText, snapshot.RecipeText, snapshot.Version, snapshot.Level, snapshot.Experience, snapshot.RequiredExperience, snapshot.UnlockedSlots)
 	end
 
 	@ExecSpace("Client")
-	method void PushUserSnapshot(string userId, string panelText, boolean hasParts, string chainText, string bagText, string recipeText, number version, number level, number experience, number requiredExperience, number unlockedSlots)
+	method void PushUserSnapshot(string userId, string panelText, boolean hasParts, string chainText, string bagText, string consumableText, string recipeText, number version, number level, number experience, number requiredExperience, number unlockedSlots)
 		-- Receives the local player's skill panel snapshot.
 		local localPlayer = _UserService.LocalPlayer
 		if localPlayer == nil or localPlayer.PlayerComponent == nil then
@@ -6746,6 +7426,7 @@ script BRSkillSystem extends Logic
 		self._T.localPanelHasParts = hasParts == true
 		self._T.localChainText = self:ReadString(chainText, "")
 		self._T.localBagText = self:ReadString(bagText, "")
+		self._T.localConsumableText = self:ReadString(consumableText, "")
 		self._T.localRecipeText = self:ReadString(recipeText, self:BuildEmptyRecipeText())
 		self._T.localSnapshotVersion = self:ReadNumber(version, 0)
 		self._T.localSkillLevel = math.max(1, math.floor(self:ReadNumber(level, 1)))
@@ -6782,7 +7463,6 @@ script BRSkillSystem extends Logic
 		local count = 0
 		for index, component in ipairs(components) do
 			if component ~= nil then
-				---@type BRSkillChainUI
 				local ui = component
 				ui:RequestImmediateRefresh(reason, version)
 				count = count + 1
@@ -6837,6 +7517,12 @@ script BRSkillSystem extends Logic
 	method string GetLocalBagText()
 		-- Returns semicolon-delimited owned part records for the dedicated chain UI.
 		return self:ReadString(self._T.localBagText, "")
+	end
+
+	@ExecSpace("Client")
+	method string GetLocalConsumableText()
+		-- Returns the single Sobie_1 consumable slot record for the battle HUD.
+		return self:ReadString(self._T.localConsumableText, "")
 	end
 
 	@ExecSpace("Client")
@@ -6899,6 +7585,7 @@ script BRSkillSystem extends Logic
 			HasParts = hasParts,
 			ChainText = self:BuildChainSnapshotText(state),
 			BagText = self:BuildBagSnapshotText(state),
+			ConsumableText = self:BuildConsumableSnapshotText(state),
 			RecipeText = self:BuildRecipeText(state),
 			Level = self:GetUserLevel(state),
 			Experience = self:GetUserExperience(state),
@@ -6984,6 +7671,8 @@ script BRSkillSystem extends Logic
 			local skillKey = "-"
 			local tier = math.floor(self:ReadNumber(chain.Tiers[slotIndex], 0))
 			local hasTrigger = "0"
+			local itemType = "SKILL"
+			local iconRuid = ""
 			if locked == true then
 				instanceId = 0
 				shortText = "LOCK"
@@ -6994,6 +7683,8 @@ script BRSkillSystem extends Logic
 				shortText = self:GetPartShortText(part)
 				displayName = self:SanitizeRecordText(self:GetSkillName(part))
 				skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
+				itemType = self:GetPartItemType(part)
+				iconRuid = self:SanitizeRecordText(self:GetPartIconRUID(part))
 				if self:SkillPartHasTrigger(part, tier) == true then
 					hasTrigger = "1"
 				end
@@ -7001,7 +7692,7 @@ script BRSkillSystem extends Logic
 			if text ~= "" then
 				text = text .. ";"
 			end
-			text = text .. tostring(slotIndex) .. "," .. tostring(instanceId) .. "," .. shortText .. "," .. tostring(tier) .. "," .. displayName .. "," .. skillKey .. "," .. hasTrigger
+			text = text .. tostring(slotIndex) .. "," .. tostring(instanceId) .. "," .. shortText .. "," .. tostring(tier) .. "," .. displayName .. "," .. skillKey .. "," .. hasTrigger .. "," .. itemType .. "," .. iconRuid
 		end
 		return text
 	end
@@ -7021,10 +7712,14 @@ script BRSkillSystem extends Logic
 			local skillKey = "-"
 			local tier = 0
 			local hasTrigger = "0"
+			local itemType = "SKILL"
+			local iconRuid = ""
 			if part ~= nil then
 				shortText = self:GetPartShortText(part)
 				displayName = self:SanitizeRecordText(self:GetSkillName(part))
 				skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
+				itemType = self:GetPartItemType(part)
+				iconRuid = self:SanitizeRecordText(self:GetPartIconRUID(part))
 				tier = 1
 				if self:SkillPartHasTrigger(part, tier) == true then
 					hasTrigger = "1"
@@ -7040,8 +7735,45 @@ script BRSkillSystem extends Logic
 				.. "," .. displayName
 				.. "," .. skillKey
 				.. "," .. hasTrigger
+				.. "," .. itemType
+				.. "," .. iconRuid
 		end
 		return text
+	end
+
+	method string BuildConsumableSnapshotText(any state)
+		-- Serializes the single consumable slot as slot,instanceId,short,tier,displayName,skillKey,hasTrigger,itemType,iconRuid.
+		self:NormalizeUserState(state)
+		local instanceId = 0
+		if state ~= nil then
+			instanceId = math.floor(self:ReadNumber(state.ConsumableSlot, 0))
+		end
+		local part = self:FindPartInState(state, instanceId)
+		local shortText = "-"
+		local displayName = "-"
+		local skillKey = "-"
+		local tier = 0
+		local hasTrigger = "0"
+		local itemType = "SKILL"
+		local iconRuid = ""
+		if part ~= nil then
+			shortText = self:GetPartShortText(part)
+			displayName = self:SanitizeRecordText(self:GetSkillName(part))
+			skillKey = self:SanitizeRecordText(self:ReadString(part.SkillKey, self:ReadString(part.SlotKey, part.PartId)))
+			itemType = self:GetPartItemType(part)
+			iconRuid = self:SanitizeRecordText(self:GetPartIconRUID(part))
+			tier = 1
+		else
+			instanceId = 0
+		end
+		return "1," .. tostring(instanceId)
+			.. "," .. shortText
+			.. "," .. tostring(tier)
+			.. "," .. displayName
+			.. "," .. skillKey
+			.. "," .. hasTrigger
+			.. "," .. itemType
+			.. "," .. iconRuid
 	end
 
 	method string BuildOwnedPartsText(any state)
@@ -7106,7 +7838,7 @@ script BRSkillSystem extends Logic
 
 	method number GetDroppedPartGroundYOffset()
 		-- Returns the small vertical lift applied after landing on a foothold.
-		return math.max(0, self:ReadNumber(self.DroppedPartGroundYOffset, 0.12))
+		return math.max(0, self:ReadNumber(self.DroppedPartGroundYOffset, 0.03))
 	end
 
 	method number GetDroppedPartGroundSearchUp()
@@ -7153,6 +7885,9 @@ script BRSkillSystem extends Logic
 		if state.BagSlots == nil then
 			state.BagSlots = {}
 		end
+		if state.ConsumableSlot ~= nil and math.floor(self:ReadNumber(state.ConsumableSlot, 0)) <= 0 then
+			state.ConsumableSlot = nil
+		end
 		if state.NextInstanceId == nil then
 			state.NextInstanceId = #state.Parts + 1
 		end
@@ -7162,13 +7897,22 @@ script BRSkillSystem extends Logic
 		local unlockedSlotCount = self:GetUnlockedChainSlotCount(state)
 		for slotIndex = 1, self:GetChainSlotCount() do
 			local instanceId = state.EquippedChainSlots[slotIndex]
-			if slotIndex <= unlockedSlotCount and instanceId ~= nil and self:FindPartInState(state, instanceId) ~= nil then
+			local part = self:FindPartInState(state, instanceId)
+			if slotIndex <= unlockedSlotCount and instanceId ~= nil and part ~= nil and self:IsConsumablePart(part) ~= true then
 				used[instanceId] = true
 				state.Equipped["Chain" .. tostring(slotIndex)] = instanceId
 			else
 				state.EquippedChainSlots[slotIndex] = nil
 				state.Equipped["Chain" .. tostring(slotIndex)] = nil
 			end
+		end
+
+		local consumableInstanceId = state.ConsumableSlot
+		local consumablePart = self:FindPartInState(state, consumableInstanceId)
+		if consumableInstanceId ~= nil and consumablePart ~= nil and self:IsConsumablePart(consumablePart) == true and used[consumableInstanceId] ~= true then
+			used[consumableInstanceId] = true
+		else
+			state.ConsumableSlot = nil
 		end
 
 		for bagSlot = 1, self:GetBagSlotCount() do
@@ -7317,6 +8061,14 @@ script BRSkillSystem extends Logic
 		return self:FindPartInState(state, instanceId)
 	end
 
+	method any GetConsumableSlotPart(any state)
+		-- Returns the item currently equipped in the single consumable slot.
+		if state == nil then
+			return nil
+		end
+		return self:FindPartInState(state, state.ConsumableSlot)
+	end
+
 	method number FindFirstEmptyBagSlot(any state)
 		-- Finds the first empty spare bag slot.
 		if state == nil then
@@ -7352,6 +8104,21 @@ script BRSkillSystem extends Logic
 		return 0
 	end
 
+	method number GetConsumableSlotIndexByInstanceId(any state, number instanceId)
+		-- Returns 1 when the single Sobie_1 slot contains the given instance id.
+		if state == nil then
+			return 0
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId <= 0 then
+			return 0
+		end
+		if state.ConsumableSlot == safeInstanceId then
+			return 1
+		end
+		return 0
+	end
+
 	method void RemovePartFromChain(any state, number instanceId)
 		-- Removes a part from every chain slot before re-equipping.
 		if state == nil or state.EquippedChainSlots == nil then
@@ -7378,6 +8145,17 @@ script BRSkillSystem extends Logic
 		end
 	end
 
+	method void RemovePartFromConsumableSlot(any state, number instanceId)
+		-- Removes a part from the single consumable slot.
+		if state == nil then
+			return
+		end
+		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
+		if safeInstanceId > 0 and state.ConsumableSlot == safeInstanceId then
+			state.ConsumableSlot = nil
+		end
+	end
+
 	method void RemovePartFromOwned(any state, number instanceId)
 		-- Removes a part from owned state entirely when no visible slot is available.
 		if state == nil or state.Parts == nil then
@@ -7386,6 +8164,7 @@ script BRSkillSystem extends Logic
 		local safeInstanceId = math.floor(self:ReadNumber(instanceId, 0))
 		self:RemovePartFromChain(state, safeInstanceId)
 		self:RemovePartFromBag(state, safeInstanceId)
+		self:RemovePartFromConsumableSlot(state, safeInstanceId)
 		for index = #state.Parts, 1, -1 do
 			local part = state.Parts[index]
 			if part ~= nil and part.InstanceId == safeInstanceId then

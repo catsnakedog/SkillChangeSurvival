@@ -1,0 +1,58 @@
+@Component
+script ShadowDashProjectile extends Component
+
+	property number holdTime = 1.2
+
+	method void OnBeginPlay()
+		-- Initializes shadow runtime state without clobbering an already-issued Fire().
+		if self._T.fired == true then
+			return
+		end
+		self._T.fired = false
+		self._T.elapsed = 0
+		self._T.distance = 0
+		self._T.flightTime = 0.35
+		self._T.dirX = 1
+		self._T.dirY = 0
+		self._T.originX = 0
+		self._T.originY = 0
+		self._T.originZ = 0
+	end
+
+	@ExecSpace("ServerOnly")
+	method void Fire(number dirX, number dirY, number distance, number flightTime)
+		-- Launches the shadow from its spawn position along dir over flightTime, then holds in place.
+		local origin = self.Entity.TransformComponent.WorldPosition
+		self._T.originX = origin.x
+		self._T.originY = origin.y
+		self._T.originZ = origin.z
+		self._T.dirX = dirX
+		self._T.dirY = dirY
+		self._T.distance = math.max(0, distance)
+		self._T.flightTime = math.max(0.01, flightTime)
+		self._T.elapsed = 0
+		self._T.fired = true
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnUpdate(number delta)
+		-- Advances the shadow linearly to full distance, then holds briefly before self-destruct.
+		if self._T.fired ~= true then
+			return
+		end
+		self._T.elapsed = self._T.elapsed + delta
+		local flightTime = math.max(0.01, self._T.flightTime)
+		local rate = math.min(1, self._T.elapsed / flightTime)
+		local dist = rate * self._T.distance
+		self.Entity.TransformComponent.WorldPosition = Vector3(
+			self._T.originX + self._T.dirX * dist,
+			self._T.originY + self._T.dirY * dist,
+			self._T.originZ
+		)
+		if self._T.elapsed >= flightTime + math.max(0, self.holdTime) then
+			self._T.fired = false
+			_EntityService:Destroy(self.Entity)
+		end
+	end
+
+end

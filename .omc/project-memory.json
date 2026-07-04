@@ -113,14 +113,20 @@
   "hotPaths": [
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\Skill\\BRSkillSystem.mlua",
-      "accessCount": 33,
-      "lastAccessed": 1783113565750,
+      "accessCount": 122,
+      "lastAccessed": 1783141502825,
       "type": "file"
     },
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\UI\\BRMagneticZoneUI.mlua",
       "accessCount": 18,
       "lastAccessed": 1783109970197,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\Data\\skills.csv",
+      "accessCount": 18,
+      "lastAccessed": 1783132555763,
       "type": "file"
     },
     {
@@ -134,6 +140,36 @@
       "accessCount": 10,
       "lastAccessed": 1783090520642,
       "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\Data\\actions.csv",
+      "accessCount": 9,
+      "lastAccessed": 1783132585202,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\Data\\damage_actions.csv",
+      "accessCount": 9,
+      "lastAccessed": 1783132616987,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\Data\\events.csv",
+      "accessCount": 8,
+      "lastAccessed": 1783132570615,
+      "type": "file"
+    },
+    {
+      "path": ".claude\\skills\\msw-scripting\\references\\verify-checklist.md",
+      "accessCount": 7,
+      "lastAccessed": 1783136547870,
+      "type": "file"
+    },
+    {
+      "path": "RootDesk\\MyDesk\\_Scripts",
+      "accessCount": 6,
+      "lastAccessed": 1783137466205,
+      "type": "directory"
     },
     {
       "path": "RootDesk\\MyDesk\\_Scripts\\Map\\BRGridMapEditorTool.mlua",
@@ -163,18 +199,6 @@
       "path": "RootDesk\\MyDesk",
       "accessCount": 4,
       "lastAccessed": 1783111533467,
-      "type": "directory"
-    },
-    {
-      "path": ".claude\\skills\\msw-scripting\\references\\verify-checklist.md",
-      "accessCount": 4,
-      "lastAccessed": 1783112925470,
-      "type": "file"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\_Scripts",
-      "accessCount": 4,
-      "lastAccessed": 1783118085487,
       "type": "directory"
     },
     {
@@ -214,28 +238,10 @@
       "type": "file"
     },
     {
-      "path": "RootDesk\\MyDesk\\Data\\skills.csv",
+      "path": "RootDesk",
       "accessCount": 3,
-      "lastAccessed": 1783112577762,
-      "type": "file"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\Data\\events.csv",
-      "accessCount": 3,
-      "lastAccessed": 1783112591894,
-      "type": "file"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\Data\\actions.csv",
-      "accessCount": 3,
-      "lastAccessed": 1783112619997,
-      "type": "file"
-    },
-    {
-      "path": "RootDesk\\MyDesk\\Data\\damage_actions.csv",
-      "accessCount": 3,
-      "lastAccessed": 1783112632771,
-      "type": "file"
+      "lastAccessed": 1783124209900,
+      "type": "directory"
     },
     {
       "path": ".mcp.json",
@@ -265,12 +271,6 @@
       "path": "ui\\BossTimerGroup.ui",
       "accessCount": 2,
       "lastAccessed": 1783101823045,
-      "type": "directory"
-    },
-    {
-      "path": "RootDesk",
-      "accessCount": 2,
-      "lastAccessed": 1783104367297,
       "type": "directory"
     },
     {

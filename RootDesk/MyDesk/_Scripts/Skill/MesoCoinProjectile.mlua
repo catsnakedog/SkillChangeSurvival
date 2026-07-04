@@ -1,11 +1,16 @@
 @Component
 script MesoCoinProjectile extends Component
 
-	property number maxDist = 2.5
+	property number maxDist = 1.5
 
-	property number duration = 1.0
+	property number duration = 0.7
+
+	property number curveK = 2
 
 	method void OnBeginPlay()
+		-- Force the explosion travel time to 0.7s at runtime, overriding any stale value
+		-- serialized into MesoCoin.model from earlier tuning passes.
+		self.duration = 0.7
 		-- Initializes coin runtime state without clobbering an already-issued Fire().
 		if self._T.fired == true then
 			return
@@ -33,7 +38,10 @@ script MesoCoinProjectile extends Component
 
 	@ExecSpace("ServerOnly")
 	method void OnUpdate(number delta)
-		-- Sine-curve chase over `duration`s: pos = target.currentWorldPos + dir * sin(pi*t) * maxDist.
+		-- Smooth arctan flat-top over `duration`s: distance = maxDist * atan(k*sin(pi*t)) / atan(k).
+		-- sin(pi*t) makes the out-and-back bump; atan compresses it so the coin lingers smoothly near
+		-- maxDist through the middle (one continuous curve, no choppy freeze), then returns to the
+		-- target's current position. Higher curveK (k) = flatter top = lingers longer near max.
 		if self._T.fired ~= true then
 			return
 		end
@@ -49,7 +57,9 @@ script MesoCoinProjectile extends Component
 		end
 
 		local anchor = self._T.target.TransformComponent.WorldPosition
-		local dist = math.sin(math.pi * tt) * self.maxDist
+		local k = math.max(0.01, self.curveK)
+		local frac = math.atan(k * math.sin(math.pi * tt)) / math.atan(k)
+		local dist = frac * self.maxDist
 		self.Entity.TransformComponent.WorldPosition = Vector3(
 			anchor.x + self._T.dirX * dist,
 			anchor.y + self._T.dirY * dist,

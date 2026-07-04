@@ -1,0 +1,195 @@
+@Component
+script ThrowStarProjectile extends Component
+
+	method void OnBeginPlay()
+		-- Initializes star runtime state without clobbering an already-issued Fire().
+		if self._T.fired == true then
+			return
+		end
+		self._T.fired = false
+		self._T.travelled = 0
+		self._T.target = nil
+		self._T.attacker = nil
+		self._T.damage = 0
+		self._T.maxRange = 7
+		self._T.speed = 12
+		self._T.dirX = 1
+		self._T.dirY = 0
+		self._T.originX = 0
+		self._T.originY = 0
+		self._T.hitEffectRuid = ""
+		self._T.mesoCount = 0
+		self._T.mesoAttacker = nil
+	end
+
+	@ExecSpace("ServerOnly")
+	method void Fire(Entity target, Entity attacker, number dirX, number dirY, number damage, number maxRange, number speed, string hitEffectRuid, number mesoCount, Entity mesoAttacker)
+		-- Launches the star toward target, homing while target stays within range of the cast origin.
+		local origin = self.Entity.TransformComponent.WorldPosition
+		self._T.originX = origin.x
+		self._T.originY = origin.y
+		self._T.target = target
+		self._T.attacker = attacker
+		self._T.damage = math.max(1, math.floor(self:SafeNumber(damage, 1)))
+		self._T.maxRange = math.max(0.1, self:SafeNumber(maxRange, 7))
+		self._T.speed = math.max(0.1, self:SafeNumber(speed, 12))
+		self._T.hitEffectRuid = self:SafeString(hitEffectRuid, "")
+		self._T.mesoCount = math.max(0, math.floor(self:SafeNumber(mesoCount, 0)))
+		self._T.mesoAttacker = mesoAttacker
+		local nx = self:SafeNumber(dirX, 1)
+		local ny = self:SafeNumber(dirY, 0)
+		local len = math.sqrt(nx * nx + ny * ny)
+		if len < 0.0001 then
+			nx = 1
+			ny = 0
+			len = 1
+		end
+		self._T.dirX = nx / len
+		self._T.dirY = ny / len
+		self._T.travelled = 0
+		self._T.fired = true
+		-- Orient the sprite along the initial launch direction so it faces correctly from frame 0.
+		self:FaceDirection(self._T.dirX, self._T.dirY)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnUpdate(number delta)
+		-- Homes toward the target while in range, else flies straight, expiring at maxRange with no damage.
+		if self._T.fired ~= true then
+			return
+		end
+		if isvalid(self.Entity) ~= true then
+			return
+		end
+		local myPos = self.Entity.TransformComponent.WorldPosition
+		local nx = self._T.dirX
+		local ny = self._T.dirY
+		local homing = false
+		local targetPos = nil
+		if self._T.target ~= nil and isvalid(self._T.target) == true then
+			targetPos = self._T.target.TransformComponent.WorldPosition
+			local odx = targetPos.x - self._T.originX
+			local ody = targetPos.y - self._T.originY
+			local targetDistFromOrigin = math.sqrt(odx * odx + ody * ody)
+			if targetDistFromOrigin <= self._T.maxRange then
+				local dx = targetPos.x - myPos.x
+				local dy = targetPos.y - myPos.y
+				local d = math.sqrt(dx * dx + dy * dy)
+				if d < 0.0001 then
+					d = 0.0001
+				end
+				nx = dx / d
+				ny = dy / d
+				homing = true
+			end
+		end
+
+		-- Rotate the whole sprite to align its nose with the current flight/homing direction.
+		self:FaceDirection(nx, ny)
+
+		local step = math.max(0, self._T.speed) * delta
+		local newPos = Vector3(myPos.x + nx * step, myPos.y + ny * step, myPos.z)
+		self.Entity.TransformComponent.WorldPosition = newPos
+		self._T.travelled = self._T.travelled + step
+
+		if homing == true and targetPos ~= nil then
+			local hx = targetPos.x - newPos.x
+			local hy = targetPos.y - newPos.y
+			if math.sqrt(hx * hx + hy * hy) < 0.35 then
+				self:OnHit(targetPos.x, targetPos.y, targetPos.z)
+				return
+			end
+		end
+
+		if self._T.travelled >= self._T.maxRange then
+			self._T.fired = false
+			_EntityService:Destroy(self.Entity)
+		end
+	end
+
+	@ExecSpace("ServerOnly")
+	method void OnHit(number hx, number hy, number hz)
+		-- Applies the star damage to the target and plays the hit effect at its position, then destroys.
+		if isvalid(self._T.target) == true and _BRSkillSystem ~= nil then
+			_BRSkillSystem:ApplyThrowStarDamage(self._T.target, self._T.attacker, self._T.damage)
+			-- When this cast is armed as a meso follow-up, a star hit also spawns meso coins at the target.
+			if self._T.mesoCount > 0 then
+				_BRSkillSystem:SpawnMesoCoins(self._T.target, self._T.mesoCount, self._T.mesoAttacker)
+			end
+		end
+		self:ShowHitEffect(hx, hy, hz, self._T.hitEffectRuid)
+		self._T.fired = false
+		_EntityService:Destroy(self.Entity)
+	end
+
+	@ExecSpace("Client")
+	method void ShowHitEffect(number hx, number hy, number hz, string hitEffectRuid)
+		-- Plays the per-tier hit animationclip at the hit position (RUID passed over RPC, not from _T).
+		local localPlayer = _UserService.LocalPlayer
+		if localPlayer == nil then
+			return
+		end
+		if hitEffectRuid == nil or hitEffectRuid == "" then
+			return
+		end
+		local pos = Vector3(hx, hy, hz)
+		local options = {}
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = 40
+		options["IgnoreMapLayerCheck"] = true
+		_EffectService:PlayEffect(hitEffectRuid, localPlayer, pos, 0, Vector3(1, 1, 1), false, options)
+	end
+
+	method void FaceDirection(number nx, number ny)
+		-- Rotates the sprite so its art (which points LEFT = 180 deg by default) aligns with (nx, ny).
+		if isvalid(self.Entity) ~= true then
+			return
+		end
+		if nx == 0 and ny == 0 then
+			return
+		end
+		local angleDeg = self:Atan2(ny, nx) * 180 / math.pi - 180
+		self.Entity.TransformComponent.ZRotation = angleDeg
+	end
+
+	method number Atan2(number y, number x)
+		-- Two-argument arctangent in radians across all quadrants (no math.atan2 dependency).
+		if x > 0 then
+			return math.atan(y / x)
+		end
+		if x < 0 then
+			if y >= 0 then
+				return math.atan(y / x) + math.pi
+			end
+			return math.atan(y / x) - math.pi
+		end
+		if y > 0 then
+			return math.pi / 2
+		end
+		if y < 0 then
+			return -(math.pi / 2)
+		end
+		return 0
+	end
+
+	method number SafeNumber(any value, number fallback)
+		-- Reads a numeric value with a fallback for nil/non-number inputs.
+		if value == nil then
+			return fallback
+		end
+		local converted = tonumber(value)
+		if converted == nil then
+			return fallback
+		end
+		return converted
+	end
+
+	method string SafeString(any value, string fallback)
+		-- Reads a string value with a fallback for nil inputs.
+		if value == nil then
+			return fallback
+		end
+		return tostring(value)
+	end
+
+end

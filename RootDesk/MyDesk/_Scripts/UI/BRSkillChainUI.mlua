@@ -3846,6 +3846,7 @@ script BRSkillChainUI extends Component
 					authoredFill.SpriteGUIRendererComponent.Type = ImageType.Filled
 					authoredFill.SpriteGUIRendererComponent.FillMethod = FillMethodType.Horizontal
 					authoredFill.SpriteGUIRendererComponent.FillOrigin = 0
+					authoredFill.SpriteGUIRendererComponent.Color = fillColor
 					authoredFill.SpriteGUIRendererComponent.RaycastTarget = false
 				end
 				if authoredFill.UITransformComponent ~= nil then
@@ -4253,6 +4254,20 @@ script BRSkillChainUI extends Component
 		end
 	end
 
+	method Entity ResolveAuthoredHudEntity(table candidatePaths)
+		-- Returns the first authored HUD entity that resolves; layouts nest fill/value under the back bar.
+		if candidatePaths == nil then
+			return nil
+		end
+		for _, relativePath in ipairs(candidatePaths) do
+			local entity = self:GetEntityFromRoot(self:GetChainRootPath(), relativePath)
+			if entity ~= nil then
+				return entity
+			end
+		end
+		return nil
+	end
+
 	method Entity GetAuthoredHudTextEntity(string name)
 		local safeName = self:ReadString(name, "")
 		local hubPath = self:GetAuthoredBattleHudContainerPath()
@@ -4260,18 +4275,10 @@ script BRSkillChainUI extends Component
 			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudLevelText")
 		end
 		if safeName == "HudHpValue" then
-			local value = self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpValue")
-			if value ~= nil then
-				return value
-			end
-			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpFill/HudHpValue")
+			return self:ResolveAuthoredHudEntity({ hubPath .. "/HudHpBack/HudHpValue", hubPath .. "/HudHpValue", hubPath .. "/HudHpFill/HudHpValue" })
 		end
 		if safeName == "HudExpValue" then
-			local value = self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpValue")
-			if value ~= nil then
-				return value
-			end
-			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpFill/HudExpValue")
+			return self:ResolveAuthoredHudEntity({ hubPath .. "/HudExpBack/HudExpValue", hubPath .. "/HudExpValue", hubPath .. "/HudExpFill/HudExpValue" })
 		end
 		return nil
 	end
@@ -4280,10 +4287,10 @@ script BRSkillChainUI extends Component
 		local safeKey = self:ReadString(key, "")
 		local hubPath = self:GetAuthoredBattleHudContainerPath()
 		if safeKey == "Hp" then
-			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudHpFill")
+			return self:ResolveAuthoredHudEntity({ hubPath .. "/HudHpBack/HudHpFill", hubPath .. "/HudHpFill" })
 		end
 		if safeKey == "Exp" then
-			return self:GetEntityFromRoot(self:GetChainRootPath(), hubPath .. "/HudExpFill")
+			return self:ResolveAuthoredHudEntity({ hubPath .. "/HudExpBack/HudExpFill", hubPath .. "/HudExpFill" })
 		end
 		return nil
 	end

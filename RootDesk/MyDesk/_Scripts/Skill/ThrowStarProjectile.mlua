@@ -1,6 +1,8 @@
 @Component
 script ThrowStarProjectile extends Component
 
+	property number TargetCenterOffsetY = 0.5
+
 	method void OnBeginPlay()
 		-- Initializes star runtime state without clobbering an already-issued Fire().
 		if self._T.fired == true then
@@ -20,11 +22,14 @@ script ThrowStarProjectile extends Component
 		self._T.hitEffectRuid = ""
 		self._T.mesoCount = 0
 		self._T.mesoAttacker = nil
+		self._T.targetCenterOffsetY = self:SafeNumber(self.TargetCenterOffsetY, 0.5)
 	end
 
 	@ExecSpace("ServerOnly")
-	method void Fire(Entity target, Entity attacker, number dirX, number dirY, number damage, number maxRange, number speed, string hitEffectRuid, number mesoCount, Entity mesoAttacker)
+	method void Fire(Entity target, Entity attacker, number dirX, number dirY, number damage, number maxRange, number speed, string hitEffectRuid, number mesoCount, Entity mesoAttacker, number centerOffset)
 		-- Launches the star toward target, homing while target stays within range of the cast origin.
+		-- centerOffset raises the aim from the target's feet pivot up to its body center.
+		self._T.targetCenterOffsetY = self:SafeNumber(centerOffset, self:SafeNumber(self.TargetCenterOffsetY, 0.5))
 		local origin = self.Entity.TransformComponent.WorldPosition
 		self._T.originX = origin.x
 		self._T.originY = origin.y
@@ -68,6 +73,9 @@ script ThrowStarProjectile extends Component
 		local targetPos = nil
 		if self._T.target ~= nil and isvalid(self._T.target) == true then
 			targetPos = self._T.target.TransformComponent.WorldPosition
+			-- Aim at the target's body center, not its feet: WorldPosition sits at the feet pivot,
+			-- so raise it by the caster-supplied center offset before homing / hit-testing against it.
+			targetPos = Vector3(targetPos.x, targetPos.y + self:SafeNumber(self._T.targetCenterOffsetY, 0.5), targetPos.z)
 			local odx = targetPos.x - self._T.originX
 			local ody = targetPos.y - self._T.originY
 			local targetDistFromOrigin = math.sqrt(odx * odx + ody * ody)

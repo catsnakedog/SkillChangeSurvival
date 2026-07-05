@@ -50,12 +50,19 @@ script BRTrainingDummy extends Component
 
 	property number flashTimerId = 0
 
+	property number HpBarWidth = 1.2
+
+	property number HpBarHeight = 0.16
+
+	property number HpBarYOffset = 1.0
+
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
 		if self.EnableTrainingDummy == false then
 			return
 		end
 
+		self:SetupHpBar()
 		self:NormalizeAuthoredDummyBalance()
 		self:ResetDummy()
 		self:Log("ready hp=" .. tostring(self:GetMaxHp()) .. " map=" .. self:GetMapName())
@@ -265,7 +272,32 @@ script BRTrainingDummy extends Component
 	end
 
 	@ExecSpace("ServerOnly")
+	method void SetupHpBar()
+		-- Configures the overhead black/red HP bar child renderers once at spawn.
+		if _BROverheadHpBar == nil or self.Entity == nil then
+			return
+		end
+		_BROverheadHpBar:Setup(self.Entity, self:ReadNumber(self.HpBarWidth, 1.2), self:ReadNumber(self.HpBarHeight, 0.16), self:ReadNumber(self.HpBarYOffset, 1.0))
+		self:UpdateHpBar()
+	end
+
+	@ExecSpace("ServerOnly")
+	method void UpdateHpBar()
+		-- Pushes the current HP ratio to the overhead bar fill.
+		if _BROverheadHpBar == nil or self.Entity == nil then
+			return
+		end
+		local maxHp = self:GetMaxHp()
+		local ratio = 0
+		if maxHp > 0 then
+			ratio = self.CurrentHp / maxHp
+		end
+		_BROverheadHpBar:SetRatio(self.Entity, ratio)
+	end
+
+	@ExecSpace("ServerOnly")
 	method void UpdateNameTag()
+		self:UpdateHpBar()
 		if self.Entity == nil or self.Entity.NameTagComponent == nil then
 			return
 		end

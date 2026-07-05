@@ -1,0 +1,195 @@
+@Logic
+script BROverheadHpBar extends Logic
+
+	property number DefaultWidth = 1.2
+
+	property number DefaultHeight = 0.16
+
+	property number DefaultYOffset = 1.0
+
+	property number BgOrderInLayer = 120
+
+	property number FillOrderInLayer = 121
+
+	property string BarSortingLayer = "MapLayer0"
+
+	property string BgChildName = "HpBarBg"
+
+	property string FillChildName = "HpBarFill"
+
+	property Color BgColor = Color(0, 0, 0, 0.82)
+
+	property Color FillColor = Color(0.9, 0.16, 0.2, 1)
+
+	property Color LowFillColor = Color(0.95, 0.55, 0.1, 1)
+
+	property Color DeadFillColor = Color(0.45, 0.45, 0.45, 1)
+
+	@ExecSpace("ServerOnly")
+	method void Setup(Entity owner, number width, number height, number yOffset)
+		-- Configures both overhead bar child renderers (black background + red fill) above the head.
+		if owner == nil then
+			return
+		end
+		local w = self:PositiveNumber(width, self.DefaultWidth)
+		local h = self:PositiveNumber(height, self.DefaultHeight)
+		local y = self:ReadNumber(yOffset, self.DefaultYOffset)
+		self:ConfigureBar(owner, self:ReadString(self.BgChildName, "HpBarBg"), w, w, h, y, self.BgColor, self.BgOrderInLayer)
+		self:ConfigureBar(owner, self:ReadString(self.FillChildName, "HpBarFill"), w, w, h, y, self.FillColor, self.FillOrderInLayer)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ConfigureBar(Entity owner, string childName, number fullWidth, number drawWidth, number height, number yOffset, Color color, number order)
+		-- Applies sorting, color, offset, and rectangle geometry to one bar child.
+		local bar = self:GetBarChild(owner, childName)
+		if bar == nil then
+			return
+		end
+		local poly = bar.PolygonRendererComponent
+		if poly == nil then
+			return
+		end
+		if bar.TransformComponent ~= nil then
+			bar.TransformComponent.Position = Vector3(-self:PositiveNumber(fullWidth, self.DefaultWidth) / 2, self:ReadNumber(yOffset, self.DefaultYOffset), 0)
+		end
+		poly.SortingLayer = self:ReadString(self.BarSortingLayer, "MapLayer0")
+		poly.IgnoreMapLayerCheck = true
+		poly.OrderInLayer = math.floor(self:ReadNumber(order, 120))
+		poly.Color = color
+		self:SetRect(poly, drawWidth, height)
+	end
+
+	method void SetRect(PolygonRendererComponent poly, number width, number height)
+		-- Rebuilds the polygon as a left-anchored rectangle so the fill grows from the left edge.
+		if poly == nil then
+			return
+		end
+		local w = math.max(0.0001, self:ReadNumber(width, 0))
+		local h = math.max(0.0001, self:PositiveNumber(height, self.DefaultHeight))
+		poly.Points:Clear()
+		poly.Points:Add(Vector2(0, 0))
+		poly.Points:Add(Vector2(w, 0))
+		poly.Points:Add(Vector2(w, h))
+		poly.Points:Add(Vector2(0, h))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SetRatio(Entity owner, number ratio)
+		-- Updates only the fill width to reflect the current HP ratio (0..1).
+		if owner == nil then
+			return
+		end
+		local fill = self:GetBarChild(owner, self:ReadString(self.FillChildName, "HpBarFill"))
+		if fill == nil or fill.PolygonRendererComponent == nil then
+			return
+		end
+		local r = math.max(0, math.min(1, self:ReadNumber(ratio, 0)))
+		local fullWidth = self:GetBarWidth(owner)
+		local height = self:GetBarHeight(owner)
+		if r <= 0 then
+			self:ConfigureBar(owner, self:ReadString(self.FillChildName, "HpBarFill"), fullWidth, 0.0001, height, self:GetBarYOffset(owner), self.DeadFillColor, self.FillOrderInLayer)
+			return
+		end
+		local color = self.FillColor
+		if r <= 0.3 then
+			color = self.LowFillColor
+		end
+		fill.PolygonRendererComponent.Color = color
+		self:SetRect(fill.PolygonRendererComponent, fullWidth * r, height)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void SetVisible(Entity owner, boolean visible)
+		-- Shows or hides the whole overhead bar.
+		if owner == nil then
+			return
+		end
+		local bg = self:GetBarChild(owner, self:ReadString(self.BgChildName, "HpBarBg"))
+		local fill = self:GetBarChild(owner, self:ReadString(self.FillChildName, "HpBarFill"))
+		if bg ~= nil then
+			bg:SetEnable(visible)
+			bg:SetVisible(visible)
+		end
+		if fill ~= nil then
+			fill:SetEnable(visible)
+			fill:SetVisible(visible)
+		end
+	end
+
+	method Entity GetBarChild(Entity owner, string childName)
+		-- Resolves an overhead bar child by name.
+		if owner == nil then
+			return nil
+		end
+		return owner:GetChildByName(self:ReadString(childName, ""), false)
+	end
+
+	method number GetBarWidth(Entity owner)
+		-- Recovers the full bar width from the background polygon geometry.
+		return self:ReadMaxComponent(owner, self:ReadString(self.BgChildName, "HpBarBg"), true, self.DefaultWidth)
+	end
+
+	method number GetBarHeight(Entity owner)
+		-- Recovers the bar height from the background polygon geometry.
+		return self:ReadMaxComponent(owner, self:ReadString(self.BgChildName, "HpBarBg"), false, self.DefaultHeight)
+	end
+
+	method number GetBarYOffset(Entity owner)
+		-- Reads the current bar vertical offset from the fill child transform.
+		local fill = self:GetBarChild(owner, self:ReadString(self.FillChildName, "HpBarFill"))
+		if fill ~= nil and fill.TransformComponent ~= nil then
+			return fill.TransformComponent.Position.y
+		end
+		return self.DefaultYOffset
+	end
+
+	method number ReadMaxComponent(Entity owner, string childName, boolean useX, number fallback)
+		-- Returns the max x (width) or max y (height) of the child's polygon points.
+		local bar = self:GetBarChild(owner, childName)
+		if bar == nil or bar.PolygonRendererComponent == nil then
+			return fallback
+		end
+		local points = bar.PolygonRendererComponent.Points
+		if points == nil or points.Count < 3 then
+			return fallback
+		end
+		local maxValue = 0
+		for _, point in ipairs(points:ToTable()) do
+			local value = point.x
+			if useX ~= true then
+				value = point.y
+			end
+			if value > maxValue then
+				maxValue = value
+			end
+		end
+		if maxValue <= 0 then
+			return fallback
+		end
+		return maxValue
+	end
+
+	method number PositiveNumber(any value, number fallback)
+		local numberValue = self:ReadNumber(value, fallback)
+		if numberValue <= 0 then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method number ReadNumber(any value, number fallback)
+		local numberValue = tonumber(value)
+		if numberValue == nil then
+			return fallback
+		end
+		return numberValue
+	end
+
+	method string ReadString(any value, string fallback)
+		if value == nil or value == "" then
+			return fallback
+		end
+		return value
+	end
+
+end

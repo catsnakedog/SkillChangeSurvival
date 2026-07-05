@@ -128,9 +128,13 @@ script BRSkillSystem extends Logic
 
 	property number ThrowStarAcquireRange = 7
 
-	property number ThrowStarFollowupDelay = 0.15
+	property number ThrowStarFollowupDelay = 0.08
+
+	property number ThrowStarCastFrames = 12
 
 	property number ThrowStarSoundVolume = 0.9
+
+	property number ThrowStarTargetCenterOffset = 0.5
 
 	property number SkillEffectScale = 1.0
 
@@ -169,6 +173,20 @@ script BRSkillSystem extends Logic
 	property integer HitboxDebugOrderInLayer = 85
 
 	property integer TelegraphOrderInLayer = 500
+
+	-- Telegraph range indicator is drawn from 3 white sprites (tinted per skill): a Left edge line, a
+	-- Right edge line, and a Center fill between them. Authored for an upward range (tall rect).
+	property string TelegraphSpriteModelId = "brskilltelegraphsprite"
+
+	property string TelegraphSpriteL = "0e59de72f10048698d61b88ed781e188"
+
+	property string TelegraphSpriteR = "07fc57d69b7e4f82b3299749c081f56b"
+
+	property string TelegraphSpriteC = "c84eaf8f200249e58d48452aba97c3cf"
+
+	property number TelegraphLineThickness = 0.15
+
+	property number TelegraphAlpha = 0.55
 
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
@@ -4138,6 +4156,13 @@ script BRSkillSystem extends Logic
 		return "throwstar"
 	end
 
+	method boolean IsThrowStarSkillKey(string skillKey)
+		-- True when a skill key belongs to the throwing-star (Lucky Seven) family (base or tier variant).
+		local baseKey = self:GetThrowStarSkillKey()
+		local safeKey = self:ReadString(skillKey, "")
+		return safeKey == baseKey or string.sub(safeKey, 1, #baseKey) == baseKey
+	end
+
 	method void HandleThrowStarCast(any cast)
 		-- Routes a 럭키 세븐 cast (base or tiered key) to the tiered homing-star burst.
 		if cast == nil or cast.CasterEntity == nil then
@@ -4191,8 +4216,13 @@ script BRSkillSystem extends Logic
 		local interval = math.max(0, self:ReadNumber(self.ThrowStarFollowupDelay, 0.15))
 		local mesoCount = math.max(0, math.floor(self:ReadNumber(cast.MesoFollowUpCount, 0)))
 		local mesoAttacker = cast.MesoAttacker
+		local centerOffset = self:ReadNumber(self.ThrowStarTargetCenterOffset, 0.5)
 
 		self:PlayThrowStarCastSound(caster, order)
+		self:PlayThrowStarCastEffect(context, caster, order, direction, centerOffset)
+		-- Play the throw swing once up-front so the character visibly throws as the stars launch. Lucky Seven
+		-- has no post-delay, so the swing is driven here at cast start instead of from the post-cast recovery.
+		self:PlayCasterAttackOnceClient(caster)
 
 		for starIndex = 0, totalStars - 1 do
 			local delay = starIndex * interval
@@ -4206,16 +4236,17 @@ script BRSkillSystem extends Logic
 			local capturedAcquireRange = acquireRange
 			local capturedMesoCount = mesoCount
 			local capturedMesoAttacker = mesoAttacker
+			local capturedCenterOffset = centerOffset
 			if delay <= 0 then
 				local target = self:FindFacedEnemy(context, caster, direction, acquireRange)
-				self:SpawnThrowStarVolley(caster, target, direction, 1, damage, maxRange, speed, hitEffect, mesoCount, mesoAttacker)
+				self:SpawnThrowStarVolley(caster, target, direction, 1, damage, maxRange, speed, hitEffect, mesoCount, mesoAttacker, centerOffset)
 			else
 				_TimerService:SetTimerOnce(function()
 					if capturedCaster == nil or isvalid(capturedCaster) ~= true then
 						return
 					end
 					local target = self:FindFacedEnemy(capturedContext, capturedCaster, capturedDirection, capturedAcquireRange)
-					self:SpawnThrowStarVolley(capturedCaster, target, capturedDirection, 1, capturedDamage, capturedMaxRange, capturedSpeed, capturedHitEffect, capturedMesoCount, capturedMesoAttacker)
+					self:SpawnThrowStarVolley(capturedCaster, target, capturedDirection, 1, capturedDamage, capturedMaxRange, capturedSpeed, capturedHitEffect, capturedMesoCount, capturedMesoAttacker, capturedCenterOffset)
 				end, delay)
 			end
 		end
@@ -4223,7 +4254,7 @@ script BRSkillSystem extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
-	method void SpawnThrowStarVolley(Entity caster, Entity target, number direction, number count, number damage, number maxRange, number speed, string hitEffect, number mesoCount, Entity mesoAttacker)
+	method void SpawnThrowStarVolley(Entity caster, Entity target, number direction, number count, number damage, number maxRange, number speed, string hitEffect, number mesoCount, Entity mesoAttacker, number centerOffset)
 		-- Spawns `count` homing stars at the caster with a small vertical spread so they do not overlap.
 		if caster == nil or isvalid(caster) ~= true then
 			return
@@ -4238,18 +4269,20 @@ script BRSkillSystem extends Logic
 			return
 		end
 		local safeMesoCount = math.max(0, math.floor(self:ReadNumber(mesoCount, 0)))
+		-- Launch from the caster's body center (feet + offset) so the stars fly level toward the target center.
+		local safeCenterOffset = self:ReadNumber(centerOffset, 0.5)
 		local basePos = caster.TransformComponent.WorldPosition
 		for starIndex = 1, safeCount do
 			self._T.throwStarSerial = math.floor(self:ReadNumber(self._T.throwStarSerial, 0)) + 1
 			local starName = "ThrowStar_" .. tostring(self._T.throwStarSerial)
 			local spread = self:ComputeThrowStarSpread(starIndex, safeCount)
-			local spawnPos = Vector3(basePos.x, basePos.y + spread, basePos.z)
+			local spawnPos = Vector3(basePos.x, basePos.y + safeCenterOffset + spread, basePos.z)
 			local star = _SpawnService:SpawnByModelId(self:GetThrowStarModelId(), starName, spawnPos, parent)
 			if star ~= nil then
 				---@type ThrowStarProjectile
 				local projectile = star:GetComponent("script.ThrowStarProjectile")
 				if projectile ~= nil then
-					projectile:Fire(target, caster, direction, spread, damage, maxRange, speed, hitEffect, safeMesoCount, mesoAttacker)
+					projectile:Fire(target, caster, direction, spread, damage, maxRange, speed, hitEffect, safeMesoCount, mesoAttacker, safeCenterOffset)
 					self:Log("throw star spawn index=" .. tostring(starIndex) .. "/" .. tostring(safeCount) .. " dmg=" .. tostring(damage))
 				else
 					self:Log("throw star spawn failed reason=noComponent index=" .. tostring(starIndex))
@@ -4284,18 +4317,42 @@ script BRSkillSystem extends Logic
 	end
 
 	method string GetThrowStarHitEffect(number tier)
-		-- Per-tier hit animationclip RUID.
+		-- Per-tier hit animationclip RUID (resource pack action "hit/0").
 		local order = self:ClampSkillTier(tier)
 		if order <= 1 then
 			return "a12bf45994e643f38b9daea0075c9bdd"
 		end
 		if order == 2 then
-			return "4c42f0632fa249c29b8394c10d7634fe"
+			return "fbd2a362ae144963aa8a68f4f1bedb30"
 		end
 		if order == 3 then
-			return "8fc08b2af4944a90be3f1822479c0fd9"
+			return "e9d08712afa2479f8d9b2fc60712c8e2"
 		end
-		return "2a8b49e8f8914588bc8b5ad2be5b71e0"
+		return "9f9c45b3db4a46b999c5a819cccfedbd"
+	end
+
+	method string GetThrowStarCastEffect(number tier)
+		-- Per-tier main cast animationclip RUID (resource pack action "effect"), played at the caster.
+		local order = self:ClampSkillTier(tier)
+		if order <= 1 then
+			return "6d94c9c1e4554d3886c1265434dcdb6b"
+		end
+		if order == 2 then
+			return "afcbe9f1f576402295f55a143e5707ed"
+		end
+		if order == 3 then
+			return "08aa13242afa4f29925f13be72ef6fa7"
+		end
+		return "8f747df49c1a4ddc8c629e0bd8b8c5c0"
+	end
+
+	method string GetThrowStarCastEffect2(number tier)
+		-- Secondary cast animationclip RUID (resource pack action "effect2"); only tier 4 has one.
+		local order = self:ClampSkillTier(tier)
+		if order >= 4 then
+			return "45464a9fe9d34661964cd823493cdcb8"
+		end
+		return ""
 	end
 
 	method string GetThrowStarCastSound(number tier)
@@ -4329,6 +4386,40 @@ script BRSkillSystem extends Logic
 			return
 		end
 		_SoundService:PlaySound(soundRuid, math.max(0, self:ReadNumber(self.ThrowStarSoundVolume, 0.9)))
+	end
+
+	method void PlayThrowStarCastEffect(any context, Entity caster, number tier, number direction, number centerOffset)
+		-- Plays the per-tier main cast animationclip (and the tier-4 secondary) ATTACHED to the caster so the
+		-- effect rides along while the player keeps moving through the throw. Lucky Seven skills carry no
+		-- effect_ids in skills.csv, so the visual is driven from code here.
+		if self.EnableSkillVisualEffects ~= true or caster == nil or isvalid(caster) ~= true then
+			return
+		end
+		self:PlayThrowStarCastEffectClient(caster, self:GetThrowStarCastEffect(tier), self:GetThrowStarCastEffect2(tier), direction, self:ReadNumber(centerOffset, 0.5))
+	end
+
+	@ExecSpace("Client")
+	method void PlayThrowStarCastEffectClient(Entity caster, string ruid, string ruid2, number direction, number centerOffset)
+		-- Plays the throw cast animationclip(s) attached to the caster on every client viewing them, so the
+		-- effect follows the player for its whole lifetime instead of staying at the launch position.
+		if self.EnableSkillVisualEffects ~= true or caster == nil or isvalid(caster) ~= true then
+			return
+		end
+		local scale = math.max(0.05, self:ReadNumber(self.SkillEffectScale, 1))
+		-- Attach at the caster's origin (pivot 0) — no vertical lift, so the effect sits on the player.
+		local localPos = Vector3(0, 0, 0)
+		local options = {}
+		options["FlipX"] = self:ReadNumber(direction, 1) > 0
+		options["SortingLayer"] = "MapLayer0"
+		options["OrderInLayer"] = math.floor(self:ReadNumber(self.SkillEffectOrderInLayer, 30))
+		options["Alpha"] = math.max(0, math.min(1, self:ReadNumber(self.SkillEffectAlpha, 1)))
+		options["IgnoreMapLayerCheck"] = true
+		if ruid ~= nil and ruid ~= "" then
+			_EffectService:PlayEffectAttached(ruid, caster, localPos, 0, Vector3(scale, scale, 1), false, options)
+		end
+		if ruid2 ~= nil and ruid2 ~= "" then
+			_EffectService:PlayEffectAttached(ruid2, caster, localPos, 0, Vector3(scale, scale, 1), false, options)
+		end
 	end
 
 	@ExecSpace("ServerOnly")
@@ -5067,18 +5158,6 @@ script BRSkillSystem extends Logic
 		return math.max(0, math.floor(seconds / self:GetSkillFrameSeconds() + 0.5))
 	end
 
-	method string GetSharpSlashBaseSkillKey()
-		-- Base skill key of the sharp-slash chain part; tier variants are 샤프 슬래시2/3/4.
-		return "샤프 슬래시"
-	end
-
-	method boolean IsSharpSlashSkillKey(string skillKey)
-		-- True when a skill key belongs to the sharp-slash part family (base or tier variant).
-		local baseKey = self:GetSharpSlashBaseSkillKey()
-		local safeKey = self:ReadString(skillKey, "")
-		return safeKey == baseKey or string.sub(safeKey, 1, #baseKey) == baseKey
-	end
-
 	method number GetSkillPreDelaySeconds(any skillDef)
 		-- Pre-cast wind-up in seconds. Any skill with a fixed cast-time hit area (an "area" event) gets a
 		-- wind-up so its range is telegraphed before the strike — Brandish, Sharp Slash, etc. Projectile /
@@ -5088,12 +5167,6 @@ script BRSkillSystem extends Logic
 			return 0
 		end
 		if self:SkillHasAreaEvent(skillDef) == true then
-			-- Sharp Slash chain parts (샤프 슬래시/2/3/4) skip the wind-up entirely — requested no-선딜레이
-			-- tuning for this family only, so the chain stays snappy. Removes the telegraph for them too.
-			if self:IsSharpSlashSkillKey(self:ReadString(skillDef.BaseSkillKey, self:ReadString(skillDef.SkillKey, ""))) == true then
-				self:Log("sharp slash predelay skip skill=" .. self:ReadString(skillDef.SkillKey, ""))
-				return 0
-			end
 			-- Basic attacks (기본 공격) get a much shorter wind-up so light attacks feel responsive;
 			-- other area skills keep the standard telegraphed 0.5s. Value tuned by integrator playtest (BUG-013).
 			if self:ReadString(skillDef.SkillCategory, "") == "기본 공격" then
@@ -5144,6 +5217,11 @@ script BRSkillSystem extends Logic
 		-- the enhanced skill fires immediately after.
 		local id = self:ReadString(skillDef.BaseSkillKey, self:ReadString(skillDef.SkillKey, ""))
 		if self:IsMesoExplosionSkillKey(id) == true then
+			return 0
+		end
+		-- Lucky Seven plays its throw swing up-front at cast start (not as post-cast recovery), so it gets no
+		-- post-delay hold — the player recovers as soon as the short throw timeline ends.
+		if self:IsThrowStarSkillKey(id) == true then
 			return 0
 		end
 		return 0.35
@@ -5374,6 +5452,8 @@ script BRSkillSystem extends Logic
 		if self:IsLiveCasterContext(cast) then
 			followEntity = cast.CasterEntity
 		end
+		-- White telegraph sprites are tinted to a color that matches the skill.
+		local telegraphColor = self:GetSkillTelegraphColor(cast)
 		local seen = {}
 		for frameKey, eventIds in pairs(eventsByFrame) do
 			for index, eventId in ipairs(eventIds) do
@@ -5388,7 +5468,7 @@ script BRSkillSystem extends Logic
 							if hitbox ~= nil then
 								local rect = self:GetHitboxDebugRect(cast, hitbox)
 								if rect ~= nil then
-									self:SpawnTelegraphBox(mapEntity, rect, windUpSeconds, followEntity)
+									self:SpawnTelegraphBox(mapEntity, rect, windUpSeconds, followEntity, telegraphColor)
 								end
 							end
 						end
@@ -5398,56 +5478,124 @@ script BRSkillSystem extends Logic
 		end
 	end
 
-	method void SpawnTelegraphBox(Entity mapEntity, any rect, number duration, Entity followEntity)
-		-- Spawns one solid red telegraph box sized to the hit rect; it stays visible for `duration`
-		-- (the pre-delay) and is removed when that time elapses. No fade — solid until the wind-up ends.
-		-- For melee casts, followEntity is the caster: the box is parented to the caster and offset to the
-		-- hit rect so it rides along while the player keeps moving. For fixed-target (ranged) casts
-		-- followEntity is nil and the box stays put at the resolved target position.
+	method any GetSkillTelegraphColor(any cast)
+		-- Returns an { R, G, B } tint (0..1) for the white telegraph sprites, matching the skill's feel.
+		-- White source images are colored with this so each skill family reads as its own color.
+		local key = ""
+		if cast ~= nil then
+			key = self:ReadString(cast.SkillKey, "")
+			if key == "" and cast.SkillDef ~= nil then
+				key = self:ReadString(cast.SkillDef.SkillKey, "")
+			end
+		end
+		if string.sub(key, 1, #"브랜디쉬") == "브랜디쉬" then
+			return { R = 1, G = 0.45, B = 0.12 }
+		end
+		if string.sub(key, 1, #"디바인") == "디바인" then
+			return { R = 1, G = 0.9, B = 0.25 }
+		end
+		if string.sub(key, 1, #"샤프 슬래시") == "샤프 슬래시" then
+			return { R = 0.3, G = 0.72, B = 1 }
+		end
+		if string.sub(key, 1, #"럭키 세븐") == "럭키 세븐" then
+			return { R = 0.72, G = 0.42, B = 1 }
+		end
+		return { R = 1, G = 0.2, B = 0.2 }
+	end
+
+	method void SpawnTelegraphBox(Entity mapEntity, any rect, number duration, Entity followEntity, any color)
+		-- Draws the skill's range as three tinted sprites over the hit rect: a Top edge line and a Bottom edge
+		-- line (both horizontal, spanning the full width), with a Center fill between them. Stays visible for
+		-- `duration` (the pre-delay), then is removed when the wind-up ends. For melee casts followEntity is
+		-- the caster so the sprites are parented to it and ride along while the player moves.
 		if mapEntity == nil or isvalid(mapEntity) == false or rect == nil then
+			return
+		end
+		local modelId = self:ReadString(self.TelegraphSpriteModelId, "")
+		if modelId == "" then
 			return
 		end
 		local width = math.max(0.01, self:ReadNumber(rect.W, 0))
 		local height = math.max(0.01, self:ReadNumber(rect.H, 0))
-		local modelId = self:ReadString(self.HitboxDebugModelId, "")
-		if modelId == "" then
+		local centerX = self:ReadNumber(rect.X, 0)
+		local centerY = self:ReadNumber(rect.Y, 0)
+		-- Edge-line thickness (the vertical extent of the horizontal top/bottom lines), capped so the two
+		-- lines never overrun the rect height.
+		local thickness = math.min(math.max(0.02, self:ReadNumber(self.TelegraphLineThickness, 0.15)), height * 0.45)
+		local order = math.floor(self:ReadNumber(self.TelegraphOrderInLayer, 500))
+		local attachToCaster = followEntity ~= nil and isvalid(followEntity) and followEntity.TransformComponent ~= nil
+		local spawnParent = mapEntity
+		local baseX = 0
+		local baseY = 0
+		if attachToCaster then
+			spawnParent = followEntity
+			local base = self:GetEntityPosition2(followEntity)
+			baseX = base.x
+			baseY = base.y
+		end
+		local fillAlpha = math.max(0, math.min(1, self:ReadNumber(self.TelegraphAlpha, 0.55)))
+		local lineAlpha = math.max(0, math.min(1, fillAlpha + 0.35))
+		-- The center fill spans the FULL rect (width x height) so it is completely filled with no gap; the two
+		-- edge lines then draw on top of its top/bottom edges as accents. SpriteRendererComponent has no pivot
+		-- property (sprites draw centered on the Transform), so an edge-anchored pivot is simulated by placing
+		-- each line's center exactly ON the rect's top / bottom end.
+		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY, width, height, self:ReadString(self.TelegraphSpriteC, ""), color, fillAlpha, order, duration, 0)
+		-- Top edge line (horizontal) — rotated 90 deg (line images are authored vertical), pivot at the TOP end.
+		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY + height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteL, ""), color, lineAlpha, order + 1, duration, 90)
+		-- Bottom edge line (horizontal) — rotated 90 deg, pivot at the BOTTOM end.
+		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY - height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteR, ""), color, lineAlpha, order + 1, duration, 90)
+	end
+
+	method void SpawnTelegraphSprite(string modelId, Entity spawnParent, boolean attachToCaster, number baseX, number baseY, number worldX, number worldY, number w, number h, string ruid, any color, number alpha, number order, number duration, number rotationDeg)
+		-- Spawns one telegraph sprite quad covering (w, h) world units at (worldX, worldY), tinted, optionally
+		-- rotated by rotationDeg. DrawMode=Tiled + TiledSize stretches/fills the area regardless of native
+		-- pixel size. When rotated 90/270 (a vertical line image reused as a horizontal edge line), the local
+		-- TiledSize axes are swapped so the drawn quad still spans (w, h) in world space and the line stretches
+		-- along its length instead of tiling into short dashes.
+		if ruid == nil or ruid == "" or spawnParent == nil then
 			return
 		end
 		self._T.telegraphSeq = math.floor(self:ReadNumber(self._T.telegraphSeq, 0)) + 1
 		local name = "SkillTelegraph_" .. tostring(self._T.telegraphSeq)
-		local attachToCaster = followEntity ~= nil and isvalid(followEntity) and followEntity.TransformComponent ~= nil
-		local spawnParent = mapEntity
-		if attachToCaster then
-			spawnParent = followEntity
-		end
-		local entity = _SpawnService:SpawnByModelId(modelId, name, Vector3(self:ReadNumber(rect.X, 0), self:ReadNumber(rect.Y, 0), 0), spawnParent)
+		local entity = _SpawnService:SpawnByModelId(modelId, name, Vector3(worldX, worldY, 0), spawnParent)
 		if entity == nil then
-			self:Log("telegraph spawn failed model=" .. modelId)
+			self:Log("telegraph sprite spawn failed model=" .. modelId)
 			return
 		end
+		local rot = self:ReadNumber(rotationDeg, 0)
 		if attachToCaster and entity.TransformComponent ~= nil then
-			-- Convert the world-space hit rect center into a local offset from the caster so the box tracks
-			-- the caster's movement (melee ranges stay glued to the player through the whole wind-up).
-			local base = self:GetEntityPosition2(followEntity)
-			entity.TransformComponent.Position = Vector3(self:ReadNumber(rect.X, 0) - base.x, self:ReadNumber(rect.Y, 0) - base.y, 0)
+			-- Parent-local offset so the range rides along with the moving caster during the wind-up.
+			entity.TransformComponent.Position = Vector3(worldX - baseX, worldY - baseY, 0)
 		end
-		local r = entity.PolygonRendererComponent
+		if entity.TransformComponent ~= nil then
+			entity.TransformComponent.ZRotation = rot
+		end
+		local r = entity.SpriteRendererComponent
 		if r ~= nil then
-			-- PolygonRenderer draws from Points, NOT from Transform.Scale. Build the rect explicitly.
-			local hw = width * 0.5
-			local hh = height * 0.5
-			r.Points:Clear()
-			r.Points:Add(Vector2(-hw, -hh))
-			r.Points:Add(Vector2(hw, -hh))
-			r.Points:Add(Vector2(hw, hh))
-			r.Points:Add(Vector2(-hw, hh))
+			r.SpriteRUID = ruid
+			r.DrawMode = SpriteDrawMode.Tiled
+			-- Rotating 90/270 swaps which world axis each local TiledSize dimension maps to, so pre-swap here.
+			local localW = w
+			local localH = h
+			if rot == 90 or rot == 270 or rot == -90 then
+				localW = h
+				localH = w
+			end
+			r.TiledSize = Vector2(math.max(0.01, localW), math.max(0.01, localH))
+			r.FlipX = false
 			r.SortingLayer = "MapLayer0"
-			-- High order so the telegraph is not occluded by foreground map decorations.
-			r.OrderInLayer = math.floor(self:ReadNumber(self.TelegraphOrderInLayer, 500))
-			r.IgnoreMapLayerCheck = true
-			r.Color = Color(1, 0.05, 0.05, 0.7)
+			r.OrderInLayer = math.floor(self:ReadNumber(order, 500))
+			local cr = 1
+			local cg = 1
+			local cb = 1
+			if color ~= nil then
+				cr = self:ReadNumber(color.R, 1)
+				cg = self:ReadNumber(color.G, 1)
+				cb = self:ReadNumber(color.B, 1)
+			end
+			r.Color = Color(cr, cg, cb, math.max(0, math.min(1, self:ReadNumber(alpha, 0.55))))
 		end
-		-- Solid for the whole wind-up; the scheduled destroy removes it exactly when the pre-delay ends.
+		-- Removed exactly when the pre-delay ends (the strike begins).
 		entity:Destroy(math.max(0.05, self:ReadNumber(duration, 0.5)))
 	end
 
@@ -5601,6 +5749,11 @@ script BRSkillSystem extends Logic
 		-- Returns a skill's timeline length in frames.
 		if skillDef == nil then
 			return 1
+		end
+		-- Lucky Seven is a quick throw: the character swings once at cast start and the star volley fires
+		-- fast, so its swing motion (= the movement lock window) is kept short instead of the CSV length.
+		if self:IsThrowStarSkillKey(self:ReadString(skillDef.BaseSkillKey, self:ReadString(skillDef.SkillKey, ""))) == true then
+			return math.max(1, math.floor(self:ReadNumber(self.ThrowStarCastFrames, 12)))
 		end
 		return math.max(1, math.floor(self:ReadNumber(skillDef.TotalFrames, 1)))
 	end

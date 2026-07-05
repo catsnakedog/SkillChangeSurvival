@@ -19,6 +19,8 @@ script BRSkillSystem extends Logic
 
 	property number ExperiencePerLevel = 6
 
+	property number CharacterHpMultiplier = 3
+
 	property string CharacterStatTableName = "CharacterStat"
 
 	property string LevelStatTableName = "LevelStat"
@@ -953,6 +955,11 @@ script BRSkillSystem extends Logic
 		return math.max(1, math.floor(value))
 	end
 
+	method number GetCharacterHpMultiplier()
+		-- Returns the global multiplier applied to every character's final max HP.
+		return math.max(0.01, self:ReadNumber(self.CharacterHpMultiplier, 3))
+	end
+
 	method number NormalizeCharacterAttackPower(any rawAttack, number fallback)
 		-- CharacterStat.csv attack values above 100 are old-scale values and are converted to battle scale.
 		local value = math.max(1, self:ReadNumber(rawAttack, fallback))
@@ -978,7 +985,7 @@ script BRSkillSystem extends Logic
 		if stat ~= nil then
 			baseHp = self:NormalizeCharacterHp(stat.Hp, baseHp)
 		end
-		return math.max(1, math.floor(baseHp * self:GetLevelStatMultiplierForLevel(level)))
+		return math.max(1, math.floor(baseHp * self:GetLevelStatMultiplierForLevel(level) * self:GetCharacterHpMultiplier()))
 	end
 
 	method number GetScaledAttackPowerForCharacter(string characterKey, number level, number fallback)

@@ -53,6 +53,8 @@ script BRSkillSystem extends Logic
 
 	property number ShieldPotionDurationSeconds = 3
 
+	property boolean ConsumablesRollable = false
+
 	property number SkillFrameSeconds = 0.03
 
 	-- Effect-less pre-cast wind-up (선딜) for basic-attack (기본 공격) skills only. Standard area
@@ -187,6 +189,8 @@ script BRSkillSystem extends Logic
 	property number TelegraphLineThickness = 0.15
 
 	property number TelegraphAlpha = 0.55
+
+	property number TelegraphSpriteNativeSize = 0.6
 
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
@@ -522,7 +526,7 @@ script BRSkillSystem extends Logic
 			HealDurationSeconds = math.max(0.05, self:ReadNumber(self.HealthPotionDurationSeconds, 3)),
 			ShieldAmount = math.max(1, math.floor(self:ReadNumber(self.ShieldPotionAmount, 55))),
 			ShieldDurationSeconds = math.max(0.05, self:ReadNumber(self.ShieldPotionDurationSeconds, 3)),
-			Rollable = true
+			Rollable = self.ConsumablesRollable == true
 		}
 	end
 
@@ -5541,17 +5545,18 @@ script BRSkillSystem extends Logic
 		-- each line's center exactly ON the rect's top / bottom end.
 		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY, width, height, self:ReadString(self.TelegraphSpriteC, ""), color, fillAlpha, order, duration, 0)
 		-- Top edge line (horizontal) — rotated 90 deg (line images are authored vertical), pivot at the TOP end.
-		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY + height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteL, ""), color, lineAlpha, order + 1, duration, 90)
+		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY + height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteR, ""), color, lineAlpha, order + 1, duration, 90)
 		-- Bottom edge line (horizontal) — rotated 90 deg, pivot at the BOTTOM end.
-		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY - height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteR, ""), color, lineAlpha, order + 1, duration, 90)
+		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY - height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteL, ""), color, lineAlpha, order + 1, duration, 90)
 	end
 
 	method void SpawnTelegraphSprite(string modelId, Entity spawnParent, boolean attachToCaster, number baseX, number baseY, number worldX, number worldY, number w, number h, string ruid, any color, number alpha, number order, number duration, number rotationDeg)
 		-- Spawns one telegraph sprite quad covering (w, h) world units at (worldX, worldY), tinted, optionally
-		-- rotated by rotationDeg. DrawMode=Tiled + TiledSize stretches/fills the area regardless of native
-		-- pixel size. When rotated 90/270 (a vertical line image reused as a horizontal edge line), the local
-		-- TiledSize axes are swapped so the drawn quad still spans (w, h) in world space and the line stretches
-		-- along its length instead of tiling into short dashes.
+		-- rotated by rotationDeg. The stretch is done via Transform.Scale = target / native-canvas-size:
+		-- runtime probes in Maker showed DrawMode Tiled/Sliced draw these images at NATIVE size and ignore
+		-- TiledSize, so Scale is the only reliable way to make the drawn quad exactly (w, h) world units.
+		-- All three range images (L/C/R) are authored on a ~0.6x0.6-unit (60x60 px) canvas with a centered
+		-- pivot — measured 2026-07-05; tune TelegraphSpriteNativeSize if the images are ever re-uploaded.
 		if ruid == nil or ruid == "" or spawnParent == nil then
 			return
 		end
@@ -5569,19 +5574,20 @@ script BRSkillSystem extends Logic
 		end
 		if entity.TransformComponent ~= nil then
 			entity.TransformComponent.ZRotation = rot
+			-- Rotating 90/270 maps local X onto world Y, so the scale axes swap for the rotated edge lines.
+			local native = math.max(0.01, self:ReadNumber(self.TelegraphSpriteNativeSize, 0.6))
+			local sx = w / native
+			local sy = h / native
+			if rot == 90 or rot == 270 or rot == -90 then
+				sx = h / native
+				sy = w / native
+			end
+			entity.TransformComponent.Scale = Vector3(sx, sy, 1)
 		end
 		local r = entity.SpriteRendererComponent
 		if r ~= nil then
 			r.SpriteRUID = ruid
-			r.DrawMode = SpriteDrawMode.Tiled
-			-- Rotating 90/270 swaps which world axis each local TiledSize dimension maps to, so pre-swap here.
-			local localW = w
-			local localH = h
-			if rot == 90 or rot == 270 or rot == -90 then
-				localW = h
-				localH = w
-			end
-			r.TiledSize = Vector2(math.max(0.01, localW), math.max(0.01, localH))
+			r.DrawMode = SpriteDrawMode.Simple
 			r.FlipX = false
 			r.SortingLayer = "MapLayer0"
 			r.OrderInLayer = math.floor(self:ReadNumber(order, 500))
@@ -6146,6 +6152,7 @@ script BRSkillSystem extends Logic
 		local newSlots = self:GetUnlockedChainSlotCount(state)
 		if leveled == true then
 			self:ApplyCharacterStatsToUser(userId, "level-up")
+			self:HealUserToFull(userId, "level-up")
 		end
 		self:NotifyUserChanged(userId)
 		self:Log("experience user=" .. userId
@@ -7193,6 +7200,25 @@ script BRSkillSystem extends Logic
 			.. " hp=" .. tostring(oldMaxHp) .. "->" .. tostring(maxHp)
 			.. " attack=" .. tostring(self:GetBasicAttackDamage(safeUserId, self.DefaultSkillAttackPower))
 			.. " reason=" .. self:ReadString(reason, "stats"))
+	end
+
+	@ExecSpace("ServerOnly")
+	method void HealUserToFull(string userId, string reason)
+		-- Restores a live player's HP to their current MaxHp (used on level-up).
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		local playerEntity = _UserService:GetUserEntityByUserId(safeUserId)
+		if playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		if playerEntity.PlayerComponent:IsDead() == true then
+			return
+		end
+		local maxHp = math.max(1, math.floor(self:ReadNumber(playerEntity.PlayerComponent.MaxHp, 1)))
+		playerEntity.PlayerComponent.Hp = maxHp
+		self:Log("player healed to full user=" .. safeUserId .. " hp=" .. tostring(maxHp) .. " reason=" .. self:ReadString(reason, "heal"))
 	end
 
 	method void ApplyMovementStatsToPlayer(Entity playerEntity, any baseStats)

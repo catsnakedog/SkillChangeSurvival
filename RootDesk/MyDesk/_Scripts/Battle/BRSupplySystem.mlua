@@ -29,6 +29,8 @@ script BRSupplySystem extends Logic
 
 	property number MonsterSpawnYOffset = 0.03
 
+	property number MaxMonstersPerMap = 2
+
 	property number MaxSuppliesPerDrop = 0
 
 	property number SkillChestDropCount = 3
@@ -336,8 +338,12 @@ script BRSupplySystem extends Logic
 			return 0
 		end
 
+		local maxMonsters = self:GetMaxMonstersPerMap()
 		local spawned = 0
 		for index, anchor in ipairs(anchors) do
+			if spawned >= maxMonsters then
+				break
+			end
 			local monster = self:SpawnMonsterForAnchor(targetMapName, anchor, rowIndex, false)
 			if monster ~= nil then
 				spawned = spawned + 1
@@ -345,6 +351,11 @@ script BRSupplySystem extends Logic
 			end
 		end
 		return spawned
+	end
+
+	method number GetMaxMonstersPerMap()
+		-- Caps how many battle monsters spawn per map (default 2).
+		return math.max(0, math.floor(self:ReadNumber(self.MaxMonstersPerMap, 2)))
 	end
 
 	method Entity SpawnMonsterForAnchor(string mapName, Entity anchor, number rowIndex, boolean boss)

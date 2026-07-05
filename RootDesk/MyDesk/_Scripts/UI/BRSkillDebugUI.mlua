@@ -9,6 +9,8 @@ script BRSkillDebugUI extends Component
 
 	property Entity HitboxButton = "a3fbe417-23a3-4536-ae8a-433b9f26b325"
 
+	property boolean ShowDebugButton = false
+
 	property boolean debugMode = false
 
 	property boolean telegraphOn = true
@@ -23,6 +25,14 @@ script BRSkillDebugUI extends Component
 
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
+		-- Push the current defaults to the server so per-player state matches the labels shown.
+		self:ApplyTelegraph()
+		self:ApplyHitbox()
+		if self.ShowDebugButton ~= true then
+			self:HideDebugButtons()
+			log("[BRSkillDebugUI] debug button hidden")
+			return
+		end
 		if isvalid(self.DebugButton) == true then
 			self.debugHandler = self.DebugButton:ConnectEvent(ButtonClickEvent, self.OnDebugClick)
 		end
@@ -32,11 +42,24 @@ script BRSkillDebugUI extends Component
 		if isvalid(self.HitboxButton) == true then
 			self.hitboxHandler = self.HitboxButton:ConnectEvent(ButtonClickEvent, self.OnHitboxClick)
 		end
-		-- Push the current defaults to the server so per-player state matches the labels shown.
-		self:ApplyTelegraph()
-		self:ApplyHitbox()
 		self:RefreshUI()
 		log("[BRSkillDebugUI] ready")
+	end
+
+	@ExecSpace("ClientOnly")
+	method void HideDebugButtons()
+		-- Hides the debug master button and its telegraph/hitbox toggles.
+		self:SetButtonHidden(self.DebugButton)
+		self:SetButtonHidden(self.TelegraphButton)
+		self:SetButtonHidden(self.HitboxButton)
+	end
+
+	@ExecSpace("ClientOnly")
+	method void SetButtonHidden(Entity button)
+		-- Disables a debug UI button entity so it is neither visible nor clickable.
+		if isvalid(button) == true then
+			button.Enable = false
+		end
 	end
 
 	@ExecSpace("ClientOnly")

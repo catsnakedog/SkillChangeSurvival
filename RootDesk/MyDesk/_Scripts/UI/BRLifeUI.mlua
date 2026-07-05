@@ -165,7 +165,7 @@ script BRLifeUI extends Logic
 			label.UITransformComponent.AnchorsMax = Vector2(0, 1)
 			label.UITransformComponent.Pivot = Vector2(0, 1)
 			label.UITransformComponent.RectSize = Vector2(360, 42)
-			label.UITransformComponent.anchoredPosition = Vector2(32, -86)
+			label.UITransformComponent.anchoredPosition = Vector2(32, -290)
 		end
 		if label.SpriteGUIRendererComponent ~= nil then
 			label.SpriteGUIRendererComponent.Enable = false
@@ -188,7 +188,7 @@ script BRLifeUI extends Logic
 			label.UITransformComponent.AnchorsMax = Vector2(0, 1)
 			label.UITransformComponent.Pivot = Vector2(0, 1)
 			label.UITransformComponent.RectSize = Vector2(360, 36)
-			label.UITransformComponent.anchoredPosition = Vector2(32, -126)
+			label.UITransformComponent.anchoredPosition = Vector2(32, -330)
 		end
 		if label.SpriteGUIRendererComponent ~= nil then
 			label.SpriteGUIRendererComponent.Enable = false

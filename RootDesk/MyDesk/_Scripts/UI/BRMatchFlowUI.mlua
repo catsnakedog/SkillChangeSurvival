@@ -35,13 +35,28 @@ script BRMatchFlowUI extends Component
 
 	property any closeHandler = nil
 
+	-- Game-over animation RUIDs (import Gameover/complite and Gameover/failed as AnimationClips, then paste here).
+	property string CompleteClipRUID = ""
+
+	property string FailedClipRUID = ""
+
+	property number GameOverAnimSeconds = 3
+
+	property boolean gameOverReady = false
+
+	property number gameOverTimerId = 0
+
+	property any screenTouchHandler = nil
+
 	@ExecSpace("ClientOnly")
 	method void OnBeginPlay()
 		-- Initializes modal panels as hidden and non-blocking.
 		self:HideLoading("")
 		self:HideStartSequence()
 		self:HideResult()
+		self:HideGameOver()
 		self:ConnectButtons()
+		self.screenTouchHandler = _InputService:ConnectEvent(ScreenTouchEvent, self.OnScreenTouch)
 		self.refreshTimerId = _TimerService:SetTimerRepeat(function() self:RefreshLoadingCountdown() end, 1 / 60, 0.1)
 	end
 
@@ -53,6 +68,11 @@ script BRMatchFlowUI extends Component
 		end
 		self.refreshTimerId = 0
 		self:ClearEffectTimer()
+		self:ClearGameOverTimer()
+		if self.screenTouchHandler ~= nil and _InputService ~= nil then
+			_InputService:DisconnectEvent(ScreenTouchEvent, self.screenTouchHandler)
+		end
+		self.screenTouchHandler = nil
 		self:DisconnectButtons()
 	end
 
@@ -129,16 +149,95 @@ script BRMatchFlowUI extends Component
 
 	@ExecSpace("Client")
 	method void ShowResult(string title, string body)
-		-- Opens the large match-result panel.
+		-- Opens the game-over animation (victory/defeat) when its clip is set; otherwise the settlement panel.
 		self:SetEntityActive("Loading", false)
-		self:SetEntityActive("Result", true)
-		self:SetRootRaycastBlocked(true)
 		local safeTitle = self:ReadString(title, "RESULT")
 		local safeBody = self:ReadString(body, "")
+
+		local clipRuid = self:GetGameOverClipRUID(safeTitle)
+		if clipRuid ~= "" then
+			self:ShowGameOverAnimation(safeTitle, clipRuid)
+			return
+		end
+
+		self:SetEntityActive("Result", true)
+		self:SetRootRaycastBlocked(true)
 		self:SetTextByPath("Result/Title", safeTitle)
 		self:SetTextByPath("Result/Body", safeBody)
 		self:ApplyResultDetails(safeTitle, safeBody)
 		log("[BRMatchFlowUI] result shown title=" .. safeTitle)
+	end
+
+	method string GetGameOverClipRUID(string title)
+		-- Returns the animationclip RUID for the local player's victory/defeat outcome.
+		local safeTitle = self:ReadString(title, "")
+		if safeTitle == "VICTORY" then
+			return self:ResolveAnimationClipRUID(self:ReadString(self.CompleteClipRUID, ""))
+		end
+		if safeTitle == "DEFEAT" then
+			return self:ResolveAnimationClipRUID(self:ReadString(self.FailedClipRUID, ""))
+		end
+		return ""
+	end
+
+	method void ShowGameOverAnimation(string title, string clipRuid)
+		-- Plays a centered full-screen victory/defeat animation; click-to-lobby unlocks when it finishes.
+		self:ClearGameOverTimer()
+		self.gameOverReady = false
+		self:SetEntityActive("Result", false)
+		self:SetEntityActive("GameOver", true)
+		self:SetEntityActive("GameOver/Anim", true)
+		self:SetEntityActive("GameOver/Hint", false)
+		self:SetSpriteRUIDByPath("GameOver/Anim", clipRuid)
+		self:SetRootRaycastBlocked(true)
+		local duration = math.max(0.1, self:ReadNumber(self.GameOverAnimSeconds, 3))
+		self.gameOverTimerId = _TimerService:SetTimerOnce(function() self:OnGameOverAnimationEnd() end, duration)
+		log("[BRMatchFlowUI] game over shown title=" .. self:ReadString(title, "") .. " ruid=" .. self:ReadString(clipRuid, "") .. " duration=" .. tostring(duration))
+	end
+
+	method void OnGameOverAnimationEnd()
+		-- Marks the animation as finished and shows the click-to-return hint.
+		self.gameOverTimerId = 0
+		if self:IsEntityActive("GameOver") ~= true then
+			return
+		end
+		self.gameOverReady = true
+		self:SetEntityActive("GameOver/Hint", true)
+	end
+
+	method void OnScreenTouch(ScreenTouchEvent event)
+		-- Returns to the lobby on any tap once the game-over animation has finished.
+		if self:IsEntityActive("GameOver") ~= true or self.gameOverReady ~= true then
+			return
+		end
+		self:ReturnToLobbyFromGameOver()
+	end
+
+	method void ReturnToLobbyFromGameOver()
+		-- Sends the local player back to the matchmaking lobby from the game-over screen.
+		self.gameOverReady = false
+		if _BRBattleLauncher ~= nil then
+			_BRBattleLauncher:RequestReturnToLobbyFromResult()
+			_BRBattleLauncher:SetLocalPlayerInputEnabled(true)
+		end
+		self:HideGameOver()
+		log("[BRMatchFlowUI] game over lobby return requested")
+	end
+
+	method void HideGameOver()
+		-- Hides the game-over overlay and releases full-screen input blocking.
+		self:ClearGameOverTimer()
+		self.gameOverReady = false
+		self:SetEntityActive("GameOver", false)
+		self:RefreshRootRaycastBlocked()
+	end
+
+	method void ClearGameOverTimer()
+		-- Clears the pending game-over animation timer.
+		if self.gameOverTimerId ~= nil and self.gameOverTimerId > 0 then
+			_TimerService:ClearTimer(self.gameOverTimerId)
+		end
+		self.gameOverTimerId = 0
 	end
 
 	@ExecSpace("Client")
@@ -422,7 +521,7 @@ script BRMatchFlowUI extends Component
 
 	method void RefreshRootRaycastBlocked()
 		-- Blocks background input only while a modal child is visible.
-		self:SetRootRaycastBlocked(self:IsEntityActive("Loading") == true or self:IsEntityActive("Result") == true)
+		self:SetRootRaycastBlocked(self:IsEntityActive("Loading") == true or self:IsEntityActive("Result") == true or self:IsEntityActive("GameOver") == true)
 	end
 
 	method void SetRootRaycastBlocked(boolean blocked)

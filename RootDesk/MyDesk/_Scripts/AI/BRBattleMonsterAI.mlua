@@ -17,6 +17,8 @@ script BRBattleMonsterAI extends Component
 
 	property number AttackDamage = 8
 
+	property number AttackDamageMultiplier = 0.5
+
 	property number JumpCooldownSeconds = 1.4
 
 	property boolean AllowJumpChase = false
@@ -519,7 +521,8 @@ script BRBattleMonsterAI extends Component
 	end
 
 	method number GetAttackDamage()
-		return math.max(1, math.floor(self:ReadNumber(self.AttackDamage, 8)))
+		-- Monster attack is scaled by AttackDamageMultiplier (0.5 = 50% reduced).
+		return math.max(1, math.floor(self:ReadNumber(self.AttackDamage, 8) * math.max(0, self:ReadNumber(self.AttackDamageMultiplier, 0.5))))
 	end
 
 	method number GetJumpCooldownSeconds()

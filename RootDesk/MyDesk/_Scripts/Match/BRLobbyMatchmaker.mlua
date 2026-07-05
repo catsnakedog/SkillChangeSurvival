@@ -21,7 +21,7 @@ script BRLobbyMatchmaker extends Component
 
 	property boolean EnableDelayedBotFill = true
 
-	property number BotFillWaitSeconds = 10
+	property number BotFillWaitSeconds = 60
 
 	property number MinPlayersToStartWithBots = 1
 
@@ -1151,7 +1151,7 @@ script BRLobbyMatchmaker extends Component
 
 	method number GetBotFillWaitSeconds()
 		-- Returns the partial-match wait time before filling empty slots with bots.
-		return math.max(0, self:ReadNumber(self.BotFillWaitSeconds, 10))
+		return math.max(0, self:ReadNumber(self.BotFillWaitSeconds, 60))
 	end
 
 	method number GetMinPlayersToStartWithBots()

@@ -485,14 +485,14 @@
       "EventLinks": [],
       "Children": [
         {
-          "Id": "e4a78882-cc84-4503-8497-506b50aa1d47",
+          "Id": "cc8d3381-d33d-4424-82ee-c823fb146bc6",
           "ParentId": "battlechainmonster",
           "Name": "HpBarBg",
           "Model": {
             "Version": 1,
             "Name": "HpBarBg",
             "BaseModelId": null,
-            "Id": "e4a78882-cc84-4503-8497-506b50aa1d47",
+            "Id": "cc8d3381-d33d-4424-82ee-c823fb146bc6",
             "Components": [
               "MOD.Core.TransformComponent",
               "MOD.Core.PolygonRendererComponent"
@@ -564,14 +564,14 @@
           }
         },
         {
-          "Id": "91c68b60-e0d1-450b-9db9-8841e43a9c62",
+          "Id": "0cf2785b-96e6-402b-9384-da5445c75194",
           "ParentId": "battlechainmonster",
           "Name": "HpBarFill",
           "Model": {
             "Version": 1,
             "Name": "HpBarFill",
             "BaseModelId": null,
-            "Id": "91c68b60-e0d1-450b-9db9-8841e43a9c62",
+            "Id": "0cf2785b-96e6-402b-9384-da5445c75194",
             "Components": [
               "MOD.Core.TransformComponent",
               "MOD.Core.PolygonRendererComponent"

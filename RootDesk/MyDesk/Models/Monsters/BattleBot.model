@@ -402,14 +402,14 @@
       "EventLinks": [],
       "Children": [
         {
-          "Id": "449c9090-9019-4f86-af90-b2e9341e5136",
+          "Id": "77e3fdb6-72c6-4ba6-85ee-e1702cf407d3",
           "ParentId": "battlebot",
           "Name": "HpBarBg",
           "Model": {
             "Version": 1,
             "Name": "HpBarBg",
             "BaseModelId": null,
-            "Id": "449c9090-9019-4f86-af90-b2e9341e5136",
+            "Id": "77e3fdb6-72c6-4ba6-85ee-e1702cf407d3",
             "Components": [
               "MOD.Core.TransformComponent",
               "MOD.Core.PolygonRendererComponent"
@@ -481,14 +481,14 @@
           }
         },
         {
-          "Id": "698fc96a-85d4-44b9-bfbd-645d1d7d278a",
+          "Id": "825a97c7-da02-40b3-8637-ae80073682f8",
           "ParentId": "battlebot",
           "Name": "HpBarFill",
           "Model": {
             "Version": 1,
             "Name": "HpBarFill",
             "BaseModelId": null,
-            "Id": "698fc96a-85d4-44b9-bfbd-645d1d7d278a",
+            "Id": "825a97c7-da02-40b3-8637-ae80073682f8",
             "Components": [
               "MOD.Core.TransformComponent",
               "MOD.Core.PolygonRendererComponent"

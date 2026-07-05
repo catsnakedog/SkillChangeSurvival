@@ -35,10 +35,10 @@ script BRMatchFlowUI extends Component
 
 	property any closeHandler = nil
 
-	-- Game-over animation RUIDs (import Gameover/complite and Gameover/failed as AnimationClips, then paste here).
-	property string CompleteClipRUID = ""
+	-- Game-over animation RUIDs (imported from Gameover/complite and Gameover/failed).
+	property string CompleteClipRUID = "cb03ae8f466b4b58a116763f99179700"
 
-	property string FailedClipRUID = ""
+	property string FailedClipRUID = "580cb1bec7094d0a92611320ec93bff0"
 
 	property number GameOverAnimSeconds = 3
 

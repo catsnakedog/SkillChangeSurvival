@@ -29,7 +29,7 @@ script BRSupplySystem extends Logic
 
 	property number MonsterSpawnYOffset = 0.03
 
-	property number MaxMonstersPerMap = 2
+	property number MaxMonstersPerRoom = 2
 
 	property number MaxSuppliesPerDrop = 0
 
@@ -338,24 +338,76 @@ script BRSupplySystem extends Logic
 			return 0
 		end
 
-		local maxMonsters = self:GetMaxMonstersPerMap()
-		local spawned = 0
+		-- Group anchors by room so each room spawns from its own designated positions.
+		local roomAnchors = {}
+		local roomOrder = {}
 		for index, anchor in ipairs(anchors) do
-			if spawned >= maxMonsters then
-				break
+			local roomKey = self:GetAnchorRoomKey(anchor)
+			if roomAnchors[roomKey] == nil then
+				roomAnchors[roomKey] = {}
+				table.insert(roomOrder, roomKey)
 			end
-			local monster = self:SpawnMonsterForAnchor(targetMapName, anchor, rowIndex, false)
-			if monster ~= nil then
-				spawned = spawned + 1
-				self:RememberRuntimeMonster(targetMapName, monster, rowIndex, self:GetEntityKey(anchor))
+			table.insert(roomAnchors[roomKey], anchor)
+		end
+
+		local maxPerRoom = self:GetMaxMonstersPerRoom()
+		local spawned = 0
+		for orderIndex, roomKey in ipairs(roomOrder) do
+			local chosen = self:PickRandomAnchors(roomAnchors[roomKey], maxPerRoom)
+			for chosenIndex, anchor in ipairs(chosen) do
+				local monster = self:SpawnMonsterForAnchor(targetMapName, anchor, rowIndex, false)
+				if monster ~= nil then
+					spawned = spawned + 1
+					self:RememberRuntimeMonster(targetMapName, monster, rowIndex, self:GetEntityKey(anchor))
+				end
 			end
 		end
 		return spawned
 	end
 
-	method number GetMaxMonstersPerMap()
-		-- Caps how many battle monsters spawn per map (default 2).
-		return math.max(0, math.floor(self:ReadNumber(self.MaxMonstersPerMap, 2)))
+	method any PickRandomAnchors(any list, number count)
+		-- Returns up to `count` randomly-selected anchors from one room's anchor list.
+		local pool = {}
+		if list ~= nil then
+			for index, anchor in ipairs(list) do
+				table.insert(pool, anchor)
+			end
+		end
+		local chosen = {}
+		local want = math.min(math.max(0, math.floor(self:ReadNumber(count, 0))), #pool)
+		for i = 1, want do
+			local pickIndex = _UtilLogic:RandomIntegerRange(1, #pool)
+			table.insert(chosen, pool[pickIndex])
+			table.remove(pool, pickIndex)
+		end
+		return chosen
+	end
+
+	method number GetMaxMonstersPerRoom()
+		-- Caps how many battle monsters spawn in each room (default 2).
+		return math.max(0, math.floor(self:ReadNumber(self.MaxMonstersPerRoom, 2)))
+	end
+
+	method string GetAnchorRoomKey(Entity anchor)
+		-- Groups anchors by their room (the anchor entity's parent path) so caps apply per room.
+		if anchor == nil or isvalid(anchor) ~= true then
+			return ""
+		end
+		local pathStr = self:ReadString(anchor.Path, "")
+		if pathStr == "" then
+			return ""
+		end
+		local lastSlash = 0
+		for i = string.len(pathStr), 1, -1 do
+			if string.sub(pathStr, i, i) == "/" then
+				lastSlash = i
+				break
+			end
+		end
+		if lastSlash <= 1 then
+			return pathStr
+		end
+		return string.sub(pathStr, 1, lastSlash - 1)
 	end
 
 	method Entity SpawnMonsterForAnchor(string mapName, Entity anchor, number rowIndex, boolean boss)

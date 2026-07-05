@@ -1,7 +1,7 @@
 {
   "Id": "",
   "GameId": "",
-  "EntryKey": "codeblock://204dc3a2-a7cf-4f1a-8736-c72884447e51",
+  "EntryKey": "codeblock://b3821e80-a9fb-49f3-8fed-50bcec2d9386",
   "ContentType": "x-mod/codeblock",
   "Content": "",
   "Usage": 0,
@@ -22,7 +22,7 @@
         "Minor": 1
       },
       "Description": "",
-      "Id": "204dc3a2-a7cf-4f1a-8736-c72884447e51",
+      "Id": "b3821e80-a9fb-49f3-8fed-50bcec2d9386",
       "Language": 1,
       "Name": "BROverheadHpBar",
       "Type": 5,

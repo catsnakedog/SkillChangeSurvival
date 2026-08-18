@@ -45,6 +45,10 @@ script TextGUIRendererInputComponent extends Component
 	---@sealed
 	property Color PlaceHolderColor = Color(0.195, 0.195, 0.195, 0.500)
 
+	---@description "Becomes a target that can be tapped on the screen or clicked with a mouse when set as true. The UI hidden in the back can't be tapped or clicked on."
+	---@sealed
+	property boolean RaycastTarget = true
+
 	---@description "When two or more entities overlap, the priority is determined according to the Sorting Layer."
 	---@sealed
 	@Sync

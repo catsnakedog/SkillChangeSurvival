@@ -59,6 +59,12 @@ script BRDamageSkinSystem extends Logic
 		self:ShowDamageWithSkin(targetEntity, rawDamage, isCritical, sourceId, self.AttackDamageSkinRUID, "enemy")
 	end
 
+	@ExecSpace("Client")
+	method void ShowHeal(Entity targetEntity, number rawHeal, string sourceId)
+		-- Displays the green Maple heal damage skin above a recovered entity.
+		self:ShowDamageWithSkin(targetEntity, rawHeal, false, sourceId, self.HealDamageSkinRUID, "heal")
+	end
+
 	@ExecSpace("ClientOnly")
 	method void ShowDamageWithSkin(Entity targetEntity, number rawDamage, boolean isCritical, string sourceId, string damageSkinRuid, string skinLabel)
 		-- Central client-side renderer for Maple damage skin popups.

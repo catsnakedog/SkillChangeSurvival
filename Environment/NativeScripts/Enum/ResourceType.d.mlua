@@ -42,7 +42,7 @@ script ResourceType
 	member UserAtlas = 18
 	---@description "A resource file type that contains Spine skeleton resource meta information."
 	member Skeleton = 19
-	---@description "This is the resource file type that contains font meta information."
+	---@description "A resource file type that contains the font's meta information."
 	member CustomFont = 21
 
 	---@description "Converts numbers to the applicable type."

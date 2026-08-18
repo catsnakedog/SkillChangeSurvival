@@ -56,6 +56,12 @@ script BRTrainingDummy extends Component
 
 	property number HpBarYOffset = 1.0
 
+	property number BossHpBarScale = 1.6
+
+	property Color BossBorderColor = Color(1, 0.35, 0.9, 1)
+
+	property boolean IsBossMonster = false
+
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
 		if self.EnableTrainingDummy == false then
@@ -120,12 +126,14 @@ script BRTrainingDummy extends Component
 		self.GrantSkillExperienceOnBreak = true
 		self.CurrentHp = self:GetMaxHp()
 		self.DummyStatus = "Lv." .. tostring(math.floor(self.MonsterLevel)) .. " HP " .. tostring(math.floor(self.CurrentHp)) .. "/" .. tostring(self:GetMaxHp())
+		self.IsBossMonster = boss == true
 		if boss == true then
 			self.DummyStatus = "BOSS " .. self.DummyStatus
 		end
 		self:SetMovementPaused(false)
 		self:SetDummyColor(Color(1, 1, 1, 1))
 		self:UpdateNameTag()
+		self:SetupHpBar()
 		self:Log("battle monster initialized name=" .. self.NameTagTitle
 			.. " preset=" .. self.MonsterPresetName
 			.. " hp=" .. tostring(self:GetMaxHp())
@@ -273,11 +281,20 @@ script BRTrainingDummy extends Component
 
 	@ExecSpace("ServerOnly")
 	method void SetupHpBar()
-		-- Configures the overhead black/red HP bar child renderers once at spawn.
+		-- Configures the overhead HP bar child renderers, enlarged with a distinct border for bosses.
 		if _BROverheadHpBar == nil or self.Entity == nil then
 			return
 		end
-		_BROverheadHpBar:Setup(self.Entity, self:ReadNumber(self.HpBarWidth, 1.2), self:ReadNumber(self.HpBarHeight, 0.16), self:ReadNumber(self.HpBarYOffset, 1.0))
+		local scale = 1
+		local borderColor = nil
+		if self.IsBossMonster == true then
+			scale = math.max(1, self:ReadNumber(self.BossHpBarScale, 1.6))
+			borderColor = self.BossBorderColor
+		end
+		local width = self:ReadNumber(self.HpBarWidth, 1.2) * scale
+		local height = self:ReadNumber(self.HpBarHeight, 0.16) * scale
+		local yOffset = self:ReadNumber(self.HpBarYOffset, 1.0) * scale
+		_BROverheadHpBar:Setup(self.Entity, width, height, yOffset, borderColor)
 		self:UpdateHpBar()
 	end
 

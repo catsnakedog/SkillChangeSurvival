@@ -2,7 +2,7 @@
 @Component
 script AIComponent extends Component
 
-	---@description "The unique identifier of the behavior tree entry."
+	---@description "This is the unique identifier of a behavior tree entry."
 	---@sealed
 	property string BehaviourTreeId
 

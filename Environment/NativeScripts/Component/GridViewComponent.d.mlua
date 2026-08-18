@@ -14,9 +14,8 @@ script GridViewComponent extends Component
 	---@sealed
 	property GridViewFixedType FixedType
 
-	---@description "The orientation of the horizontal scrollbar."
 	---@sealed
-	property HorizontalScrollBarDirection HorizontalScrollBarDirection = HorizontalScrollBarDirection.LeftToRight
+	property HorizontalScrollBarDirection HorizontalDirection = HorizontalScrollBarDirection.LeftToRight
 
 	---@description "The source that will be cloned when creating a child UI Entity. Entity set as ItemEntity is disabled."
 	---@sealed
@@ -34,29 +33,26 @@ script GridViewComponent extends Component
 	---@sealed
 	property RectOffset Padding
 
-	---@description "The background color of the scrollbar."
 	---@sealed
-	property Color ScrollBarBackgroundColor = Color(1.000, 1.000, 1.000, 0.000)
+	property Color BackgroundColor = Color(1.000, 1.000, 1.000, 0.000)
 
-	---@description "The background image of the scrollbar."
 	---@sealed
-	property DataRef ScrollBarBackgroundImageRUID
+	property DataRef BackgroundImageRUID
 
-	---@description "The handle color of the scrollbar."
 	---@sealed
-	property Color ScrollBarHandleColor = Color(0.725, 0.710, 0.698, 1.000)
+	property Color HandleColor = Color(0.725, 0.710, 0.698, 1.000)
 
-	---@description "The handle image of the scrollbar."
 	---@sealed
-	property DataRef ScrollBarHandleImageRUID
+	property DataRef HandleImageRUID
 
-	---@description "The thickness of the scrollbar area."
 	---@sealed
-	property float ScrollBarThickness = 10
+	property ScrollBarMovementType MovementType = ScrollBarMovementType.Elastic
 
-	---@description "Sets whether to display the scrollbar automatically."
 	---@sealed
-	property ScrollBarVisibility ScrollBarVisible
+	property float Thickness = 10
+
+	---@sealed
+	property ScrollBarVisibility Visible
 
 	---@description "The spacing between child UI Entities."
 	---@sealed
@@ -70,9 +66,8 @@ script GridViewComponent extends Component
 	---@sealed
 	property boolean UseScroll = true
 
-	---@description "The orientation of the vertical scrollbar."
 	---@sealed
-	property VerticalScrollBarDirection VerticalScrollBarDirection = VerticalScrollBarDirection.BottomToTop
+	property VerticalScrollBarDirection VerticalDirection = VerticalScrollBarDirection.BottomToTop
 
 	---@description "Returns the normalized position of the scroll bar."
 	---@sealed

@@ -375,6 +375,10 @@ script BRMatchFlowUI extends Component
 		entity.SpriteGUIRendererComponent.StartFrameIndex = 0
 		entity.SpriteGUIRendererComponent.EndFrameIndex = 2147483647
 		entity.SpriteGUIRendererComponent.PlayRate = 1
+		-- Keeps the clip's native aspect ratio inside whatever box ResizeCenterEffect assigns,
+		-- instead of stretching it to fill a guessed width/height (countdown digits vs the wide
+		-- START title clip have different native shapes).
+		entity.SpriteGUIRendererComponent.PreserveSprite = PreserveSpriteType.AspectOnly
 	end
 
 	method string ResolveAnimationClipRUID(string value)

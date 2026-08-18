@@ -152,6 +152,7 @@ script BRPartBox extends Component
 			self.DamageOpensBox = false
 			self.AutoEquipOnDrop = false
 			self.RespawnSeconds = 0
+			self:EnsureTouchReceiverServer()
 		else
 			self.BoxKind = "skill"
 			self.StandRUID = "b871399ae18d41c4b76c2ae79feefa7d"
@@ -201,6 +202,26 @@ script BRPartBox extends Component
 		self.touchHandler = nil
 	end
 
+	@ExecSpace("ServerOnly")
+	method void EnsureTouchReceiverServer()
+		-- Kiosks are clicked in the world, so the touch area must exist on the replicated entity as well.
+		if self.Entity == nil then
+			return
+		end
+		local receiver = self.Entity.TouchReceiveComponent
+		if receiver == nil then
+			receiver = self.Entity:AddComponent("TouchReceiveComponent")
+		end
+		if receiver == nil then
+			self:Log("kiosk touch receiver missing on server")
+			return
+		end
+		receiver.AutoFitToSize = true
+		receiver.TouchArea = Vector2(1.2, 1.6)
+		receiver.Offset = Vector2(0, 0.15)
+		receiver.RelayEventToBehind = false
+	end
+
 	@ExecSpace("ClientOnly")
 	method void EnsureTouchReceiver()
 		if self.Entity == nil then
@@ -231,8 +252,10 @@ script BRPartBox extends Component
 		if _BRSkillPartTestUI ~= nil then
 			local position = self:GetEntityPosition2(self.Entity)
 			_BRSkillPartTestUI:OpenKiosk(userId, self:GetMapName(), position.x, position.y, self:ReadNumber(self.KioskPrice, 10))
+		else
+			log("[BRPartBox] kiosk click ignored reason=noSkillPartTestUI user=" .. userId)
 		end
-		self:Log("kiosk click user=" .. userId)
+		log("[BRPartBox] kiosk click user=" .. userId .. " box=" .. self:ReadString(self.Entity.Name, ""))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -386,17 +409,31 @@ script BRPartBox extends Component
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return true
 		end
+		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
 		self:ShowPickupLabel(playerEntity, "Skill Kiosk")
 		self:PlayKioskAction()
-		if _BRSkillPartTestUI ~= nil then
+		if userId ~= "" then
 			local position = self:GetEntityPosition2(self.Entity)
-			local openKiosk = _BRSkillPartTestUI["OpenKiosk"]
-			if openKiosk ~= nil then
-				openKiosk(_BRSkillPartTestUI, self:ReadString(playerEntity.PlayerComponent.UserId, ""), self:GetMapName(), position.x, position.y, self:ReadNumber(self.KioskPrice, 10))
-			end
+			self:OpenKioskUiForUser(self:GetMapName(), position.x, position.y, self:ReadNumber(self.KioskPrice, 10), userId)
 		end
-		self:Log("kiosk open user=" .. self:ReadString(playerEntity.PlayerComponent.UserId, ""))
+		self:Log("kiosk open user=" .. userId)
 		return true
+	end
+
+	@ExecSpace("Client")
+	method void OpenKioskUiForUser(string mapName, number x, number y, number price)
+		-- Opens the kiosk catalog on the requesting client, because the catalog UI is client-only.
+		if _BRSkillPartTestUI == nil then
+			self:Log("kiosk ui skipped reason=noSkillPartTestUI")
+			return
+		end
+		local userId = self:GetLocalUserId()
+		if userId == "" then
+			self:Log("kiosk ui skipped reason=noLocalUser")
+			return
+		end
+		_BRSkillPartTestUI:OpenKiosk(userId, self:ReadString(mapName, self:GetMapName()), self:ReadNumber(x, 0), self:ReadNumber(y, 0), self:ReadNumber(price, 10))
+		log("[BRPartBox] kiosk ui opened user=" .. userId .. " price=" .. tostring(self:ReadNumber(price, 10)))
 	end
 
 	@ExecSpace("ServerOnly")

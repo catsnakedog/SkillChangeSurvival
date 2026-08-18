@@ -309,6 +309,18 @@ script BRRoomMiniMapUI extends Component
 					end
 				end
 			end
+
+			local monsters = mapEntity:GetChildComponentsByTypeName("script.BRTrainingDummy", true)
+			if monsters == nil or monsters[1] == nil then
+				monsters = mapEntity:GetChildComponentsByTypeName("BRTrainingDummy", true)
+			end
+			if monsters ~= nil then
+				for index, dummy in ipairs(monsters) do
+					if dummy ~= nil and isvalid(dummy.Entity) and dummy.IsBattleRuntimeMonster == true and self:ReadNumber(dummy.CurrentHp, 0) > 0 then
+						table.insert(result, { Target = dummy.Entity, MarkerColor = Color(1, 0.55, 0.2, 1) })
+					end
+				end
+			end
 		end
 
 		self._T.enemyEntities = result

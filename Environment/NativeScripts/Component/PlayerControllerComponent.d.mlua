@@ -21,7 +21,7 @@ script PlayerControllerComponent extends Component
 	@Sync
 	property float LookDirectionX = -1
 
-	---@description "Property for using custom scripts."
+	---@description "The property needed to use directly-written script."
 	---@sealed
 	property boolean UseCustomScript = false
 

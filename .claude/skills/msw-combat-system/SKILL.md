@@ -1,6 +1,6 @@
 ---
 name: msw-combat-system
-description: "MSW combat system integration guide. Covers the Attack→Hit pipeline, damage model, i-frame, knockback, Hit Stop, Camera Shake, Sprite Flash, SFX, death/revive, damage skin, hit effect, avatar combat motion, custom events, and AI FSM — all based on MSW native APIs for 2D multi-genre coverage. Keywords: attack, hit, damage, combat, monster, hit effect, critical, projectile, damage skin, knockback, hit stop, combo, HP bar."
+description: "MSW combat system integration guide. Covers the Attack→Hit pipeline, damage model, i-frame, knockback, Hit Stop, Camera Shake, Sprite Flash, SFX, death/revive, damage skin, hit effect, avatar combat motion, custom events, and AI FSM — all based on MSW native APIs for 2D multi-genre coverage. Keywords: attack, hit, damage, combat, monster, hit effect, critical, projectile, damage skin, knockback, hit stop, combo, HP bar, collision, contact hit, TriggerComponent."
 ---
 
 # msw-combat-system
@@ -19,7 +19,7 @@ The full MSW combat pipeline. Covers only items in the common 2D combat layer th
 | 4 | Game Feel | **All 6 native** (Hit Stop, Shake, Zoom, Flash, VFX, SFX) | — |
 | 5 | Combat State | `StateComponent` + `DeadEvent`/`ReviveEvent`, `PlayerComponent` HP/revive | MP/Stamina/Rage, aggro |
 | 6 | Event Bus | `HitEvent`/`AttackEvent`/`StateChangeEvent`/`PlayerActionEvent` + custom `@Event` | OnKill/OnBlocked |
-| 7 | AI | `StateComponent` (FSM) + `AIComponent` (BT, 4 Composite types native) + `AIChaseComponent`/`AIWanderComponent`, `_UserService.UserEntities` | Decorator/Memory(Blackboard), Threat Table |
+| 7 | AI | `StateComponent` (FSM) + `AIComponent` (BT, 4 native Composites + custom `extends CompositeNode`) + `AIChaseComponent`/`AIWanderComponent`, `_UserService.UserEntities` | Decorator/Memory(Blackboard), Threat Table |
 | + | Damage Skin | 3 `DamageSkin*` components + `DamageSkinService` | — |
 | + | Hit Effect | `HitEffectSpawnerComponent` (auto) | — |
 | + | Avatar Motion | `AvatarStateAnimationComponent` (State→MapleAvatarBodyActionState) | — |
@@ -35,7 +35,7 @@ This SKILL.md covers only the **system flow and native API surface**. Actual mod
 | [`../msw-general/references/monster.md`](../msw-general/references/monster.md) | Monster `.model` component assembly + ActionSheet + AI choice + canonical Pattern A scripts (Soldier-style) + HP/Respawn + spawn + verification | When building a combat-capable monster |
 | [`references/hp-gauge.md`](references/hp-gauge.md) | Full implementation of an overhead HP bar based on `PixelRendererComponent` | When attaching an overhead HP bar |
 | [`references/projectile.md`](references/projectile.md) | Projectile (Body-less entity + `OnUpdate Translate`) + homing/pierce/splash variants | When building ranged attacks like arrows, bullets, magic bolts |
-| [`references/ai-bt.md`](references/ai-bt.md) | BehaviourTree — `AIComponent` + 4 Composite types + `@BTNode` + custom Decorator/Memory/Threat | When you need BT-based monster/boss AI and multi-layer decision making |
+| [`references/ai-bt.md`](references/ai-bt.md) | BehaviourTree — `AIComponent` + Composites (4 native + custom) + `@BTNode` + custom Decorator/Memory/Threat | When you need BT-based monster/boss AI and multi-layer decision making |
 
 > Priority: **this SKILL.md (concepts + API tables) → the relevant references/* (full implementation)**.
 
@@ -71,7 +71,7 @@ If either returns false → the hit is excluded. The super call is **`__base:IsA
 
 > ⚠ **Do not add `@ExecSpace` when overriding** — both `IsAttackTarget` and `IsHitTarget` have an unspecified ExecSpace (=All) on the parent. Adding an annotation like `@ExecSpace("ServerOnly")` in the child triggers **LEA-3014 `SignatureMismatch`** at runtime. Even without the annotation, the call path runs through the server-side hit pipeline, so actual execution happens on the server. Details: [`msw-scripting/SKILL.md` §9 "Method override"](../msw-scripting/SKILL.md).
 
-- `HitComponent.CollisionGroup` defaults to `CollisionGroups.HitBox`. The last argument of `Attack(..., cg)` specifies the target group.
+- The `cg` argument of `Attack*(..., cg)` is an **exact-match filter on the defender's `HitComponent.CollisionGroup`** (defaults to `CollisionGroups.HitBox`). It does not consult the collision matrix, and the attacker's own group is irrelevant. `nil` (omitted) = every `HitComponent` is a candidate. A **valid group that differs from the defenders' actual group** hits **0 targets with no error** (silent); a group reference that does not exist in this world's collision group set behaves like `nil` (all groups). When passing a group (e.g. `CollisionGroups.Monster`), first set the target monsters' `HitComponent.CollisionGroup` to that same group — the sample workspace monsters override it to `Monster`, which is why the sample attack scripts work. A model imported from another world whose group id is missing from this world's set silently registers under the `Default` group — reach it with `nil` or `CollisionGroups.Default`.
 - **Duplicate-hit prevention / pierce / max hits**: not native. Manage in script via the table returned by `Attack` + a `table<Entity, boolean>` cache.
 
 ### 1-3. `attackInfo` tagging
@@ -134,6 +134,22 @@ Continuous movement (chase, flight, auto-move) is **per-frame `OnUpdate(delta)`-
 
 - **Knockback (1-shot impulse)** is not continuous movement, so use §3-1 directly.
 - Body selection per map type / InputSpeed conversion: [`msw-general/references/platform.md` §4·§10](../msw-general/references/platform.md)
+
+---
+
+## 1-7. Collision-based hit — pick the detection method (do not hand-roll distance)
+
+When the request is "collision / contact-based hit" (player↔monster touch damage, hazard zone, trap, overlap), pick by intent. **Per-frame distance math is not the default** — reaching for it when the design asked for collider-based contact is the most common requester↔implementer mismatch.
+
+| Intent | Detection | Why |
+|--------|-----------|-----|
+| Active attack swing / hitbox / projectile burst | `AttackComponent:Attack`/`AttackFast`/`AttackFrom` → resolves against defender `HitComponent`, emits `HitEvent` | Full pipeline: damage skin, hit effect, `IsHitTarget` i-frame, `OnHit` |
+| Body-to-body contact / zone / trap overlap, targets arbitrary or many | `TriggerComponent` + `OnEnterTriggerBody`/`OnStayTriggerBody`/`OnLeaveTriggerBody` (or `TriggerEnter/Stay/LeaveEvent`) + `CollisionGroup` filter, then route damage through the `HitEvent` pipeline | Engine-side overlap: honors real collider shape (Box/Circle/Polygon), `ColliderOffset`, and group filtering |
+| Homing / single already-known target | Per-frame `OnUpdate` distance check ([`references/projectile.md`](references/projectile.md)) | Justified only when exactly one target entity is known up front |
+
+- ❌ Per-frame `math.sqrt(dx*dx+dy*dy) < r` for player↔monster or multi-target collision: it silently approximates one circle centered on the transform (ignores each collider's shape / size / `ColliderOffset`), skips `CollisionGroup` filtering, and costs O(attackers × targets) every frame. "Collision-based hit" means native colliders, not distance polling.
+- `CollisionGroup` defaults to `CollisionGroups.TriggerBox`. `OnStayTriggerBody` fires **every frame** while overlapping — gate damage with a cooldown, don't apply per tick.
+- Detection ≠ damage application: after a native overlap fires, still deal damage through `HitEvent` / `AttackComponent` — never subtract HP directly.
 
 ---
 
@@ -390,7 +406,7 @@ For player-specific death/revive, prefer §9-1 `PlayerComponent.Respawn/ProcessD
 | Pattern | Fit | Reference |
 |---------|-----|-----------|
 | **FSM** (`StateComponent` + `@State`) | Simple enemies (3~5 states), player IDLE/HIT/DEAD, boss phases, animation sync (`AvatarStateAnimationComponent` auto mapping §10). Requires `StateComponent.IsLegacy=false` if you want `StateAnimationComponent` to auto-swap clips. | **[`../msw-general/references/animation-state.md`](../msw-general/references/animation-state.md)** (state-machine + animation pipeline unified) |
-| **BT** (`AIComponent` + 4 Composite types + `@BTNode`) | Patrol + chase + attack combos, varied boss patterns, Composite/Decorator reuse, probability-weighted actions. Requires `StateComponent.IsLegacy=false`. | **[`references/ai-bt.md`](references/ai-bt.md)** |
+| **BT** (`AIComponent` + Composites (4 native + custom) + `@BTNode`) | Patrol + chase + attack combos, varied boss patterns, Composite/Decorator reuse, probability-weighted actions. Requires `StateComponent.IsLegacy=false`. | **[`references/ai-bt.md`](references/ai-bt.md)** |
 | **Custom script with self-state** (`@Component` holding `CurrentAIState` plus direct `SpriteRUID` assignment — Soldier-style pattern) | Behaviors that don't fit `AIChase`/`AIWander` (roam ↔ stand ↔ say ↔ attack, range-gated attacks, talking idle). **No `AIChaseComponent`/`AIWanderComponent`, no `IsLegacy=false` needed** — the script bypasses the ActionSheet pipeline. Reserve `StateComponent` for `IDLE` ↔ `DEAD` only. | [`../msw-general/references/monster.md` §7 "Canonical Pattern A Scripts (Soldier)"](../msw-general/references/monster.md) |
 
 ### 7-1. FSM — `StateComponent` (summary)
@@ -403,7 +419,7 @@ For player-specific death/revive, prefer §9-1 `PlayerComponent.Respawn/ProcessD
 
 ### 7-2. BT — `AIComponent` (summary)
 
-`AIComponent` + `SequenceNode`/`SelectorNode`/`RandomSelectorNode`/`ParallelNode` + `@BTNode` Action Nodes + native `AIChaseComponent`/`AIWanderComponent`. **All 4 Composite types are native**; Decorator/Memory(Blackboard)/Threat Table must be implemented by hand.
+`AIComponent` + `SequenceNode`/`SelectorNode`/`RandomSelectorNode`/`ParallelNode` + `@BTNode` Action Nodes + native `AIChaseComponent`/`AIWanderComponent`. **All 4 Composite types are native**, and a custom child-flow policy can be scripted via `@BTNode ... extends CompositeNode` (`ChildCount`/`ChildBehave`); Decorator/Memory(Blackboard)/Threat Table must be implemented by hand.
 
 > ⚠ When using custom BT, remove `AIChaseComponent`/`AIWanderComponent` from the `.model`.
 
@@ -419,10 +435,10 @@ For player-specific death/revive, prefer §9-1 `PlayerComponent.Respawn/ProcessD
 
 | UI | API |
 |----|-----|
-| HP bar (screen-fixed) | `SliderComponent` (`MinValue`/`MaxValue`/`Value`/`FillRectColor`/`FillRectImageRUID`/`Direction`/`UseHandle`) + `SliderValueChangedEvent`. **⚠ UI entities only** |
+| HP bar (screen-fixed) | `SpriteGUIRendererComponent` fill using the HP gauge slice sprite (`image_ruid = "f0911af597259044aa624a11332c0595"`) + left-pivot `UITransformComponent` width resize. Use `SliderComponent` for user-draggable controls, not read-only HP gauges. **⚠ UI entities only** |
 | Damage numbers | 3 `DamageSkin*` components + `DamageSkinService` — §11 |
 | Crosshair | `SpriteGUIRendererComponent` in `.ui` |
-| Combo counter / buff icons | `TextComponent` + `SpriteGUIRendererComponent` |
+| Combo counter / buff icons | `TextGUIRendererComponent` + `SpriteGUIRendererComponent` |
 
 **Worldspace HP bar** (overhead): no native support. Two implementation options:
 
@@ -450,6 +466,8 @@ The player entity has HP, revive, and input natively. **Do not create custom `Hp
 | Direction check ★ | `PlayerControllerComponent.LookDirectionX` (+1 right, -1 left). Do **not** use `TransformComponent.Scale.x` |
 | Action hook override | `ActionAttack` / `ActionJump` / `ActionInteraction(key, isKeyDown)` etc. |
 | Action event reception | `EmitPlayerActionEvent(PlayerActionEvent)` → §9-3 |
+
+> ⚠ **Auto-attack / AI-triggered attack must set facing first.** `LookDirectionX` is a **writable** `@Sync` property — assigning `1`/`-1` flips the player avatar to face that way. The default input pipeline only updates it from *movement* input, so an attack fired without movement (auto-battle loop, AI tick, skill button) keeps the **last** facing (default left) — the avatar looks the wrong way **and** the `LookDirectionX`-based attack box (§1-5) resolves on the wrong side. Before such an attack, point it at the target: `controller.LookDirectionX = target.TransformComponent.WorldPosition.x >= self.Entity.TransformComponent.WorldPosition.x and 1 or -1`. Assign the **sign only** (±1), never the raw position delta — the attack offset multiplies `LookDirectionX`, so a non-unit value scales/mislocates the hitbox.
 
 ### 9-3. `PlayerActionEvent`
 
@@ -680,7 +698,7 @@ Attach to the defender and a hit effect plays **automatically** on `HitEvent`. N
 - [ ] **HitComponent**: `IsLegacy=false`, set `ColliderType`/`BoxSize`/`CircleRadius`, set `CollisionGroup`
 - [ ] **State motions**: register `ATTACK`/`HIT`/`DEAD` in `StateComponent` + `AvatarStateAnimationComponent.StateToAvatarBodyActionSheet`
 - [ ] **HP handling**: player uses `PlayerComponent.Hp`; monster uses custom `@Sync Hp`
-- [ ] **Direction check**: `LookDirectionX` (no Scale.x)
+- [ ] **Direction check**: `LookDirectionX` (no Scale.x); for auto/AI-triggered attacks, set it (±1) toward the target before attacking — §9-1
 - [ ] **Time reference**: `_UtilLogic.ElapsedSeconds` (no os.clock)
 - [ ] **Event cleanup**: explicit `DisconnectEvent` in `OnEndPlay`
 - [ ] **Body rule**: do not assign `TransformComponent.Position` directly on an entity with an active Body

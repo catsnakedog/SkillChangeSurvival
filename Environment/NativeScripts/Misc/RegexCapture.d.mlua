@@ -7,11 +7,11 @@ script RegexCapture
 	---@sealed
 	readonly property int32 Index
 
-	---@description "Retrieves the string from the capture."
+	---@description "Retrieves the length of the string from the capture."
 	---@sealed
 	readonly property int32 Length
 
-	---@description "Retrieves the length of the captured string."
+	---@description "Retrieves the captured string."
 	---@sealed
 	readonly property string Text
 

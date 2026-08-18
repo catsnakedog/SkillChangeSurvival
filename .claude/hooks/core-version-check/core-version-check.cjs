@@ -20,7 +20,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
-const EXPECTED_CORE_VERSION = '26.5.0.0';
+const EXPECTED_CORE_VERSION = '26.7.0.0';
 const CONFIG_FILE = 'Environment/config';
 
 function lockPath() {

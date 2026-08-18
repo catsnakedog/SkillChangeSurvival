@@ -1,4 +1,4 @@
----@description "Makes only certain areas of the child UI Entity visible using a mask."
+---@description "Makes only certain areas of the child UI Entity visible using a mask. The rotation function is not supported, and if the entity is rotated, it may not function as intended."
 @Component
 script MaskComponent extends Component
 

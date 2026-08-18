@@ -1,4 +1,4 @@
----@description "Represents the Condition used in a StateSet. You can define your own ConditionType and use it in a StateSet. APIs to directly add or remove from StateComponent will be provided later."
+---@description "Expresses the Condition used in StateSet. You can define your own unique ConditionType for use in StateSet. An API that will directly add or remove to StateSet will be revealed in the future."
 @Misc
 script ConditionType
 

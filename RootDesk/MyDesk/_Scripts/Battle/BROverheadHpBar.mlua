@@ -17,6 +17,8 @@ script BROverheadHpBar extends Logic
 
 	property string FillChildName = "HpBarFill"
 
+	property string BorderChildName = "HpBarBorder"
+
 	property Color BgColor = Color(0, 0, 0, 0.82)
 
 	property Color FillColor = Color(0.9, 0.16, 0.2, 1)
@@ -25,17 +27,52 @@ script BROverheadHpBar extends Logic
 
 	property Color DeadFillColor = Color(0.45, 0.45, 0.45, 1)
 
+	property Color DefaultBorderColor = Color(1, 0.85, 0.4, 0.95)
+
+	property number BorderPadding = 0.035
+
+	property number BorderOrderInLayer = 119
+
 	@ExecSpace("ServerOnly")
-	method void Setup(Entity owner, number width, number height, number yOffset)
-		-- Configures both overhead bar child renderers (black background + red fill) above the head.
+	method void Setup(Entity owner, number width, number height, number yOffset, Color borderColor)
+		-- Configures the overhead bar child renderers (outline + black background + fill) above the head.
 		if owner == nil then
 			return
 		end
 		local w = self:PositiveNumber(width, self.DefaultWidth)
 		local h = self:PositiveNumber(height, self.DefaultHeight)
 		local y = self:ReadNumber(yOffset, self.DefaultYOffset)
+		local safeBorderColor = borderColor
+		if safeBorderColor == nil then
+			safeBorderColor = self.DefaultBorderColor
+		end
+		self:ConfigureBorder(owner, w, h, y, safeBorderColor)
 		self:ConfigureBar(owner, self:ReadString(self.BgChildName, "HpBarBg"), w, w, h, y, self.BgColor, self.BgOrderInLayer)
 		self:ConfigureBar(owner, self:ReadString(self.FillChildName, "HpBarFill"), w, w, h, y, self.FillColor, self.FillOrderInLayer)
+	end
+
+	@ExecSpace("ServerOnly")
+	method void ConfigureBorder(Entity owner, number fullWidth, number height, number yOffset, Color color)
+		-- Draws a slightly larger outline rectangle behind the bg/fill so the bar reads as a framed gauge.
+		local border = self:GetBarChild(owner, self:ReadString(self.BorderChildName, "HpBarBorder"))
+		if border == nil then
+			return
+		end
+		local poly = border.PolygonRendererComponent
+		if poly == nil then
+			return
+		end
+		local padding = math.max(0, self:ReadNumber(self.BorderPadding, 0.035))
+		local w = self:PositiveNumber(fullWidth, self.DefaultWidth)
+		local h = self:PositiveNumber(height, self.DefaultHeight)
+		if border.TransformComponent ~= nil then
+			border.TransformComponent.Position = Vector3(-w / 2 - padding, self:ReadNumber(yOffset, self.DefaultYOffset) - padding, 0)
+		end
+		poly.SortingLayer = self:ReadString(self.BarSortingLayer, "MapLayer0")
+		poly.IgnoreMapLayerCheck = true
+		poly.OrderInLayer = math.floor(self:ReadNumber(self.BorderOrderInLayer, 119))
+		poly.Color = color
+		self:SetRect(poly, w + padding * 2, h + padding * 2)
 	end
 
 	@ExecSpace("ServerOnly")
@@ -104,8 +141,13 @@ script BROverheadHpBar extends Logic
 		if owner == nil then
 			return
 		end
+		local border = self:GetBarChild(owner, self:ReadString(self.BorderChildName, "HpBarBorder"))
 		local bg = self:GetBarChild(owner, self:ReadString(self.BgChildName, "HpBarBg"))
 		local fill = self:GetBarChild(owner, self:ReadString(self.FillChildName, "HpBarFill"))
+		if border ~= nil then
+			border:SetEnable(visible)
+			border:SetVisible(visible)
+		end
 		if bg ~= nil then
 			bg:SetEnable(visible)
 			bg:SetVisible(visible)

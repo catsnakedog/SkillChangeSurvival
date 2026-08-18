@@ -13,7 +13,7 @@ script BRMagneticZoneSystem extends Logic
 
 	property number InitialMaxY = 8
 
-	property number ShrinkIntervalSeconds = 30
+	property number ShrinkIntervalSeconds = 40
 
 	property number WarningSeconds = 5
 

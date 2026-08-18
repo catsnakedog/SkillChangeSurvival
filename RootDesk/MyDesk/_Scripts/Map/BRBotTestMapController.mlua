@@ -29,7 +29,7 @@ script BRBotTestMapController extends Component
 
 	property number BotLives = 99
 
-	property number BotAttackDamage = 12
+	property number BotAttackDamage = 5
 
 	property number BotMoveSpeed = 1.2
 
@@ -425,7 +425,7 @@ script BRBotTestMapController extends Component
 
 	method number GetBotAttackDamage()
 		-- Reads the damage value assigned to each test bot.
-		return math.max(1, self:ReadNumber(self.BotAttackDamage, 12))
+		return math.max(1, self:ReadNumber(self.BotAttackDamage, 5))
 	end
 
 	method number GetBotMoveSpeed()

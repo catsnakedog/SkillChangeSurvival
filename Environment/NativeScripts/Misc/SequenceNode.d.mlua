@@ -3,6 +3,10 @@
 @Misc
 script SequenceNode extends BTNode
 
+	---@description "The number of child nodes."
+	---@sealed
+	readonly property int32 ChildCount
+
 	---@description "Initializes SequenceNode to the specified name."
 	constructor SequenceNode(string name = "SequenceNode") end
 
@@ -13,6 +17,10 @@ script SequenceNode extends BTNode
 	---@description "Incorporates the node as a child at the index position. Index starts at 1."
 	---@sealed
 	method void AttachChildAt(BTNode node, int32 index) end
+
+	---@description "Executes the child node that corresponds to the index of CompositNode. deltaTime indicates the time passed between the previous frame and the current one."
+	---@sealed
+	method BehaviourTreeStatus ChildBehave(int32 index, float deltaTime) end
 
 	---@description "Detaches a child node."
 	---@sealed

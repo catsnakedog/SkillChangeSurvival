@@ -33,6 +33,8 @@ script BRGridMapEditorTool extends Component
 
 	property boolean RemoveGeneratedRoomFloorFootholds = true
 
+	property boolean ShowRoomNumberLabelsInGameplay = false
+
 	property string SupplyChildName = "SupplyBox"
 
 	property number SupplyOffsetX = 0
@@ -625,8 +627,9 @@ script BRGridMapEditorTool extends Component
 
 		self:ApplyLabelTransform(label)
 		self:SetLabelText(label, self:GetLabelText(partSlot))
-		label:SetEnable(true)
-		label:SetVisible(true)
+		local showLabel = self.ShowRoomNumberLabelsInGameplay == true
+		label:SetEnable(showLabel)
+		label:SetVisible(showLabel)
 	end
 
 	method void ApplyRoomPortals(Entity room)

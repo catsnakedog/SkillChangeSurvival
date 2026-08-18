@@ -15,7 +15,7 @@ script SpriteGUIRendererComponent extends Component
 	@Sync
 	property boolean IgnoreMapLayerCheck = false
 
-	---@description "The RUID of the image to be displayed on the screen."
+	---@description "The image RUID to be displayed on the screen."
 	---@sealed
 	property DataRef ImageRUID = DataRef("")
 

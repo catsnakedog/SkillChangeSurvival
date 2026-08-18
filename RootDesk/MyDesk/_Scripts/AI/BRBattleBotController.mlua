@@ -17,7 +17,7 @@ script BRBattleBotController extends Component
 
 	property number CurrentLives = 3
 
-	property number AttackDamage = 18
+	property number AttackDamage = 7
 
 	property number MesoReward = 8
 
@@ -59,9 +59,9 @@ script BRBattleBotController extends Component
 
 	property number DesiredChainScore = 95
 
-	property number ChainDamagePerScore = 0.08
+	property number ChainDamagePerScore = 0.02
 
-	property number MaxChainDamageBonus = 16
+	property number MaxChainDamageBonus = 4
 
 	property number LowHpRetreatPercent = 0.35
 
@@ -1509,13 +1509,13 @@ script BRBattleBotController extends Component
 		if _BRBattleLauncher:IsActiveMatchForMap(mapName) ~= true then
 			return true
 		end
-		if _BRBattleLauncher:IsBattleGameplayStartedForMap(mapName) ~= true then
-			return false
-		end
-		if _BRBattleTimerSystem == nil then
-			return true
-		end
-		return _BRBattleTimerSystem.TimerRunning == true and self:ReadString(_BRBattleTimerSystem.TimerMapName, "") == mapName
+		-- IsBattleGameplayStartedForMap is already tracked per match/map by BRBattleLauncher, so that
+		-- alone is authoritative. Do NOT additionally require _BRBattleTimerSystem to be pointed at
+		-- this map: that timer is a single shared/global @Sync singleton (one boss-timer UI), so when
+		-- two matches run at once (e.g. RoomTestMap_copy01 and _copy02), only the match that most
+		-- recently called StartTimer would ever satisfy that check, permanently stalling every other
+		-- concurrent match's bots.
+		return _BRBattleLauncher:IsBattleGameplayStartedForMap(mapName) == true
 	end
 
 	method boolean IsSkillTargetValid()
@@ -1634,7 +1634,7 @@ script BRBattleBotController extends Component
 		if _BROverheadHpBar == nil or self.Entity == nil then
 			return
 		end
-		_BROverheadHpBar:Setup(self.Entity, self:ReadNumber(self.HpBarWidth, 1.3), self:ReadNumber(self.HpBarHeight, 0.18), self:ReadNumber(self.HpBarYOffset, 1.5))
+		_BROverheadHpBar:Setup(self.Entity, self:ReadNumber(self.HpBarWidth, 1.3), self:ReadNumber(self.HpBarHeight, 0.18), self:ReadNumber(self.HpBarYOffset, 1.5), nil)
 		self:UpdateHpBar()
 	end
 
@@ -1776,7 +1776,7 @@ script BRBattleBotController extends Component
 	end
 
 	method number GetAttackDamage()
-		return math.max(1, math.floor(self:ReadNumber(self.AttackDamage, 18) + self:GetBotChainDamageBonus()))
+		return math.max(1, math.floor(self:ReadNumber(self.AttackDamage, 7) + self:GetBotChainDamageBonus()))
 	end
 
 	method number GetBotChainDamageBonus()
@@ -1863,12 +1863,12 @@ script BRBattleBotController extends Component
 
 	method number GetChainDamagePerScore()
 		-- Returns the damage conversion rate from chain score.
-		return math.max(0, self:ReadNumber(self.ChainDamagePerScore, 0.08))
+		return math.max(0, self:ReadNumber(self.ChainDamagePerScore, 0.02))
 	end
 
 	method number GetMaxChainDamageBonus()
 		-- Returns the maximum melee damage bonus from chain quality.
-		return math.max(0, self:ReadNumber(self.MaxChainDamageBonus, 16))
+		return math.max(0, self:ReadNumber(self.MaxChainDamageBonus, 4))
 	end
 
 	method number GetLowHpRetreatPercent()

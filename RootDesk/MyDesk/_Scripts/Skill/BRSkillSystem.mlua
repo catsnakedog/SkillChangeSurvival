@@ -19,9 +19,7 @@ script BRSkillSystem extends Logic
 
 	property number ExperiencePerLevel = 6
 
-	property number LevelUpHealFlatAmount = 20
-
-	property number LevelUpHealMaxHpPercent = 35
+	property number CharacterHpMultiplier = 3
 
 	property string CharacterStatTableName = "CharacterStat"
 
@@ -57,6 +55,8 @@ script BRSkillSystem extends Logic
 
 	property number ShieldPotionDurationSeconds = 3
 
+	property boolean ConsumablesRollable = false
+
 	property number SkillFrameSeconds = 0.03
 
 	-- Effect-less pre-cast wind-up (선딜) for basic-attack (기본 공격) skills only. Standard area
@@ -87,8 +87,6 @@ script BRSkillSystem extends Logic
 	property number DefaultCriticalRate = 0.25
 
 	property number DefaultCriticalDamageRate = 2.2
-
-	property number PvpDamageScale = 0.4
 
 	property number SkillTargetPadding = 0.12
 
@@ -193,6 +191,8 @@ script BRSkillSystem extends Logic
 	property number TelegraphLineThickness = 0.15
 
 	property number TelegraphAlpha = 0.55
+
+	property number TelegraphSpriteNativeSize = 0.6
 
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
@@ -528,7 +528,7 @@ script BRSkillSystem extends Logic
 			HealDurationSeconds = math.max(0.05, self:ReadNumber(self.HealthPotionDurationSeconds, 3)),
 			ShieldAmount = math.max(1, math.floor(self:ReadNumber(self.ShieldPotionAmount, 55))),
 			ShieldDurationSeconds = math.max(0.05, self:ReadNumber(self.ShieldPotionDurationSeconds, 3)),
-			Rollable = true
+			Rollable = self.ConsumablesRollable == true
 		}
 	end
 
@@ -955,6 +955,11 @@ script BRSkillSystem extends Logic
 		return math.max(1, math.floor(value))
 	end
 
+	method number GetCharacterHpMultiplier()
+		-- Returns the global multiplier applied to every character's final max HP.
+		return math.max(0.01, self:ReadNumber(self.CharacterHpMultiplier, 3))
+	end
+
 	method number NormalizeCharacterAttackPower(any rawAttack, number fallback)
 		-- CharacterStat.csv attack values above 100 are old-scale values and are converted to battle scale.
 		local value = math.max(1, self:ReadNumber(rawAttack, fallback))
@@ -980,7 +985,7 @@ script BRSkillSystem extends Logic
 		if stat ~= nil then
 			baseHp = self:NormalizeCharacterHp(stat.Hp, baseHp)
 		end
-		return math.max(1, math.floor(baseHp * self:GetLevelStatMultiplierForLevel(level)))
+		return math.max(1, math.floor(baseHp * self:GetLevelStatMultiplierForLevel(level) * self:GetCharacterHpMultiplier()))
 	end
 
 	method number GetScaledAttackPowerForCharacter(string characterKey, number level, number fallback)
@@ -3722,7 +3727,7 @@ script BRSkillSystem extends Logic
 
 		if targetEntity.PlayerComponent ~= nil then
 			local player = targetEntity.PlayerComponent
-			damage = math.max(1, math.floor(damage * self:GetDamageTakenRate(targetEntity) * self:GetPvpDamageScale()))
+			damage = math.max(1, math.floor(damage * self:GetDamageTakenRate(targetEntity)))
 			damage = self:ApplyConsumableShieldToDamage(targetEntity, damage, sourceId)
 			player.Hp = math.max(0, player.Hp - damage)
 			self:Log("damage player user=" .. self:ReadString(context.UserId, "") .. " target=" .. self:ReadString(player.UserId, "") .. " amount=" .. tostring(damage) .. " hp=" .. tostring(player.Hp) .. " critical=" .. tostring(critical))
@@ -3892,7 +3897,7 @@ script BRSkillSystem extends Logic
 		end
 		if target.PlayerComponent ~= nil then
 			local player = target.PlayerComponent
-			dmg = math.max(1, math.floor(dmg * self:GetDamageTakenRate(target) * self:GetPvpDamageScale()))
+			dmg = math.max(1, math.floor(dmg * self:GetDamageTakenRate(target)))
 			dmg = self:ApplyConsumableShieldToDamage(target, dmg, "meso")
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("meso coin damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
@@ -4311,16 +4316,15 @@ script BRSkillSystem extends Logic
 	end
 
 	method number GetThrowStarDamagePercent(number tier)
-		-- Per-star damage as a percent of caster attack power: t1/t2=70, t3=75, t4=80.
-		-- Kept below melee-range skill parts because homing removes the aiming/positioning risk entirely.
+		-- Per-star damage as a percent of caster attack power: t1/t2=100, t3=110, t4=120.
 		local order = self:ClampSkillTier(tier)
 		if order <= 2 then
-			return 70
+			return 100
 		end
 		if order == 3 then
-			return 75
+			return 110
 		end
-		return 80
+		return 120
 	end
 
 	method string GetThrowStarHitEffect(number tier)
@@ -4458,7 +4462,7 @@ script BRSkillSystem extends Logic
 		end
 		if target.PlayerComponent ~= nil then
 			local player = target.PlayerComponent
-			dmg = math.max(1, math.floor(dmg * self:GetDamageTakenRate(target) * self:GetPvpDamageScale()))
+			dmg = math.max(1, math.floor(dmg * self:GetDamageTakenRate(target)))
 			dmg = self:ApplyConsumableShieldToDamage(target, dmg, "throwstar")
 			player.Hp = math.max(0, player.Hp - dmg)
 			self:Log("throw star damage player amount=" .. tostring(dmg) .. " hp=" .. tostring(player.Hp))
@@ -4598,13 +4602,6 @@ script BRSkillSystem extends Logic
 			end
 		end
 		return math.max(0, rate)
-	end
-
-	method number GetPvpDamageScale()
-		-- Player-vs-player damage multiplier applied only when the target is a real player.
-		-- Monster/dummy/bot/box damage is untouched, so PvE kill speed stays as designed;
-		-- this only slows down how fast players can kill each other.
-		return math.max(0, self:ReadNumber(self.PvpDamageScale, 0.4))
 	end
 
 	method void TickStatuses()
@@ -5555,17 +5552,18 @@ script BRSkillSystem extends Logic
 		-- each line's center exactly ON the rect's top / bottom end.
 		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY, width, height, self:ReadString(self.TelegraphSpriteC, ""), color, fillAlpha, order, duration, 0)
 		-- Top edge line (horizontal) — rotated 90 deg (line images are authored vertical), pivot at the TOP end.
-		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY + height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteL, ""), color, lineAlpha, order + 1, duration, 90)
+		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY + height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteR, ""), color, lineAlpha, order + 1, duration, 90)
 		-- Bottom edge line (horizontal) — rotated 90 deg, pivot at the BOTTOM end.
-		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY - height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteR, ""), color, lineAlpha, order + 1, duration, 90)
+		self:SpawnTelegraphSprite(modelId, spawnParent, attachToCaster, baseX, baseY, centerX, centerY - height * 0.5, width, thickness, self:ReadString(self.TelegraphSpriteL, ""), color, lineAlpha, order + 1, duration, 90)
 	end
 
 	method void SpawnTelegraphSprite(string modelId, Entity spawnParent, boolean attachToCaster, number baseX, number baseY, number worldX, number worldY, number w, number h, string ruid, any color, number alpha, number order, number duration, number rotationDeg)
 		-- Spawns one telegraph sprite quad covering (w, h) world units at (worldX, worldY), tinted, optionally
-		-- rotated by rotationDeg. DrawMode=Tiled + TiledSize stretches/fills the area regardless of native
-		-- pixel size. When rotated 90/270 (a vertical line image reused as a horizontal edge line), the local
-		-- TiledSize axes are swapped so the drawn quad still spans (w, h) in world space and the line stretches
-		-- along its length instead of tiling into short dashes.
+		-- rotated by rotationDeg. The stretch is done via Transform.Scale = target / native-canvas-size:
+		-- runtime probes in Maker showed DrawMode Tiled/Sliced draw these images at NATIVE size and ignore
+		-- TiledSize, so Scale is the only reliable way to make the drawn quad exactly (w, h) world units.
+		-- All three range images (L/C/R) are authored on a ~0.6x0.6-unit (60x60 px) canvas with a centered
+		-- pivot — measured 2026-07-05; tune TelegraphSpriteNativeSize if the images are ever re-uploaded.
 		if ruid == nil or ruid == "" or spawnParent == nil then
 			return
 		end
@@ -5583,19 +5581,20 @@ script BRSkillSystem extends Logic
 		end
 		if entity.TransformComponent ~= nil then
 			entity.TransformComponent.ZRotation = rot
+			-- Rotating 90/270 maps local X onto world Y, so the scale axes swap for the rotated edge lines.
+			local native = math.max(0.01, self:ReadNumber(self.TelegraphSpriteNativeSize, 0.6))
+			local sx = w / native
+			local sy = h / native
+			if rot == 90 or rot == 270 or rot == -90 then
+				sx = h / native
+				sy = w / native
+			end
+			entity.TransformComponent.Scale = Vector3(sx, sy, 1)
 		end
 		local r = entity.SpriteRendererComponent
 		if r ~= nil then
 			r.SpriteRUID = ruid
-			r.DrawMode = SpriteDrawMode.Tiled
-			-- Rotating 90/270 swaps which world axis each local TiledSize dimension maps to, so pre-swap here.
-			local localW = w
-			local localH = h
-			if rot == 90 or rot == 270 or rot == -90 then
-				localW = h
-				localH = w
-			end
-			r.TiledSize = Vector2(math.max(0.01, localW), math.max(0.01, localH))
+			r.DrawMode = SpriteDrawMode.Simple
 			r.FlipX = false
 			r.SortingLayer = "MapLayer0"
 			r.OrderInLayer = math.floor(self:ReadNumber(order, 500))
@@ -6142,7 +6141,6 @@ script BRSkillSystem extends Logic
 		state.Experience = math.max(0, math.floor(self:ReadNumber(state.Experience, 0))) + reward
 
 		local leveled = false
-		local levelUpCount = 0
 		while self:CanLevelUpState(state) == true do
 			local required = self:GetRequiredExperienceForNextLevel(state.Level)
 			if required <= 0 or state.Experience < required then
@@ -6151,7 +6149,6 @@ script BRSkillSystem extends Logic
 			state.Experience = state.Experience - required
 			state.Level = math.min(self:GetMaxSkillLevel(), math.floor(self:ReadNumber(state.Level, self:GetStartingSkillLevel())) + 1)
 			leveled = true
-			levelUpCount = levelUpCount + 1
 		end
 		if self:GetUserLevel(state) >= self:GetMaxSkillLevel() then
 			state.Experience = 0
@@ -6162,7 +6159,7 @@ script BRSkillSystem extends Logic
 		local newSlots = self:GetUnlockedChainSlotCount(state)
 		if leveled == true then
 			self:ApplyCharacterStatsToUser(userId, "level-up")
-			self:ApplyLevelUpHeal(userId, levelUpCount, sourceId)
+			self:HealUserToFull(userId, "level-up")
 		end
 		self:NotifyUserChanged(userId)
 		self:Log("experience user=" .. userId
@@ -7213,8 +7210,8 @@ script BRSkillSystem extends Logic
 	end
 
 	@ExecSpace("ServerOnly")
-	method void ApplyLevelUpHeal(string userId, number levelUpCount, string sourceId)
-		-- Restores a fixed chunk of HP after one or more skill level-ups.
+	method void HealUserToFull(string userId, string reason)
+		-- Restores a live player's HP to their current MaxHp (used on level-up).
 		local safeUserId = self:ReadString(userId, "")
 		if safeUserId == "" then
 			return
@@ -7223,32 +7220,12 @@ script BRSkillSystem extends Logic
 		if playerEntity == nil or playerEntity.PlayerComponent == nil then
 			return
 		end
-		local player = playerEntity.PlayerComponent
-		if player:IsDead() == true or player.Hp <= 0 then
+		if playerEntity.PlayerComponent:IsDead() == true then
 			return
 		end
-		local maxHp = math.max(1, math.floor(self:ReadNumber(player.MaxHp, 1)))
-		local oldHp = math.max(0, math.floor(self:ReadNumber(player.Hp, 0)))
-		if oldHp >= maxHp then
-			return
-		end
-		local safeLevelUps = math.max(1, math.floor(self:ReadNumber(levelUpCount, 1)))
-		local flatHeal = math.max(0, math.floor(self:ReadNumber(self.LevelUpHealFlatAmount, 20)))
-		local percentHeal = math.max(0, self:ReadNumber(self.LevelUpHealMaxHpPercent, 35))
-		local healAmount = math.max(1, flatHeal * safeLevelUps + math.floor(maxHp * percentHeal * safeLevelUps / 100))
-		player.Hp = math.min(maxHp, oldHp + healAmount)
-		local actualHeal = player.Hp - oldHp
-		if actualHeal <= 0 then
-			return
-		end
-		if _BRDamageSkinSystem ~= nil then
-			_BRDamageSkinSystem:ShowHeal(playerEntity, actualHeal, "level-up")
-		end
-		log("[BRSkill] level-up heal user=" .. safeUserId
-			.. " count=" .. tostring(safeLevelUps)
-			.. " heal=" .. tostring(actualHeal)
-			.. " hp=" .. tostring(oldHp) .. "->" .. tostring(player.Hp)
-			.. " source=" .. self:ReadString(sourceId, "level-up"))
+		local maxHp = math.max(1, math.floor(self:ReadNumber(playerEntity.PlayerComponent.MaxHp, 1)))
+		playerEntity.PlayerComponent.Hp = maxHp
+		self:Log("player healed to full user=" .. safeUserId .. " hp=" .. tostring(maxHp) .. " reason=" .. self:ReadString(reason, "heal"))
 	end
 
 	method void ApplyMovementStatsToPlayer(Entity playerEntity, any baseStats)

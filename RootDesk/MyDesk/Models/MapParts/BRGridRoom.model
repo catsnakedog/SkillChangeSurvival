@@ -32,8 +32,8 @@
           },
           "Value": {
             "$type": "MOD.Core.MODVector3, MOD.Core",
-            "x": 0,
-            "y": 0,
+            "x": 0.0,
+            "y": 0.0,
             "z": 999.997
           }
         },
@@ -63,6 +63,48 @@
             "type": "System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
           },
           "Value": 2
+        },
+        {
+          "TargetType": "MOD.Core.TransformComponent",
+          "Name": "QuaternionRotation",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "MOD.Core.MODQuaternion, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+          },
+          "Value": {
+            "$type": "MOD.Core.MODQuaternion, MOD.Core",
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "w": 1.0
+          }
+        },
+        {
+          "TargetType": "MOD.Core.PolygonRendererComponent",
+          "Name": "Enable",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": true
+        },
+        {
+          "TargetType": "MOD.Core.MODEntity",
+          "Name": "Enable",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": true
+        },
+        {
+          "TargetType": "MOD.Core.MODEntity",
+          "Name": "Visible",
+          "ValueType": {
+            "$type": "MODNativeType",
+            "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+          },
+          "Value": true
         }
       ],
       "EventLinks": [],
@@ -110,7 +152,7 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
-                  "x": 0,
+                  "x": 0.0,
                   "y": 4.65,
                   "z": -0.002
                 }
@@ -160,8 +202,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 0,
-                  "y": 0
+                  "x": 0.0,
+                  "y": 0.0
                 }
               },
               {
@@ -176,6 +218,48 @@
                   "x": 2.4,
                   "y": 0.45
                 }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "QuaternionRotation",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODQuaternion, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODQuaternion, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0,
+                  "w": 1.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
               }
             ],
             "EventLinks": [],
@@ -226,7 +310,7 @@
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
                   "x": 4.65,
-                  "y": 0,
+                  "y": 0.0,
                   "z": -0.002
                 }
               },
@@ -275,8 +359,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 0,
-                  "y": 0
+                  "x": 0.0,
+                  "y": 0.0
                 }
               },
               {
@@ -291,6 +375,48 @@
                   "x": 0.45,
                   "y": 2.4
                 }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "QuaternionRotation",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODQuaternion, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODQuaternion, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0,
+                  "w": 1.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
               }
             ],
             "EventLinks": [],
@@ -340,7 +466,7 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
-                  "x": 0,
+                  "x": 0.0,
                   "y": -4.65,
                   "z": -0.002
                 }
@@ -390,8 +516,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 0,
-                  "y": 0
+                  "x": 0.0,
+                  "y": 0.0
                 }
               },
               {
@@ -406,6 +532,48 @@
                   "x": 2.4,
                   "y": 0.45
                 }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "QuaternionRotation",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODQuaternion, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODQuaternion, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0,
+                  "w": 1.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
               }
             ],
             "EventLinks": [],
@@ -456,7 +624,7 @@
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
                   "x": -4.65,
-                  "y": 0,
+                  "y": 0.0,
                   "z": -0.002
                 }
               },
@@ -505,8 +673,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 0,
-                  "y": 0
+                  "x": 0.0,
+                  "y": 0.0
                 }
               },
               {
@@ -521,6 +689,50 @@
                   "x": 0.45,
                   "y": 2.4
                 }
+              },
+<<<<<<< Updated upstream
+=======
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "QuaternionRotation",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODQuaternion, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODQuaternion, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0,
+                  "w": 1.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
               }
             ],
             "EventLinks": [],
@@ -542,8 +754,24 @@
             ],
             "Properties": [],
             "Values": [
+>>>>>>> Stashed changes
               {
-                "TargetType": "MOD.Core.MODEntity",
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "QuaternionRotation",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODQuaternion, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODQuaternion, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0,
+                  "w": 1.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
                 "Name": "Enable",
                 "ValueType": {
                   "$type": "MODNativeType",
@@ -552,8 +780,8 @@
                 "Value": true
               },
               {
-                "TargetType": "MOD.Core.MODEntity",
-                "Name": "Visible",
+                "TargetType": "MOD.Core.PolygonRendererComponent",
+                "Name": "Enable",
                 "ValueType": {
                   "$type": "MODNativeType",
                   "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
@@ -561,6 +789,10 @@
                 "Value": true
               },
               {
+<<<<<<< Updated upstream
+                "TargetType": "MOD.Core.PortalComponent",
+                "Name": "Enable",
+=======
                 "TargetType": "MOD.Core.TransformComponent",
                 "Name": "Position",
                 "ValueType": {
@@ -569,8 +801,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector3, MOD.Core",
-                  "x": 0,
-                  "y": 0,
+                  "x": 0.0,
+                  "y": 0.0,
                   "z": -0.001
                 }
               },
@@ -599,7 +831,7 @@
                   "$type": "MODNativeType",
                   "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
                 },
-                "Value": 24
+                "Value": 24.0
               },
               {
                 "TargetType": "MOD.Core.TextRendererComponent",
@@ -610,8 +842,8 @@
                 },
                 "Value": {
                   "$type": "MOD.Core.MODVector2, MOD.Core",
-                  "x": 10,
-                  "y": 4
+                  "x": 10.0,
+                  "y": 4.0
                 }
               },
               {
@@ -626,11 +858,14 @@
               {
                 "TargetType": "MOD.Core.TextRendererComponent",
                 "Name": "IgnoreMapLayerCheck",
+>>>>>>> Stashed changes
                 "ValueType": {
                   "$type": "MODNativeType",
                   "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
                 },
                 "Value": true
+<<<<<<< Updated upstream
+=======
               },
               {
                 "TargetType": "MOD.Core.TextRendererComponent",
@@ -658,6 +893,115 @@
                   "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
                 },
                 "Value": false
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "QuaternionRotation",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODQuaternion, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODQuaternion, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0,
+                  "w": 1.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.TextRendererComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              }
+            ],
+            "EventLinks": [],
+            "Children": []
+          }
+        },
+        {
+          "Id": "60305330-cba0-4818-bf77-7ea4bd5416b4",
+          "ParentId": "brgridroom",
+          "Name": "Empty",
+          "Model": {
+            "Version": 1,
+            "Name": "Empty",
+            "BaseModelId": null,
+            "Id": "60305330-cba0-4818-bf77-7ea4bd5416b4",
+            "Components": [
+              "MOD.Core.TransformComponent"
+            ],
+            "Properties": [],
+            "Values": [
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Position",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODVector3, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODVector3, MOD.Core",
+                  "x": 0.0059,
+                  "y": 0.0029,
+                  "z": 999.999
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "QuaternionRotation",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "MOD.Core.MODQuaternion, MOD.Core, Version=26.5.0.0, Culture=neutral, PublicKeyToken=null"
+                },
+                "Value": {
+                  "$type": "MOD.Core.MODQuaternion, MOD.Core",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "z": 0.0,
+                  "w": 1.0
+                }
+              },
+              {
+                "TargetType": "MOD.Core.TransformComponent",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Enable",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+              },
+              {
+                "TargetType": "MOD.Core.MODEntity",
+                "Name": "Visible",
+                "ValueType": {
+                  "$type": "MODNativeType",
+                  "type": "System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
+                },
+                "Value": true
+>>>>>>> Stashed changes
               }
             ],
             "EventLinks": [],

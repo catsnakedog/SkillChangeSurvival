@@ -19,16 +19,6 @@ script BRSupplySystem extends Logic
 
 	property integer MonsterFallbackRoomScanCount = 36
 
-	property number MonsterActivationRadius = 9
-
-	property number MonsterActivationPollSeconds = 0.75
-
-	property integer MonsterMaxSpawnsPerPoll = 6
-
-	property number MonsterIdleLeashRadius = 14
-
-	property number MonsterIdleDespawnSeconds = 20
-
 	property string RuntimeMonsterNamePrefix = "RuntimeBattleMonster"
 
 	property string StartMonsterName = "갈리나"
@@ -39,6 +29,8 @@ script BRSupplySystem extends Logic
 
 	property number MonsterSpawnYOffset = 0.03
 
+	property number MaxMonstersPerRoom = 2
+
 	property number MaxSuppliesPerDrop = 0
 
 	property number SkillChestDropCount = 3
@@ -48,8 +40,6 @@ script BRSupplySystem extends Logic
 	property number KioskSpawnDelaySeconds = 15
 
 	property number KioskSpawnCount = 2
-
-	property number StandaloneKioskOffsetX = 0.9
 
 	property number SupplyDropCount = 1
 
@@ -65,15 +55,13 @@ script BRSupplySystem extends Logic
 
 	property number MonsterHpRuntimeScale = 0.82
 
-	property number MonsterHitDamageRuntimeScale = 0.35
-
 	property number MonsterQuickKillBaseHp = 82
 
 	property number MonsterQuickKillHpPerLevel = 16
 
 	property number MonsterLevelUpHpMultiplier = 1.16
 
-	property number MonsterLevelUpAttackMultiplier = 1.0
+	property number MonsterLevelUpAttackMultiplier = 1.16
 
 	property number MonsterLevelUpRewardMultiplier = 1.12
 
@@ -96,12 +84,6 @@ script BRSupplySystem extends Logic
 
 	@Sync
 	property string LastSupplyAlertCells = ""
-
-	@Sync
-	property number LastKioskCount = 0
-
-	@Sync
-	property number LastKioskVersion = 0
 
 	@ExecSpace("ServerOnly")
 	method void OnBeginPlay()
@@ -135,7 +117,6 @@ script BRSupplySystem extends Logic
 			self:HideMonsterAnchor(anchor)
 		end
 		self:ClearRuntimeMonstersForMap(targetMapName)
-		self:ClearRuntimeKiosksForMap(targetMapName)
 
 		local initialDropped = self:SpawnOneSkillChestPerRoom(targetMapName, candidates)
 
@@ -202,16 +183,13 @@ script BRSupplySystem extends Logic
 			end
 		end
 		local monstersCleared = self:ClearRuntimeMonstersForMap(targetMapName)
-		local kiosksCleared = self:ClearRuntimeKiosksForMap(targetMapName)
 		self._T.currentMonsterRowByMap[targetMapName] = 0
 
 		self.LastSupplyMapName = targetMapName
 		self.LastSupplyState = "Cleared"
 		self.LastSupplyDroppedCount = 0
 		self.LastSupplyVersion = self.LastSupplyVersion + 1
-		self:Log("cleared map=" .. targetMapName .. " count=" .. tostring(cleared)
-			.. " monsters=" .. tostring(monstersCleared)
-			.. " kiosks=" .. tostring(kiosksCleared))
+		self:Log("cleared map=" .. targetMapName .. " count=" .. tostring(cleared) .. " monsters=" .. tostring(monstersCleared))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -276,13 +254,6 @@ script BRSupplySystem extends Logic
 	method void DebugClearSupplies()
 		-- Clears supply boxes on the default test map.
 		self:ClearSuppliesForMap(self:ReadString(self.DefaultMapName, "RoomTestMap"))
-	end
-
-	@ExecSpace("ServerOnly")
-	@InspectorButton("Debug Spawn Kiosks")
-	method void DebugSpawnKiosks()
-		-- Spawns the day-phase shop kiosks immediately without waiting for phase 3.
-		self:SpawnPhaseKiosks(self:ReadString(self.DefaultMapName, "RoomTestMap"))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -359,8 +330,7 @@ script BRSupplySystem extends Logic
 	end
 
 	method number SpawnMonsterWaveForRow(string mapName, number rowIndex)
-		-- Queues one configured monster per authored anchor; actual spawn is deferred until a
-		-- player comes within range (see ScanMonsterActivation), so idle rooms never pay the AI cost.
+		-- Spawns one configured monster for each authored monster anchor.
 		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
 		local anchors = self:GetMonsterAnchorsForMap(targetMapName)
 		if anchors == nil or #anchors <= 0 then
@@ -368,219 +338,76 @@ script BRSupplySystem extends Logic
 			return 0
 		end
 
-		self:EnsureRuntime()
-		local safeRow = math.max(1, math.floor(self:ReadNumber(rowIndex, 1)))
-		local pending = {}
-		self._T.pendingMonsterAnchorsByMap[targetMapName] = pending
-		local queued = 0
+		-- Group anchors by room so each room spawns from its own designated positions.
+		local roomAnchors = {}
+		local roomOrder = {}
 		for index, anchor in ipairs(anchors) do
-			local key = self:GetEntityKey(anchor)
-			if key ~= "" then
-				pending[key] = { Anchor = anchor, RowIndex = safeRow }
-				queued = queued + 1
+			local roomKey = self:GetAnchorRoomKey(anchor)
+			if roomAnchors[roomKey] == nil then
+				roomAnchors[roomKey] = {}
+				table.insert(roomOrder, roomKey)
 			end
+			table.insert(roomAnchors[roomKey], anchor)
 		end
-		self:EnsureMonsterActivationPolling()
-		self:Log("monster wave queued map=" .. targetMapName .. " anchors=" .. tostring(queued) .. " row=" .. tostring(safeRow))
-		return queued
-	end
 
-	@ExecSpace("ServerOnly")
-	method void EnsureMonsterActivationPolling()
-		-- Starts the proximity poll that lazily spawns/recycles queued monster anchors.
-		self:EnsureRuntime()
-		if self._T.monsterActivationPollTimerId ~= nil and self._T.monsterActivationPollTimerId > 0 then
-			return
-		end
-		self._T.monsterActivationPollTimerId = _TimerService:SetTimerRepeat(function() self:ScanMonsterActivation() end, self:GetMonsterActivationPollSeconds(), 0.1)
-		self:Log("monster activation polling started interval=" .. tostring(self:GetMonsterActivationPollSeconds()))
-	end
-
-	@ExecSpace("ServerOnly")
-	method void StopMonsterActivationPollingIfIdle()
-		-- Stops the poll once no map has pending or live lazily-managed monsters left.
-		self:EnsureRuntime()
-		for mapName, pending in pairs(self._T.pendingMonsterAnchorsByMap) do
-			if self:TableHasEntries(pending) == true then
-				return
-			end
-		end
-		for mapName, live in pairs(self._T.spawnedMonsterByAnchor) do
-			if self:TableHasEntries(live) == true then
-				return
-			end
-		end
-		if self._T.monsterActivationPollTimerId ~= nil and self._T.monsterActivationPollTimerId > 0 then
-			_TimerService:ClearTimer(self._T.monsterActivationPollTimerId)
-		end
-		self._T.monsterActivationPollTimerId = 0
-	end
-
-	method boolean TableHasEntries(any t)
-		if t == nil then
-			return false
-		end
-		for key, value in pairs(t) do
-			return true
-		end
-		return false
-	end
-
-	@ExecSpace("ServerOnly")
-	method void ScanMonsterActivation()
-		-- Spawns queued anchors once a player comes near, and recycles unengaged idle monsters
-		-- so total live count stays tied to currently-occupied rooms instead of the whole map.
-		self:EnsureRuntime()
-		local now = _UtilLogic.ServerElapsedSeconds
-		local activationRadiusSq = self:GetMonsterActivationRadius() * self:GetMonsterActivationRadius()
-		local leashRadiusSq = self:GetMonsterIdleLeashRadius() * self:GetMonsterIdleLeashRadius()
-		local idleDespawnSeconds = self:GetMonsterIdleDespawnSeconds()
-		local maxSpawnsPerPoll = self:GetMonsterMaxSpawnsPerPoll()
-
-		for mapName, pending in pairs(self._T.pendingMonsterAnchorsByMap) do
-			local users = _UserService:GetUsersByMapName(mapName)
-			local spawnedThisPoll = 0
-			if users ~= nil and #users > 0 then
-				for key, entry in pairs(pending) do
-					if spawnedThisPoll >= maxSpawnsPerPoll then
-						break
-					end
-					if entry ~= nil and entry.Anchor ~= nil and isvalid(entry.Anchor) == true then
-						local anchorPosition3 = self:GetMonsterAnchorSpawnPosition(mapName, entry.Anchor)
-						local anchorPosition = Vector2(anchorPosition3.x, anchorPosition3.y)
-						if self:IsAnyPlayerWithinDistance(users, anchorPosition, activationRadiusSq) == true then
-							local monster = self:SpawnMonsterForAnchor(mapName, entry.Anchor, entry.RowIndex, false)
-							if monster ~= nil then
-								self:RememberRuntimeMonster(mapName, monster, entry.RowIndex, key)
-								self:RememberLazyMonster(mapName, key, entry.Anchor, monster, entry.RowIndex, now)
-								pending[key] = nil
-								spawnedThisPoll = spawnedThisPoll + 1
-							end
-						end
-					else
-						pending[key] = nil
-					end
-				end
-			end
-
-			local live = self._T.spawnedMonsterByAnchor[mapName]
-			if live ~= nil then
-				for key, record in pairs(live) do
-					if record == nil or record.Entity == nil or isvalid(record.Entity) ~= true then
-						live[key] = nil
-					else
-						local monsterPosition = self:GetEntityPosition2ForAnchor(record.Entity)
-						local nearPlayer = users ~= nil and self:IsAnyPlayerWithinDistance(users, monsterPosition, leashRadiusSq) == true
-						if nearPlayer == true then
-							record.LastSeenPlayerAt = now
-						elseif self:IsMonsterUnengaged(record.Entity) == true and now - self:ReadNumber(record.LastSeenPlayerAt, now) >= idleDespawnSeconds then
-							self:RecycleIdleMonster(mapName, key, record)
-						end
-					end
+		local maxPerRoom = self:GetMaxMonstersPerRoom()
+		local spawned = 0
+		for orderIndex, roomKey in ipairs(roomOrder) do
+			local chosen = self:PickRandomAnchors(roomAnchors[roomKey], maxPerRoom)
+			for chosenIndex, anchor in ipairs(chosen) do
+				local monster = self:SpawnMonsterForAnchor(targetMapName, anchor, rowIndex, false)
+				if monster ~= nil then
+					spawned = spawned + 1
+					self:RememberRuntimeMonster(targetMapName, monster, rowIndex, self:GetEntityKey(anchor))
 				end
 			end
 		end
-		self:StopMonsterActivationPollingIfIdle()
+		return spawned
 	end
 
-	method void RememberLazyMonster(string mapName, string anchorKey, Entity anchor, Entity monster, number rowIndex, number now)
-		-- Tracks a lazily-spawned monster's anchor and last-seen time for idle recycling.
-		self:EnsureRuntime()
-		if self._T.spawnedMonsterByAnchor[mapName] == nil then
-			self._T.spawnedMonsterByAnchor[mapName] = {}
-		end
-		self._T.spawnedMonsterByAnchor[mapName][anchorKey] = {
-			Entity = monster,
-			Anchor = anchor,
-			RowIndex = math.floor(self:ReadNumber(rowIndex, 1)),
-			LastSeenPlayerAt = now
-		}
-	end
-
-	method void RecycleIdleMonster(string mapName, string anchorKey, any record)
-		-- Removes an unengaged, abandoned monster and re-queues its anchor for a later visit.
-		local rowIndex = math.floor(self:ReadNumber(record.RowIndex, 1))
-		self:DestroyRuntimeMonster(record.Entity)
-		local live = self._T.spawnedMonsterByAnchor[mapName]
-		if live ~= nil then
-			live[anchorKey] = nil
-		end
-		if record.Anchor ~= nil and isvalid(record.Anchor) == true then
-			if self._T.pendingMonsterAnchorsByMap[mapName] == nil then
-				self._T.pendingMonsterAnchorsByMap[mapName] = {}
-			end
-			self._T.pendingMonsterAnchorsByMap[mapName][anchorKey] = { Anchor = record.Anchor, RowIndex = rowIndex }
-		end
-		self:Log("monster recycled map=" .. mapName .. " anchor=" .. anchorKey .. " reason=idle")
-	end
-
-	method boolean IsMonsterUnengaged(Entity monster)
-		-- Only recycles monsters nobody has actually fought yet (full HP, never damaged).
-		if monster == nil or isvalid(monster) ~= true then
-			return true
-		end
-		local dummy = monster:GetComponent("script.BRTrainingDummy")
-		if dummy == nil then
-			dummy = monster:GetComponent("BRTrainingDummy")
-		end
-		if dummy == nil then
-			return true
-		end
-		---@type BRTrainingDummy
-		local trainingDummy = dummy
-		return trainingDummy.CurrentHp >= trainingDummy:GetMaxHp()
-	end
-
-	method boolean IsAnyPlayerWithinDistance(any users, Vector2 position, number radiusSq)
-		-- Checks whether any listed player entity is within radiusSq of a world position.
-		if users == nil or position == nil then
-			return false
-		end
-		for index, playerEntity in ipairs(users) do
-			if playerEntity ~= nil and isvalid(playerEntity) == true and playerEntity.TransformComponent ~= nil then
-				local playerPosition = playerEntity.TransformComponent.WorldPosition
-				local dx = playerPosition.x - position.x
-				local dy = playerPosition.y - position.y
-				if dx * dx + dy * dy <= radiusSq then
-					return true
-				end
+	method any PickRandomAnchors(any list, number count)
+		-- Returns up to `count` randomly-selected anchors from one room's anchor list.
+		local pool = {}
+		if list ~= nil then
+			for index, anchor in ipairs(list) do
+				table.insert(pool, anchor)
 			end
 		end
-		return false
-	end
-
-	method Vector2 GetEntityPosition2ForAnchor(Entity entity)
-		-- Reads an entity's world position as Vector2 for distance checks.
-		if entity == nil or isvalid(entity) ~= true or entity.TransformComponent == nil then
-			return Vector2(0, 0)
+		local chosen = {}
+		local want = math.min(math.max(0, math.floor(self:ReadNumber(count, 0))), #pool)
+		for i = 1, want do
+			local pickIndex = _UtilLogic:RandomIntegerRange(1, #pool)
+			table.insert(chosen, pool[pickIndex])
+			table.remove(pool, pickIndex)
 		end
-		local position = entity.TransformComponent.WorldPosition
-		return Vector2(position.x, position.y)
+		return chosen
 	end
 
-	method number GetMonsterActivationRadius()
-		-- Returns how close a player must be to an anchor before its monster spawns.
-		return math.max(1, self:ReadNumber(self.MonsterActivationRadius, 9))
+	method number GetMaxMonstersPerRoom()
+		-- Caps how many battle monsters spawn in each room (default 2).
+		return math.max(0, math.floor(self:ReadNumber(self.MaxMonstersPerRoom, 2)))
 	end
 
-	method number GetMonsterActivationPollSeconds()
-		-- Returns how often the activation/idle-recycle poll runs.
-		return math.max(0.2, self:ReadNumber(self.MonsterActivationPollSeconds, 0.75))
-	end
-
-	method integer GetMonsterMaxSpawnsPerPoll()
-		-- Caps spawns per poll tick so a sudden multi-room approach cannot spike frame cost.
-		return math.max(1, math.floor(self:ReadNumber(self.MonsterMaxSpawnsPerPoll, 6)))
-	end
-
-	method number GetMonsterIdleLeashRadius()
-		-- Returns the radius beyond which an unengaged monster counts as abandoned.
-		return math.max(1, self:ReadNumber(self.MonsterIdleLeashRadius, 14))
-	end
-
-	method number GetMonsterIdleDespawnSeconds()
-		-- Returns how long an abandoned, unengaged monster waits before being recycled.
-		return math.max(1, self:ReadNumber(self.MonsterIdleDespawnSeconds, 20))
+	method string GetAnchorRoomKey(Entity anchor)
+		-- Groups anchors by their room (the anchor entity's parent path) so caps apply per room.
+		if anchor == nil or isvalid(anchor) ~= true then
+			return ""
+		end
+		local pathStr = self:ReadString(anchor.Path, "")
+		if pathStr == "" then
+			return ""
+		end
+		local lastSlash = 0
+		for i = string.len(pathStr), 1, -1 do
+			if string.sub(pathStr, i, i) == "/" then
+				lastSlash = i
+				break
+			end
+		end
+		if lastSlash <= 1 then
+			return pathStr
+		end
+		return string.sub(pathStr, 1, lastSlash - 1)
 	end
 
 	method Entity SpawnMonsterForAnchor(string mapName, Entity anchor, number rowIndex, boolean boss)
@@ -905,208 +732,12 @@ script BRSupplySystem extends Logic
 	end
 
 	method number SpawnKiosksForMap(string mapName, number count)
-		-- Spawns the day-phase shop kiosks through three tiers so the shop appears even when every anchor is occupied.
+		-- Spawns candy-machine kiosks in empty center-nine safe-room anchors.
 		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
-		local limit = math.max(0, math.floor(self:ReadNumber(count, 1)))
-		self.LastKioskCount = 0
-		if limit <= 0 then
-			self:Log("kiosk spawn skipped reason=zeroCount map=" .. targetMapName)
-			return 0
-		end
-
-		local alertRecords = {}
-		local spawned = self:ActivateKioskCandidates(targetMapName, self:GetEmptyOpenCandidates(targetMapName, true), limit, alertRecords)
-		self:Log("kiosk tier=centerNineAnchor map=" .. targetMapName
-			.. " spawned=" .. tostring(spawned) .. "/" .. tostring(limit))
-
-		if spawned < limit then
-			local anyRoom = self:ActivateKioskCandidates(targetMapName, self:GetEmptyOpenCandidates(targetMapName, false), limit - spawned, alertRecords)
-			spawned = spawned + anyRoom
-			self:Log("kiosk tier=anyOpenAnchor map=" .. targetMapName
-				.. " spawned=" .. tostring(anyRoom) .. " total=" .. tostring(spawned) .. "/" .. tostring(limit))
-		end
-
-		if spawned < limit then
-			local standalone = self:SpawnStandaloneKiosks(targetMapName, limit - spawned, alertRecords)
-			spawned = spawned + standalone
-			self:Log("kiosk tier=standalone map=" .. targetMapName
-				.. " spawned=" .. tostring(standalone) .. " total=" .. tostring(spawned) .. "/" .. tostring(limit))
-		end
-
-		self.LastSupplyAlertCells = self:JoinRecords(alertRecords)
-		self.LastKioskCount = spawned
-		self.LastKioskVersion = self.LastKioskVersion + 1
-		self:Log("kiosk spawn map=" .. targetMapName
-			.. " count=" .. tostring(spawned) .. "/" .. tostring(limit)
-			.. " cells=" .. self:ReadString(self.LastSupplyAlertCells, "none"))
+		local candidates = self:GetEmptyOpenCandidates(targetMapName, true)
+		local spawned = self:ActivateRandomCandidates(targetMapName, candidates, math.max(1, math.floor(self:ReadNumber(count, 1))), "kiosk", "K")
+		self:Log("kiosk spawn map=" .. targetMapName .. " count=" .. tostring(spawned))
 		return spawned
-	end
-
-	method number ActivateKioskCandidates(string mapName, any candidates, number count, any alertRecords)
-		-- Activates random empty supply anchors as kiosks and records their minimap cells.
-		local spawned = 0
-		local pool = self:CopyCandidateList(candidates)
-		local limit = math.max(0, math.floor(self:ReadNumber(count, 0)))
-		while spawned < limit and #pool > 0 do
-			local index = _UtilLogic:RandomIntegerRange(1, #pool)
-			local supply = pool[index]
-			table.remove(pool, index)
-			if supply ~= nil and self:SetSupplyRuntimeActiveWithKind(supply, true, "kiosk") == true then
-				spawned = spawned + 1
-				local record = self:GetSupplyAlertRecord(mapName, supply, "K")
-				if record ~= "" then
-					table.insert(alertRecords, record)
-				end
-			end
-		end
-		return spawned
-	end
-
-	method number SpawnStandaloneKiosks(string mapName, number count, any alertRecords)
-		-- Spawns kiosks that need no free anchor, so the day shop still appears when every anchor holds a chest.
-		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
-		local limit = math.max(0, math.floor(self:ReadNumber(count, 0)))
-		if limit <= 0 then
-			return 0
-		end
-
-		local pool = self:CollectStandaloneKioskRooms(targetMapName)
-		if #pool <= 0 then
-			self:Log("standalone kiosk skipped reason=noOpenRoom map=" .. targetMapName)
-			return 0
-		end
-
-		local spawned = 0
-		while spawned < limit and #pool > 0 do
-			local index = _UtilLogic:RandomIntegerRange(1, #pool)
-			local group = pool[index]
-			table.remove(pool, index)
-			local kiosk = self:SpawnStandaloneKioskInGroup(targetMapName, group)
-			if kiosk ~= nil then
-				spawned = spawned + 1
-				self:RememberRuntimeKiosk(targetMapName, kiosk)
-				local record = self:GetRoomAlertRecord(targetMapName, self:ReadString(group.RoomName, ""), "K")
-				if record ~= "" then
-					table.insert(alertRecords, record)
-				end
-			end
-		end
-		return spawned
-	end
-
-	method any CollectStandaloneKioskRooms(string mapName)
-		-- Prefers center-nine open rooms for the shop and falls back to every currently open room.
-		local groups = self:GroupCandidatesByRoom(self:GetCandidatesForMap(mapName))
-		local centerRooms = {}
-		local openRooms = {}
-		for index, group in ipairs(groups) do
-			local roomName = self:ReadString(group.RoomName, "")
-			if roomName ~= "" and self:IsRoomOpenForSupplies(mapName, roomName) == true then
-				table.insert(openRooms, group)
-				if self:IsRoomInCenterNine(mapName, roomName) == true then
-					table.insert(centerRooms, group)
-				end
-			end
-		end
-		if #centerRooms > 0 then
-			return centerRooms
-		end
-		return openRooms
-	end
-
-	method Entity SpawnStandaloneKioskInGroup(string mapName, any group)
-		-- Spawns one kiosk beside a room's authored anchor without consuming that anchor.
-		if group == nil or group.Supplies == nil or #group.Supplies <= 0 then
-			return nil
-		end
-		local reference = group.Supplies[_UtilLogic:RandomIntegerRange(1, #group.Supplies)]
-		if reference == nil or isvalid(reference) ~= true then
-			return nil
-		end
-
-		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
-		local mapEntity = self:GetSupplyAnchorMapEntity(reference)
-		if mapEntity == nil then
-			mapEntity = _EntityService:GetEntityByPath("/maps/" .. targetMapName)
-		end
-		if mapEntity == nil then
-			self:Log("standalone kiosk skipped reason=noMap room=" .. self:ReadString(group.RoomName, ""))
-			return nil
-		end
-
-		local raw = self:GetSupplyAnchorPosition(reference)
-		local offsetX = self:GetStandaloneKioskOffsetX()
-		local position = self:ResolveSupplyGroundPosition(mapEntity, Vector3(raw.x + offsetX, raw.y, raw.z))
-		local runtimeName = self:GetRuntimeSupplyName("kiosk")
-		local modelId = self:GetRuntimeSupplyBoxModelId()
-		local kiosk = nil
-		if modelId ~= "" then
-			kiosk = _SpawnService:SpawnByModelId(modelId, runtimeName, position, mapEntity)
-		end
-		if kiosk == nil then
-			kiosk = _SpawnService:SpawnByEntity(reference, runtimeName, position, mapEntity, false)
-		end
-		if kiosk == nil then
-			self:Log("standalone kiosk spawn failed room=" .. self:ReadString(group.RoomName, "") .. " modelId=" .. modelId)
-			return nil
-		end
-
-		self:EnsureRuntimeSupplyVisualComponents(kiosk)
-		kiosk:SetEnable(true)
-		kiosk:SetVisible(true)
-		self:ConfigureRuntimeSupplyBox(kiosk, true, "kiosk")
-		self:Log("standalone kiosk spawned room=" .. self:ReadString(group.RoomName, "")
-			.. " box=" .. self:ReadString(kiosk.Name, "")
-			.. " pos=(" .. tostring(position.x) .. "," .. tostring(position.y) .. ")")
-		return kiosk
-	end
-
-	method string GetRoomAlertRecord(string mapName, string roomName, string alertKind)
-		-- Builds one minimap alert record for a room-level spawn that has no anchor of its own.
-		local cell = self:GetLogicalCellForRoom(mapName, roomName)
-		if cell == nil then
-			return ""
-		end
-		return tostring(math.floor(self:ReadNumber(cell.Row, 0))) .. "," .. tostring(math.floor(self:ReadNumber(cell.Column, 0))) .. "," .. self:ReadString(alertKind, "K")
-	end
-
-	method void RememberRuntimeKiosk(string mapName, Entity kiosk)
-		-- Tracks standalone kiosks so a new match can remove the previous day's shops.
-		if kiosk == nil or isvalid(kiosk) ~= true then
-			return
-		end
-		self:EnsureRuntime()
-		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
-		if self._T.runtimeKiosksByMap[targetMapName] == nil then
-			self._T.runtimeKiosksByMap[targetMapName] = {}
-		end
-		table.insert(self._T.runtimeKiosksByMap[targetMapName], kiosk)
-	end
-
-	method number ClearRuntimeKiosksForMap(string mapName)
-		-- Destroys standalone kiosks left over from a previous match on this map.
-		self:EnsureRuntime()
-		local targetMapName = self:ReadString(mapName, self:ReadString(self.DefaultMapName, "RoomTestMap"))
-		local records = self._T.runtimeKiosksByMap[targetMapName]
-		local count = 0
-		if records ~= nil then
-			for index, kiosk in ipairs(records) do
-				if kiosk ~= nil and isvalid(kiosk) == true then
-					kiosk:SetVisible(false)
-					kiosk:SetEnable(false)
-					kiosk:Destroy()
-					count = count + 1
-				end
-			end
-		end
-		self._T.runtimeKiosksByMap[targetMapName] = {}
-		self.LastKioskCount = 0
-		return count
-	end
-
-	method number GetStandaloneKioskOffsetX()
-		-- Returns the horizontal gap between a room's chest anchor and its standalone kiosk.
-		return self:ReadNumber(self.StandaloneKioskOffsetX, 0.9)
 	end
 
 	method number LevelUpMonstersForMap(string mapName)
@@ -1155,13 +786,9 @@ script BRSupplySystem extends Logic
 					---@type BRBattleBotController
 					local bot = component
 					local oldHp = bot:GetMaxHp()
-					local oldAttack = math.max(1, math.floor(self:ReadNumber(bot.AttackDamage, bot:GetAttackDamage())))
+					local oldAttack = bot:GetAttackDamage()
 					bot.MaxHp = math.max(oldHp + 1, math.floor(oldHp * hpMultiplier))
-					if attackMultiplier > 1 then
-						bot.AttackDamage = math.max(oldAttack + 1, math.floor(oldAttack * attackMultiplier))
-					else
-						bot.AttackDamage = math.max(1, math.floor(oldAttack * attackMultiplier))
-					end
+					bot.AttackDamage = math.max(oldAttack + 1, math.floor(oldAttack * attackMultiplier))
 					bot.MesoReward = math.max(bot:GetMesoReward(), math.floor(bot:GetMesoReward() * rewardMultiplier))
 					if bot.BotState == "ALIVE" and bot.CurrentHp > 0 then
 						bot.CurrentHp = bot:GetMaxHp()
@@ -1719,9 +1346,6 @@ script BRSupplySystem extends Logic
 		if count > 0 then
 			self:Log("runtime monsters cleared map=" .. targetMapName .. " count=" .. tostring(count))
 		end
-		self._T.pendingMonsterAnchorsByMap[targetMapName] = nil
-		self._T.spawnedMonsterByAnchor[targetMapName] = nil
-		self:StopMonsterActivationPollingIfIdle()
 		return count
 	end
 
@@ -1789,7 +1413,6 @@ script BRSupplySystem extends Logic
 		if value >= 50 then
 			value = value * 0.07
 		end
-		value = value * self:GetMonsterHitDamageRuntimeScale()
 		return math.max(0, math.floor(value))
 	end
 
@@ -2633,11 +2256,6 @@ script BRSupplySystem extends Logic
 		return math.max(0.1, self:ReadNumber(self.MonsterHpRuntimeScale, 0.82))
 	end
 
-	method number GetMonsterHitDamageRuntimeScale()
-		-- Keeps contact damage gentle after converting old CSV monster values.
-		return math.max(0, self:ReadNumber(self.MonsterHitDamageRuntimeScale, 0.35))
-	end
-
 	method number GetMonsterQuickKillHpCap(number level)
 		-- Caps normal evolution monsters near the requested 2-3 hit kill tempo.
 		local safeLevel = math.max(1, math.floor(self:ReadNumber(level, 1)))
@@ -2648,7 +2266,7 @@ script BRSupplySystem extends Logic
 
 	method number GetMonsterLevelUpAttackMultiplier()
 		-- Returns phase-6 battle-bot attack multiplier.
-		return math.max(1, self:ReadNumber(self.MonsterLevelUpAttackMultiplier, 1.0))
+		return math.max(1, self:ReadNumber(self.MonsterLevelUpAttackMultiplier, 1.16))
 	end
 
 	method number GetMonsterLevelUpRewardMultiplier()
@@ -2718,18 +2336,6 @@ script BRSupplySystem extends Logic
 		end
 		if self._T.currentMonsterRowByMap == nil then
 			self._T.currentMonsterRowByMap = {}
-		end
-		if self._T.runtimeKiosksByMap == nil then
-			self._T.runtimeKiosksByMap = {}
-		end
-		if self._T.pendingMonsterAnchorsByMap == nil then
-			self._T.pendingMonsterAnchorsByMap = {}
-		end
-		if self._T.spawnedMonsterByAnchor == nil then
-			self._T.spawnedMonsterByAnchor = {}
-		end
-		if self._T.monsterActivationPollTimerId == nil then
-			self._T.monsterActivationPollTimerId = 0
 		end
 	end
 

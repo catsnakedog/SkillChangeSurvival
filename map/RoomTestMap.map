@@ -78753,8 +78753,8 @@
           "name": "PortalNorth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerNW/PortalNorth",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 0,
           "pathConstraints": "/////",
@@ -79026,8 +79026,8 @@
           "name": "PortalWest",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerNW/PortalWest",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 3,
           "pathConstraints": "/////",
@@ -79117,7 +79117,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerNW/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -79134,6 +79134,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -79150,11 +79155,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -79163,7 +79188,14 @@
                 "a": 1.0
               },
               "FontSize": 24.0,
+              "FontStyle": 0,
+              "GradientMode": 0,
+              "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -79172,12 +79204,45 @@
                 "a": 1.0
               },
               "OutlineWidth": 0.18,
+              "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
+              "RectOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
               "RectSize": {
                 "x": 20.0,
                 "y": 4.0
               },
+              "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Corner NW",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -79185,8 +79250,13 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
+              "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true
             }
@@ -82901,8 +82971,8 @@
           "name": "PortalNorth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerNE/PortalNorth",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 0,
           "pathConstraints": "/////",
@@ -82992,8 +83062,8 @@
           "name": "PortalEast",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerNE/PortalEast",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 1,
           "pathConstraints": "/////",
@@ -83265,7 +83335,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerNE/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -83282,6 +83352,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -83298,11 +83373,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -83311,7 +83406,14 @@
                 "a": 1.0
               },
               "FontSize": 24.0,
+              "FontStyle": 0,
+              "GradientMode": 0,
+              "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -83320,12 +83422,45 @@
                 "a": 1.0
               },
               "OutlineWidth": 0.18,
+              "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
+              "RectOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
               "RectSize": {
                 "x": 20.0,
                 "y": 4.0
               },
+              "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Corner NE",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -83333,8 +83468,13 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
+              "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true
             }
@@ -87395,8 +87535,8 @@
           "name": "PortalSouth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerSW/PortalSouth",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 2,
           "pathConstraints": "/////",
@@ -87486,8 +87626,8 @@
           "name": "PortalWest",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerSW/PortalWest",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 3,
           "pathConstraints": "/////",
@@ -87577,7 +87717,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerSW/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": false,
           "localize": false,
           "displayOrder": 4,
@@ -87594,6 +87734,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -87610,11 +87755,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -87623,7 +87788,14 @@
                 "a": 1.0
               },
               "FontSize": 24.0,
+              "FontStyle": 0,
+              "GradientMode": 0,
+              "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -87632,12 +87804,45 @@
                 "a": 1.0
               },
               "OutlineWidth": 0.18,
+              "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
+              "RectOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
               "RectSize": {
                 "x": 20.0,
                 "y": 4.0
               },
+              "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Corner SW",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -87645,8 +87850,13 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
+              "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true
             }
@@ -91534,8 +91744,8 @@
           "name": "PortalEast",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerSE/PortalEast",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 1,
           "pathConstraints": "/////",
@@ -91625,8 +91835,8 @@
           "name": "PortalSouth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerSE/PortalSouth",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 2,
           "pathConstraints": "/////",
@@ -91807,7 +92017,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/CornerSE/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -91824,6 +92034,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -91840,11 +92055,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -91853,7 +92088,14 @@
                 "a": 1.0
               },
               "FontSize": 24.0,
+              "FontStyle": 0,
+              "GradientMode": 0,
+              "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -91862,12 +92104,45 @@
                 "a": 1.0
               },
               "OutlineWidth": 0.18,
+              "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
+              "RectOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
               "RectSize": {
                 "x": 20.0,
                 "y": 4.0
               },
+              "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Corner SE",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -91875,8 +92150,13 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
+              "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true
             }
@@ -108037,7 +108317,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_001/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 19,
@@ -108054,6 +108334,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -108070,11 +108355,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -108083,7 +108388,14 @@
                 "a": 1.0
               },
               "FontSize": 24.0,
+              "FontStyle": 0,
+              "GradientMode": 0,
+              "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -108092,12 +108404,45 @@
                 "a": 1.0
               },
               "OutlineWidth": 0.18,
+              "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
+              "RectOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
               "RectSize": {
                 "x": 20.0,
                 "y": 4.0
               },
+              "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Room 001",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -108105,8 +108450,13 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
+              "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true
             }
@@ -117322,7 +117672,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_002/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 26,
@@ -117339,6 +117689,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -117355,11 +117710,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -117368,7 +117743,14 @@
                 "a": 1.0
               },
               "FontSize": 24.0,
+              "FontStyle": 0,
+              "GradientMode": 0,
+              "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -117377,12 +117759,45 @@
                 "a": 1.0
               },
               "OutlineWidth": 0.18,
+              "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
+              "RectOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
               "RectSize": {
                 "x": 20.0,
                 "y": 4.0
               },
+              "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Room 002",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -117390,8 +117805,13 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
+              "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true
             }
@@ -126130,7 +126550,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_003/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 18,
@@ -126147,6 +126567,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -126163,11 +126588,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -126176,7 +126621,14 @@
                 "a": 1.0
               },
               "FontSize": 24.0,
+              "FontStyle": 0,
+              "GradientMode": 0,
+              "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -126185,12 +126637,45 @@
                 "a": 1.0
               },
               "OutlineWidth": 0.18,
+              "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
+              "RectOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
               "RectSize": {
                 "x": 20.0,
                 "y": 4.0
               },
+              "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Room 003",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -126198,8 +126683,13 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
+              "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true
             }
@@ -137144,7 +137634,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_004/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 16,
@@ -137161,6 +137651,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -137177,11 +137672,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -137190,7 +137705,14 @@
                 "a": 1.0
               },
               "FontSize": 24.0,
+              "FontStyle": 0,
+              "GradientMode": 0,
+              "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -137199,12 +137721,45 @@
                 "a": 1.0
               },
               "OutlineWidth": 0.18,
+              "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
+              "RectOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
               "RectSize": {
                 "x": 20.0,
                 "y": 4.0
               },
+              "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Room 004",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -137212,8 +137767,13 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
+              "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true
             }
@@ -146214,7 +146774,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_005/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 18,
@@ -146231,6 +146791,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -146247,11 +146812,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -146260,7 +146845,14 @@
                 "a": 1.0
               },
               "FontSize": 24.0,
+              "FontStyle": 0,
+              "GradientMode": 0,
+              "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -146269,12 +146861,45 @@
                 "a": 1.0
               },
               "OutlineWidth": 0.18,
+              "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
+              "RectOffset": {
+                "x": 0.0,
+                "y": 0.0
+              },
               "RectSize": {
                 "x": 20.0,
                 "y": 4.0
               },
+              "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Room 005",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -146282,8 +146907,13 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
+              "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true
             }
@@ -157253,7 +157883,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_006/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 19,
@@ -157270,6 +157900,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -157286,6 +157921,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -164493,7 +165129,7 @@
           "name": "PortalNorth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_007/PortalNorth",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 11,
@@ -164873,7 +165509,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_007/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 15,
@@ -164890,6 +165526,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -164906,6 +165547,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -174331,7 +174973,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_008/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 19,
@@ -174348,6 +174990,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -174364,6 +175011,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -174480,7 +175128,7 @@
           "name": "PortalNorth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_008/PortalNorth",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 20,
@@ -184039,7 +184687,7 @@
           "name": "PortalNorth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_009/PortalNorth",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 17,
@@ -184419,7 +185067,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_009/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 21,
@@ -184436,6 +185084,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -184452,6 +185105,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -191325,7 +191979,7 @@
           "name": "PortalNorth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_010/PortalNorth",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 23,
@@ -191515,7 +192169,7 @@
           "name": "PortalSouth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_010/PortalSouth",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 25,
@@ -191705,7 +192359,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_010/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 27,
@@ -191722,6 +192376,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -191738,6 +192397,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -200040,7 +200700,7 @@
           "name": "PortalNorth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_011/PortalNorth",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 7,
@@ -200230,7 +200890,7 @@
           "name": "PortalSouth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_011/PortalSouth",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 9,
@@ -200420,7 +201080,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_011/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 11,
@@ -200437,6 +201097,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -200453,6 +201118,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -201442,7 +202108,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_012/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -201459,6 +202125,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -201475,6 +202146,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -214167,7 +214839,7 @@
           "name": "PortalEast",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_013/PortalEast",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 20,
@@ -214452,7 +215124,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_013/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 23,
@@ -214469,6 +215141,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -214485,6 +215162,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -215263,7 +215941,7 @@
           "name": "PortalEast",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_014/PortalEast",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 1,
@@ -215548,7 +216226,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_014/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -215565,6 +216243,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -215581,6 +216264,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -231225,7 +231909,7 @@
           "name": "PortalEast",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_015/PortalEast",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 15,
@@ -231510,7 +232194,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_015/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 18,
@@ -231527,6 +232211,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -231543,6 +232232,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -241959,7 +242649,7 @@
           "name": "PortalWest",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_016/PortalWest",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 27,
@@ -242054,7 +242744,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_016/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 28,
@@ -242071,6 +242761,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -242087,6 +242782,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -249089,7 +249785,7 @@
           "name": "PortalWest",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_017/PortalWest",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 20,
@@ -249184,7 +249880,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_017/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 21,
@@ -249201,6 +249897,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -249217,6 +249918,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -256926,8 +257628,8 @@
           "name": "PortalWest",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_018/PortalWest",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 20,
           "pathConstraints": "/////",
@@ -257021,7 +257723,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_018/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 21,
@@ -257038,6 +257740,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -257054,6 +257761,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -257852,7 +258560,7 @@
           "name": "PortalEast",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_019/PortalEast",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 1,
@@ -258042,7 +258750,7 @@
           "name": "PortalWest",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_019/PortalWest",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 3,
@@ -258137,7 +258845,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_019/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -258154,6 +258862,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -258170,6 +258883,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -272923,7 +273637,7 @@
           "name": "PortalNorth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_020/PortalNorth",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 15,
@@ -273113,7 +273827,7 @@
           "name": "PortalSouth",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_020/PortalSouth",
           "nameEditable": true,
-          "enable": false,
+          "enable": true,
           "visible": true,
           "localize": false,
           "displayOrder": 17,
@@ -273303,7 +274017,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_020/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 19,
@@ -273320,6 +274034,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -273336,6 +274055,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -282157,7 +282877,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_021/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 34,
@@ -282174,6 +282894,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -282190,6 +282915,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -288826,7 +289552,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_022/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 17,
@@ -288843,6 +289569,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -288859,6 +289590,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -297109,7 +297841,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_023/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 23,
@@ -297126,6 +297858,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -297142,6 +297879,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -305084,7 +305822,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_024/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 25,
@@ -305101,6 +305839,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -305117,6 +305860,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -306295,7 +307039,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_025/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -306312,6 +307056,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -306328,6 +307077,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -307000,7 +307750,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_026/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -307017,6 +307767,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -307033,6 +307788,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -307705,7 +308461,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_027/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -307722,6 +308478,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -307738,6 +308499,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -308410,7 +309172,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_028/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -308427,6 +309189,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -308443,6 +309210,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -309115,7 +309883,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_029/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -309132,6 +309900,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -309148,6 +309921,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -309820,7 +310594,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_030/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -309837,6 +310611,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -309853,6 +310632,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -310525,7 +311305,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_031/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -310542,6 +311322,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -310558,6 +311343,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -311230,7 +312016,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_032/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -311247,6 +312033,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -311263,6 +312054,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -311935,7 +312727,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_033/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -311952,6 +312744,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -311968,6 +312765,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -312640,7 +313438,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_034/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -312657,6 +313455,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -312673,6 +313476,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -313345,7 +314149,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_035/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -313362,6 +314166,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -313378,6 +314187,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -314092,7 +314902,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/EditorGeneratedGrid/Room_036/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -314109,6 +314919,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -314125,6 +314940,7 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
@@ -321239,8 +322055,8 @@
           "name": "GridRoomTemplate",
           "path": "/maps/RoomTestMap/GridRoomTemplate",
           "nameEditable": true,
-          "enable": false,
-          "visible": false,
+          "enable": true,
+          "visible": true,
           "localize": false,
           "displayOrder": 7,
           "pathConstraints": "///",
@@ -321681,7 +322497,7 @@
           "name": "RoomNumberLabel",
           "path": "/maps/RoomTestMap/GridRoomTemplate/RoomNumberLabel",
           "nameEditable": true,
-          "enable": true,
+          "enable": false,
           "visible": true,
           "localize": false,
           "displayOrder": 4,
@@ -321698,6 +322514,11 @@
           "@components": [
             {
               "@type": "MOD.Core.TransformComponent",
+              "Rotation": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              },
               "Position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -321714,11 +322535,31 @@
                 "y": 1.0,
                 "z": 1.0
               },
+              "ZRotation": 0.0,
               "Enable": true
             },
             {
               "@type": "MOD.Core.TextRendererComponent",
+              "AllowAutomaticTranslation": true,
               "BestFit": false,
+              "BottomLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "BottomRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "ColorGradient": false,
+              "ConstraintX": 100.0,
+              "ConstraintY": 100.0,
+              "EnableProfanityFilter": false,
+              "FaceDilate": 0.0,
+              "FaceSoftness": 0.0,
               "Font": "Default",
               "FontColor": {
                 "r": 1.0,
@@ -321728,8 +322569,13 @@
               },
               "FontSize": 24.0,
               "FontStyle": 1,
+              "GradientMode": 0,
               "HorizontalAlignment": 2,
               "IgnoreMapLayerCheck": true,
+              "IsLocalizationKey": false,
+              "IsRichText": true,
+              "MaxSize": 40.0,
+              "MinSize": 10.0,
               "OrderInLayer": 30,
               "OutlineColor": {
                 "r": 0.0,
@@ -321739,6 +322585,13 @@
               },
               "OutlineWidth": 0.18,
               "Overflow": 0,
+              "Padding": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+              },
+              "Page": 1,
               "RectOffset": {
                 "x": 0.0,
                 "y": 0.0
@@ -321749,7 +322602,27 @@
               },
               "SizeFit": false,
               "SortingLayer": "MapLayer0",
+              "SpacingOption": {
+                "Character": 0.0,
+                "Word": 0.0,
+                "Line": 0.0,
+                "Paragraph": 0.0
+              },
               "Text": "Room 000",
+              "TextSpriteSetId": "",
+              "TextStyleSheetId": "",
+              "TopLeftColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
+              "TopRightColor": {
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "a": 1.0
+              },
               "Underlay": true,
               "UnderlayColor": {
                 "r": 0.0,
@@ -321757,8 +322630,12 @@
                 "b": 0.0,
                 "a": 0.65
               },
+              "UnderlayDilate": 0.0,
               "UnderlayOffsetX": 0.06,
               "UnderlayOffsetY": -0.06,
+              "UnderlaySoftness": 0.0,
+              "UseConstraintX": false,
+              "UseConstraintY": false,
               "VerticalAlignment": 512,
               "Wrapping": false,
               "Enable": true

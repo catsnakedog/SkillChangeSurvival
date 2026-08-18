@@ -13,6 +13,12 @@ script BRBattleLogic extends Component
 
 	property number HitInvincibleSeconds = 0.3
 
+	property boolean EnableHpRegen = true
+
+	property number HpRegenDelaySeconds = 5
+
+	property number HpRegenPercentPerSecond = 0.06
+
 	property number PortalCombatLockSeconds = 1.25
 
 	property number AttackBoxWidth = 1.6
@@ -76,20 +82,6 @@ script BRBattleLogic extends Component
 	property number OutOfBoundsDamage = 18
 
 	property number OutOfBoundsDamageCooldownSeconds = 1.25
-
-	property number EnemyDamageScale = 0.55
-
-	property number PvpBasicAttackScale = 0.5
-
-	property boolean EnableOutOfCombatHpRegen = true
-
-	property number OutOfCombatRegenDelaySeconds = 5
-
-	property number OutOfCombatRegenIntervalSeconds = 1
-
-	property number OutOfCombatRegenFlatAmount = 2
-
-	property number OutOfCombatRegenMaxHpPercent = 4
 
 	property boolean EnableRoomBottomOutOfBounds = true
 
@@ -159,8 +151,6 @@ script BRBattleLogic extends Component
 		self._T.playerHandlers = {}
 		self._T.nextAttackAt = {}
 		self._T.invincibleUntil = {}
-		self._T.lastPlayerDamageAt = {}
-		self._T.nextPlayerRegenAt = {}
 		self._T.portalLockedUntil = {}
 		self._T.lives = {}
 		self._T.lifeState = {}
@@ -218,8 +208,6 @@ script BRBattleLogic extends Component
 		self._T.playerHandlers = {}
 		self._T.nextAttackAt = {}
 		self._T.invincibleUntil = {}
-		self._T.lastPlayerDamageAt = {}
-		self._T.nextPlayerRegenAt = {}
 		self._T.portalLockedUntil = {}
 		self._T.lives = {}
 		self._T.lifeState = {}
@@ -288,6 +276,7 @@ script BRBattleLogic extends Component
 
 		self:EnsureServerRuntimeTables()
 		local mapName = self:GetBattleMapName()
+		local now = self:Now()
 		local activeUsers = {}
 		local users = _UserService:GetUsersByMapName(mapName)
 		if users ~= nil then
@@ -297,7 +286,7 @@ script BRBattleLogic extends Component
 					activeUsers[userId] = true
 					self:RegisterBattlePlayer(playerEntity)
 					self:CheckBattlePlayerRoomBounds(playerEntity)
-					self:TickOutOfCombatHpRegen(playerEntity)
+					self:RegenBattlePlayer(playerEntity, now)
 				end
 			end
 		end
@@ -365,12 +354,6 @@ script BRBattleLogic extends Component
 		if self._T.invincibleUntil ~= nil then
 			self._T.invincibleUntil[userId] = nil
 		end
-		if self._T.lastPlayerDamageAt ~= nil then
-			self._T.lastPlayerDamageAt[userId] = nil
-		end
-		if self._T.nextPlayerRegenAt ~= nil then
-			self._T.nextPlayerRegenAt[userId] = nil
-		end
 		if self._T.portalLockedUntil ~= nil then
 			self._T.portalLockedUntil[userId] = nil
 		end
@@ -419,6 +402,64 @@ script BRBattleLogic extends Component
 		end
 		
 		entry.Entity:DisconnectEvent(PlayerActionEvent, entry.ActionHandler)
+	end
+
+	method void MarkPlayerDamaged(string userId, number now)
+		-- Records the last time a player took damage so out-of-combat HP regen can pause.
+		local safeUserId = self:ReadString(userId, "")
+		if safeUserId == "" then
+			return
+		end
+		self._T.lastDamageAt[safeUserId] = now
+		self._T.regenCarry[safeUserId] = 0
+	end
+
+	@ExecSpace("ServerOnly")
+	method void RegenBattlePlayer(Entity playerEntity, number now)
+		-- Regenerates HP once a player has avoided damage for HpRegenDelaySeconds.
+		if self.EnableHpRegen ~= true or playerEntity == nil or playerEntity.PlayerComponent == nil then
+			return
+		end
+		local playerComponent = playerEntity.PlayerComponent
+		local userId = self:ReadString(playerComponent.UserId, "")
+		if userId == "" then
+			return
+		end
+		if self:ReadString(self._T.lifeState[userId], "ALIVE") ~= "ALIVE" then
+			return
+		end
+		if playerComponent:IsDead() == true then
+			return
+		end
+		local hp = math.max(0, math.floor(self:ReadNumber(playerComponent.Hp, 0)))
+		local maxHp = math.max(1, math.floor(self:ReadNumber(playerComponent.MaxHp, 1)))
+		if hp <= 0 or hp >= maxHp then
+			return
+		end
+		local lastDamageAt = self:ReadNumber(self._T.lastDamageAt[userId], 0)
+		if now - lastDamageAt < self:GetHpRegenDelaySeconds() then
+			return
+		end
+		local perTick = maxHp * self:GetHpRegenPercentPerSecond() * self:GetPlayerScanSeconds()
+		if perTick <= 0 then
+			return
+		end
+		local carry = self:ReadNumber(self._T.regenCarry[userId], 0) + perTick
+		local wholeHeal = math.floor(carry)
+		if wholeHeal < 1 then
+			self._T.regenCarry[userId] = carry
+			return
+		end
+		self._T.regenCarry[userId] = carry - wholeHeal
+		playerComponent.Hp = math.min(maxHp, hp + wholeHeal)
+	end
+
+	method number GetHpRegenDelaySeconds()
+		return math.max(0, self:ReadNumber(self.HpRegenDelaySeconds, 5))
+	end
+
+	method number GetHpRegenPercentPerSecond()
+		return math.max(0, self:ReadNumber(self.HpRegenPercentPerSecond, 0.06))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -895,8 +936,8 @@ script BRBattleLogic extends Component
 			damage = self:GetIncomingDamageAfterSkillReduction(playerEntity, self:GetOutOfBoundsDamage(playerEntity), 1)
 			playerComponent.Hp = math.max(0, oldHp - damage)
 			self._T.outOfBoundsDamageUntil[userId] = now + self:GetOutOfBoundsDamageCooldownSeconds()
+			self:MarkPlayerDamaged(userId, now)
 			self:LockPortalUse(userId, now)
-			self:RecordPlayerDamage(playerEntity, damage, now, returnReason)
 		end
 
 		self:SetEntityWorldPosition2(playerEntity, returnPosition)
@@ -1102,12 +1143,11 @@ script BRBattleLogic extends Component
 			return
 		end
 		
-		local rawDamage = self:GetAdjustedBasicAttackDamage(attackerEntity) * self:GetPvpBasicAttackScale()
-		local damage = self:GetIncomingDamageAfterSkillReduction(targetEntity, rawDamage, 1)
+		local damage = self:GetIncomingDamageAfterSkillReduction(targetEntity, self:GetAdjustedBasicAttackDamage(attackerEntity), 1)
 		targetPlayer.Hp = math.max(0, targetPlayer.Hp - damage)
 		self._T.invincibleUntil[targetPlayer.UserId] = now + self:GetHitInvincibleSeconds()
+		self:MarkPlayerDamaged(targetPlayer.UserId, now)
 		self:LockPortalUse(targetPlayer.UserId, now)
-		self:RecordPlayerDamage(targetEntity, damage, now, "battle-basic")
 		if _BRDamageSkinSystem ~= nil then
 			_BRDamageSkinSystem:ShowEnemyDamage(targetEntity, damage, false, "battle-basic")
 		end
@@ -1142,18 +1182,12 @@ script BRBattleLogic extends Component
 			return
 		end
 
-		local enemyDamageScale = self:GetEnemyDamageScale()
-		local baseEnemyDamage = self:ReadNumber(rawDamage, self:GetBasicAttackDamage())
-		local scaledRawDamage = baseEnemyDamage * enemyDamageScale
-		if baseEnemyDamage > 0 and enemyDamageScale > 0 then
-			scaledRawDamage = math.max(1, scaledRawDamage)
-		end
-		local damage = self:GetIncomingDamageAfterSkillReduction(targetEntity, scaledRawDamage, 1)
+		local damage = self:GetIncomingDamageAfterSkillReduction(targetEntity, self:ReadNumber(rawDamage, self:GetBasicAttackDamage()), 1)
 		targetPlayer.Hp = math.max(0, targetPlayer.Hp - damage)
 		self._T.invincibleUntil[userId] = now + self:GetHitInvincibleSeconds()
+		self:MarkPlayerDamaged(userId, now)
 		self:LockPortalUse(userId, now)
-		self:RecordPlayerDamage(targetEntity, damage, now, self:ReadString(source, "bot"))
-		self:Log("bot damage target=" .. userId .. " bot=" .. self:GetBotId(botEntity) .. " damage=" .. tostring(damage) .. " raw=" .. tostring(rawDamage) .. " scale=" .. tostring(enemyDamageScale) .. " hp=" .. tostring(targetPlayer.Hp) .. " source=" .. self:ReadString(source, "bot"))
+		self:Log("bot damage target=" .. userId .. " bot=" .. self:GetBotId(botEntity) .. " damage=" .. tostring(damage) .. " hp=" .. tostring(targetPlayer.Hp) .. " source=" .. self:ReadString(source, "bot"))
 		if _BRDamageSkinSystem ~= nil then
 			_BRDamageSkinSystem:ShowDamage(targetEntity, damage, false, self:ReadString(source, "bot"))
 		end
@@ -1166,79 +1200,6 @@ script BRBattleLogic extends Component
 
 		self:UpdateAlivePlayerCount()
 		self:UpdateLifeSummary()
-	end
-
-	@ExecSpace("ServerOnly")
-	method void RecordPlayerDamage(Entity playerEntity, number damage, number now, string source)
-		-- Records when a player last took real damage so passive recovery can wait.
-		if playerEntity == nil or playerEntity.PlayerComponent == nil then
-			return
-		end
-		if self:ReadNumber(damage, 0) <= 0 then
-			return
-		end
-		self:EnsureServerRuntimeTables()
-		local userId = self:ReadString(playerEntity.PlayerComponent.UserId, "")
-		if userId == "" then
-			return
-		end
-		local timestamp = self:ReadNumber(now, self:Now())
-		self._T.lastPlayerDamageAt[userId] = timestamp
-		self._T.nextPlayerRegenAt[userId] = timestamp + self:GetOutOfCombatRegenDelaySeconds()
-	end
-
-	@ExecSpace("ServerOnly")
-	method void TickOutOfCombatHpRegen(Entity playerEntity)
-		-- Restores HP after the player avoids damage for the configured delay.
-		if self.EnableOutOfCombatHpRegen ~= true then
-			return
-		end
-		if playerEntity == nil or playerEntity.PlayerComponent == nil then
-			return
-		end
-		local player = playerEntity.PlayerComponent
-		if player:IsDead() == true or player.Hp <= 0 then
-			return
-		end
-		local maxHp = math.max(1, math.floor(self:ReadNumber(player.MaxHp, self:GetBattleMaxHp())))
-		local oldHp = math.max(0, math.floor(self:ReadNumber(player.Hp, 0)))
-		if oldHp >= maxHp then
-			return
-		end
-
-		self:EnsureServerRuntimeTables()
-		local userId = self:ReadString(player.UserId, "")
-		if userId == "" then
-			return
-		end
-		local now = self:Now()
-		local lastDamageAt = self._T.lastPlayerDamageAt[userId]
-		if lastDamageAt == nil then
-			lastDamageAt = now
-			self._T.lastPlayerDamageAt[userId] = lastDamageAt
-			self._T.nextPlayerRegenAt[userId] = now + self:GetOutOfCombatRegenDelaySeconds()
-		end
-		lastDamageAt = self:ReadNumber(lastDamageAt, now)
-		if now < lastDamageAt + self:GetOutOfCombatRegenDelaySeconds() then
-			return
-		end
-		if now < self:ReadNumber(self._T.nextPlayerRegenAt[userId], lastDamageAt + self:GetOutOfCombatRegenDelaySeconds()) then
-			return
-		end
-
-		local healAmount = self:GetOutOfCombatRegenAmount(maxHp)
-		player.Hp = math.min(maxHp, oldHp + healAmount)
-		local actualHeal = player.Hp - oldHp
-		self._T.nextPlayerRegenAt[userId] = now + self:GetOutOfCombatRegenIntervalSeconds()
-		if actualHeal <= 0 then
-			return
-		end
-		if _BRDamageSkinSystem ~= nil then
-			_BRDamageSkinSystem:ShowHeal(playerEntity, actualHeal, "out-of-combat")
-		end
-		log("[BRBattle] out-of-combat regen user=" .. userId
-			.. " heal=" .. tostring(actualHeal)
-			.. " hp=" .. tostring(oldHp) .. "->" .. tostring(player.Hp))
 	end
 
 	@ExecSpace("ServerOnly")
@@ -2622,11 +2583,11 @@ script BRBattleLogic extends Component
 		if self._T.invincibleUntil == nil then
 			self._T.invincibleUntil = {}
 		end
-		if self._T.lastPlayerDamageAt == nil then
-			self._T.lastPlayerDamageAt = {}
+		if self._T.lastDamageAt == nil then
+			self._T.lastDamageAt = {}
 		end
-		if self._T.nextPlayerRegenAt == nil then
-			self._T.nextPlayerRegenAt = {}
+		if self._T.regenCarry == nil then
+			self._T.regenCarry = {}
 		end
 		if self._T.portalLockedUntil == nil then
 			self._T.portalLockedUntil = {}
@@ -2763,36 +2724,6 @@ script BRBattleLogic extends Component
 
 	method number GetOutOfBoundsDamageCooldownSeconds()
 		return math.max(0.1, self:ReadNumber(self.OutOfBoundsDamageCooldownSeconds, 1.25))
-	end
-
-	method number GetEnemyDamageScale()
-		-- Returns the global final damage multiplier for monster and battle-bot attacks.
-		return math.max(0, self:ReadNumber(self.EnemyDamageScale, 0.55))
-	end
-
-	method number GetPvpBasicAttackScale()
-		-- Returns the global final damage multiplier for player-vs-player contact attacks only.
-		-- Monster/bot damage uses GetEnemyDamageScale() instead, so PvE kill speed is untouched;
-		-- this only slows down how fast players can kill each other in basic melee contact.
-		return math.max(0, self:ReadNumber(self.PvpBasicAttackScale, 0.5))
-	end
-
-	method number GetOutOfCombatRegenDelaySeconds()
-		-- Returns how long a player must avoid damage before passive HP recovery starts.
-		return math.max(0, self:ReadNumber(self.OutOfCombatRegenDelaySeconds, 5))
-	end
-
-	method number GetOutOfCombatRegenIntervalSeconds()
-		-- Returns the interval between passive HP recovery ticks.
-		return math.max(0.1, self:ReadNumber(self.OutOfCombatRegenIntervalSeconds, 1))
-	end
-
-	method number GetOutOfCombatRegenAmount(number maxHp)
-		-- Returns one passive HP recovery tick amount for the given MaxHp.
-		local safeMaxHp = math.max(1, math.floor(self:ReadNumber(maxHp, self:GetBattleMaxHp())))
-		local flat = math.max(0, math.floor(self:ReadNumber(self.OutOfCombatRegenFlatAmount, 2)))
-		local percent = math.max(0, self:ReadNumber(self.OutOfCombatRegenMaxHpPercent, 4))
-		return math.max(1, flat + math.floor(safeMaxHp * percent / 100))
 	end
 
 	method number GetRoomBottomOutOfBoundsPadding()

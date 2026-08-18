@@ -34,6 +34,8 @@ script BRTrainingDummy extends Component
 
 	property number SkillExperienceReward = 100
 
+	property number ExperienceRewardMultiplier = 1.25
+
 	property number MesoReward = 4
 
 	property number HitDamage = 1
@@ -453,7 +455,10 @@ script BRTrainingDummy extends Component
 	end
 
 	method number GetSkillExperienceReward()
-		return math.max(0, math.floor(self:ReadNumber(self.SkillExperienceReward, 100)))
+		-- Base CSV/authored exp reward scaled by ExperienceRewardMultiplier (1.25 = +25%).
+		local base = self:ReadNumber(self.SkillExperienceReward, 100)
+		local multiplier = math.max(0, self:ReadNumber(self.ExperienceRewardMultiplier, 1.25))
+		return math.max(0, math.floor(base * multiplier))
 	end
 
 	method number GetMesoReward()
